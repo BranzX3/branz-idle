@@ -114,7 +114,8 @@ public final class ClaimService {
             return Result.fail("Not enough money (need " + cost + ").");
         }
 
-        NodeRecord record = nodeStore.insert(owner, chunk, type);
+        int originY = type.isProduction() ? SchematicService.groundY(world, chunk) : 0;
+        NodeRecord record = nodeStore.insert(owner, chunk, type, originY);
         data.addBalance(-cost);
         if (type.isProduction()) {
             schematicService.buildHousing(record, world);

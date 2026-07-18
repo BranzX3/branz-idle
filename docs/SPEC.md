@@ -121,6 +121,39 @@ be extended per season without code changes.
   (rate formula), never entity AI. NPCs only spawn in loaded chunks;
   offline/unloaded production is unaffected.
 
+### 4.4 Schematic Definitions & NPC anchors
+
+Every building is registered as a **Schematic Definition**: the block data
+plus admin-authored metadata. One definition serves every node that uses
+that building type/tier — set once, applies everywhere.
+
+**Anchor points (per definition):**
+- **Spawn anchors `1..N`** — one per worker slot, like a bed per worker.
+  Worker in slot 1 spawns/idles at anchor 1, slot 2 at anchor 2, etc.
+  N matches the building's max slots (tier).
+- **Work-site anchors** — points where WORKING NPCs walk to / stand at.
+- **Wander zone** — radius or region for IDLE random walking.
+
+**Animation profiles (per definition, per state):**
+- Admin chooses which visuals each state uses for this building —
+  e.g. WORKING = walk-to-worksite + tool-in-hand + arm-swing;
+  IDLE = wander + look-at-player; STOP = stand + sneak.
+- **Defaults apply when unset**: a definition with no explicit profile
+  falls back to the global default profile (config), so a building is
+  loadable with zero setup and can be polished later.
+- A definition is validated at load: missing spawn anchors beyond slot
+  count → filled by auto-layout fallback (line in front of the building).
+
+**Admin authoring flow (in-game):**
+- `/idle admin schem edit <definition>` — enter edit mode on a definition
+- `/idle admin schem setspawn <slot>` — set spawn anchor at admin's feet
+- `/idle admin schem setwork` — add a work-site anchor
+- `/idle admin schem setanim <state> <profile>` — bind animation profile
+- `/idle admin schem save` — persist definition; nodes pick it up on
+  next NPC refresh/chunk load
+- Definitions persist as YAML files under `plugins/IdleFarm/schematics/`
+  (block data + anchors + profiles) — season content is a file drop.
+
 ## 5. Production model
 
 - Rate formula per node:
@@ -330,6 +363,13 @@ Unclaim is allowed but designed so territory churn has real cost:
   resolution.
 - **Direct economy edits**: `/idle admin give money|item <player> <amount>`
   — support & correction tool.
+- **Schematic/NPC tools**: the `schem` authoring commands (§4.4), plus
+  `/idle admin npc refresh|list` (respawn/inspect a node's NPCs),
+  `/idle admin npc state <state>` (force a state to preview its
+  animation profile), `/idle admin schem rebuild` (re-paste a damaged
+  building without touching the terrain snapshot), and
+  `/idle admin node info` (dump owner/tier/workers/state of the chunk
+  the admin stands in).
 - **Live balance reload**: `/idle admin reload` re-reads all balance YAML
   (rates, prices, gacha odds, drop tables, brackets) without a restart.
 - **Audit log**: every Money spend, gacha/fuse roll, and exploration

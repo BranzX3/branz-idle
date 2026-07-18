@@ -1,6 +1,8 @@
 package dev.branzx.idlefarm;
 
+import dev.branzx.idlefarm.command.AdminCommands;
 import dev.branzx.idlefarm.command.IdleCommand;
+import dev.branzx.idlefarm.schematic.SchematicRegistry;
 import dev.branzx.idlefarm.listener.PlayerConnectionListener;
 import dev.branzx.idlefarm.listener.ProtectionListener;
 import dev.branzx.idlefarm.service.ClaimService;
@@ -39,7 +41,9 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.nodeStore = new NodeStore(this, database);
         this.nodeStore.loadAllSync();
 
-        this.schematicService = new SchematicService(this, database);
+        SchematicRegistry schematicRegistry = new SchematicRegistry(this);
+        schematicRegistry.loadAll();
+        this.schematicService = new SchematicService(this, database, schematicRegistry);
         this.schematicService.loadAllSync();
         this.npcManager = new WorkerNpcManager(this, nodeStore, schematicService);
         this.workerStore = new WorkerStore(this, database);
@@ -56,8 +60,9 @@ public final class IdleFarmPlugin extends JavaPlugin {
         // Citizens is a hard dependency, so its API is ready by now.
         npcManager.init();
 
+        AdminCommands adminCommands = new AdminCommands(this, nodeStore, workerStore, schematicService, npcManager);
         IdleCommand idleCommand = new IdleCommand(this, dataStore, nodeStore, claimService, trustService,
-                workerService, workerStore, npcManager);
+                workerService, workerStore, npcManager, adminCommands);
         getCommand("idle").setExecutor(idleCommand);
         getCommand("idle").setTabCompleter(idleCommand);
 

@@ -42,7 +42,7 @@ public final class NodeStore {
     public void loadAllSync() {
         try (Connection connection = database.getConnection()) {
             try (PreparedStatement select = connection.prepareStatement(
-                    "SELECT id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state FROM idlefarm_nodes");
+                    "SELECT id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state, origin_y FROM idlefarm_nodes");
                  ResultSet rs = select.executeQuery()) {
                 while (rs.next()) {
                     NodeRecord record = new NodeRecord(
@@ -51,7 +51,8 @@ public final class NodeStore {
                             new ChunkKey(rs.getString("world"), rs.getInt("chunk_x"), rs.getInt("chunk_z")),
                             NodeType.fromString(rs.getString("node_type")),
                             rs.getInt("tier"),
-                            rs.getString("state"));
+                            rs.getString("state"),
+                            rs.getInt("origin_y"));
                     index(record);
                     nextNodeId.accumulateAndGet(record.getId() + 1, Math::max);
                 }
@@ -108,20 +109,21 @@ public final class NodeStore {
      * Applies to the in-memory index immediately (main thread, authoritative)
      * and queues the durable insert. Never blocks on the DB.
      */
-    public NodeRecord insert(UUID owner, ChunkKey chunk, NodeType type) {
-        NodeRecord record = new NodeRecord(nextNodeId.getAndIncrement(), owner, chunk, type, 1, "ACTIVE");
+    public NodeRecord insert(UUID owner, ChunkKey chunk, NodeType type, int originY) {
+        NodeRecord record = new NodeRecord(nextNodeId.getAndIncrement(), owner, chunk, type, 1, "ACTIVE", originY);
         index(record);
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement insert = connection.prepareStatement(
-                         "INSERT INTO idlefarm_nodes (id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state) "
-                                 + "VALUES (?, ?, ?, ?, ?, ?, 1, 'ACTIVE')")) {
+                         "INSERT INTO idlefarm_nodes (id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state, origin_y) "
+                                 + "VALUES (?, ?, ?, ?, ?, ?, 1, 'ACTIVE', ?)")) {
                 insert.setLong(1, record.getId());
                 insert.setString(2, owner.toString());
                 insert.setString(3, chunk.world());
                 insert.setInt(4, chunk.x());
                 insert.setInt(5, chunk.z());
                 insert.setString(6, type.name());
+                insert.setInt(7, originY);
                 insert.executeUpdate();
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to persist node at " + chunk + ": " + e.getMessage());

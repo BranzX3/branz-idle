@@ -76,3 +76,23 @@ workers:
     - DanTDM
     - Ph1LzA
     - TommyInnit
+
+# Map node types to schematic definition ids (files in schematics/).
+# Unlisted types use default_hut.
+schematics:
+  mining: default_hut
+  farming: default_hut
+  woodcutting: default_hut
+  livestock: default_hut
+  hunter: default_hut
+
+npc:
+  # How often (ticks) NPC animation behaviors are evaluated.
+  animation-interval-ticks: 60
+  # Behavior sets referenced by schematic definitions (profiles.<state>).
+  # Available behaviors: wander, walk_worksite, hold_tool, clear_tool,
+  # swing, look_close, sneak, stand.
+  animation-profiles:
+    default_working: [walk_worksite, hold_tool, swing]
+    default_idle: [wander, look_close, clear_tool]
+    default_stop: [stand, sneak, clear_tool]

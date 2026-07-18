@@ -10,14 +10,21 @@ public final class NodeRecord {
     private volatile NodeType type;
     private volatile int tier;
     private volatile String state;
+    /** Building origin Y captured at claim time (stable across terrain edits). */
+    private final int originY;
 
-    public NodeRecord(long id, UUID ownerUuid, ChunkKey chunk, NodeType type, int tier, String state) {
+    public NodeRecord(long id, UUID ownerUuid, ChunkKey chunk, NodeType type, int tier, String state, int originY) {
         this.id = id;
         this.ownerUuid = ownerUuid;
         this.chunk = chunk;
         this.type = type;
         this.tier = tier;
         this.state = state;
+        this.originY = originY;
+    }
+
+    public int getOriginY() {
+        return originY;
     }
 
     public long getId() {

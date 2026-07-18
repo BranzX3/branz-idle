@@ -39,10 +39,12 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     private final WorkerService workerService;
     private final WorkerStore workerStore;
     private final WorkerNpcManager npcManager;
+    private final AdminCommands adminCommands;
 
     public IdleCommand(IdleFarmPlugin plugin, PlayerDataStore dataStore, NodeStore nodeStore,
                        ClaimService claimService, TrustService trustService,
-                       WorkerService workerService, WorkerStore workerStore, WorkerNpcManager npcManager) {
+                       WorkerService workerService, WorkerStore workerStore, WorkerNpcManager npcManager,
+                       AdminCommands adminCommands) {
         this.plugin = plugin;
         this.dataStore = dataStore;
         this.nodeStore = nodeStore;
@@ -51,6 +53,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         this.workerService = workerService;
         this.workerStore = workerStore;
         this.npcManager = npcManager;
+        this.adminCommands = adminCommands;
     }
 
     @Override
@@ -400,13 +403,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(Component.text("You do not have permission to do that.", NamedTextColor.RED));
             return true;
         }
-        if (args.length > 1 && args[1].equalsIgnoreCase("reload")) {
-            plugin.reloadConfig();
-            sender.sendMessage(Component.text("IdleFarm config reloaded.", NamedTextColor.GREEN));
-            return true;
-        }
-        sender.sendMessage(Component.text("Usage: /idle admin reload", NamedTextColor.YELLOW));
-        return true;
+        return adminCommands.handle(sender, args);
     }
 
     @Override
@@ -422,7 +419,17 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             return List.of("visitor", "helper", "manager");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("admin")) {
-            return List.of("reload");
+            return List.of("reload", "schem", "npc", "node");
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("admin") && args[1].equalsIgnoreCase("schem")) {
+            return List.of("edit", "setspawn", "setwork", "setwander", "setanim", "save", "rebuild");
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("admin") && args[1].equalsIgnoreCase("npc")) {
+            return List.of("refresh", "list", "state");
+        }
+        if (args.length == 4 && args[0].equalsIgnoreCase("admin") && args[1].equalsIgnoreCase("npc")
+                && args[2].equalsIgnoreCase("state")) {
+            return List.of("working", "idle", "stop", "clear");
         }
         return List.of();
     }
