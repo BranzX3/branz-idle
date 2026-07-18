@@ -3,6 +3,7 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 plugins {
     id("java")
     id("com.gradleup.shadow") version "9.0.0-rc2"
+    id("xyz.jpenilla.run-paper") version "3.0.2"
 }
 
 group = "dev.branzx"
@@ -20,9 +21,14 @@ repositories {
     }
 }
 
+val runServerPlugins by configurations.creating
+
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.2.build.+")
     compileOnly("net.citizensnpcs:citizens-main:2.0.43-SNAPSHOT") {
+        exclude(group = "*", module = "*")
+    }
+    runServerPlugins("net.citizensnpcs:citizens-main:2.0.43-SNAPSHOT") {
         exclude(group = "*", module = "*")
     }
 
@@ -55,4 +61,15 @@ tasks.processResources {
     filesMatching("plugin.yml") {
         expand("version" to project.version)
     }
+}
+
+val copyServerPlugins by tasks.registering(Copy::class) {
+    from(runServerPlugins)
+    into(layout.projectDirectory.dir("run/plugins"))
+}
+
+tasks.runServer {
+    minecraftVersion("26.2")
+    jvmArgs("-Dcom.mojang.eula.agree=true")
+    dependsOn(copyServerPlugins)
 }
