@@ -58,3 +58,16 @@ workers:
     legendary: {min: 28, max: 55}
   # Same-rarity workers consumed per fuse (result: next rarity).
   fuse-count: 3
+  # Player usernames whose skins are rolled for new workers. NPC skins and
+  # the contract head texture both resolve from these names.
+  skin-pool:
+    - Notch
+    - jeb_
+    - Dinnerbone
+    - Grumm
+    - dream
+    - Technoblade
+    - CaptainSparklez
+    - DanTDM
+    - Ph1LzA
+    - TommyInnit

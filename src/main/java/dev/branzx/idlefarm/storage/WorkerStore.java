@@ -36,7 +36,7 @@ public final class WorkerStore {
     public void loadAllSync() {
         try (Connection connection = database.getConnection();
              PreparedStatement select = connection.prepareStatement(
-                     "SELECT worker_uuid, rarity, trait, stats, name, level, exp, assigned_node_id, state "
+                     "SELECT worker_uuid, rarity, trait, stats, name, skin, level, exp, assigned_node_id, state "
                              + "FROM idlefarm_workers");
              ResultSet rs = select.executeQuery()) {
             while (rs.next()) {
@@ -48,6 +48,7 @@ public final class WorkerStore {
                         Trait.fromString(rs.getString("trait")),
                         WorkerStats.deserialize(rs.getString("stats")),
                         rs.getString("name"),
+                        rs.getString("skin"),
                         rs.getInt("level"),
                         rs.getLong("exp"),
                         assigned,
@@ -80,8 +81,8 @@ public final class WorkerStore {
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement insert = connection.prepareStatement(
-                         "INSERT INTO idlefarm_workers (worker_uuid, rarity, trait, stats, name, level, exp, assigned_node_id, state) "
-                                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                         "INSERT INTO idlefarm_workers (worker_uuid, rarity, trait, stats, name, skin, level, exp, assigned_node_id, state) "
+                                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 bind(insert, record);
                 insert.executeUpdate();
             } catch (SQLException e) {
@@ -94,18 +95,19 @@ public final class WorkerStore {
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement update = connection.prepareStatement(
-                         "UPDATE idlefarm_workers SET stats = ?, level = ?, exp = ?, assigned_node_id = ?, state = ? "
+                         "UPDATE idlefarm_workers SET stats = ?, skin = ?, level = ?, exp = ?, assigned_node_id = ?, state = ? "
                                  + "WHERE worker_uuid = ?")) {
                 update.setString(1, record.getStats().serialize());
-                update.setInt(2, record.getLevel());
-                update.setLong(3, record.getExp());
+                update.setString(2, record.getSkin());
+                update.setInt(3, record.getLevel());
+                update.setLong(4, record.getExp());
                 if (record.getAssignedNodeId() == null) {
-                    update.setNull(4, java.sql.Types.BIGINT);
+                    update.setNull(5, java.sql.Types.BIGINT);
                 } else {
-                    update.setLong(4, record.getAssignedNodeId());
+                    update.setLong(5, record.getAssignedNodeId());
                 }
-                update.setString(5, record.getState());
-                update.setString(6, record.getWorkerUuid().toString());
+                update.setString(6, record.getState());
+                update.setString(7, record.getWorkerUuid().toString());
                 update.executeUpdate();
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to update worker " + record.getWorkerUuid() + ": " + e.getMessage());
@@ -157,13 +159,14 @@ public final class WorkerStore {
         insert.setString(3, record.getTrait().name());
         insert.setString(4, record.getStats().serialize());
         insert.setString(5, record.getName());
-        insert.setInt(6, record.getLevel());
-        insert.setLong(7, record.getExp());
+        insert.setString(6, record.getSkin());
+        insert.setInt(7, record.getLevel());
+        insert.setLong(8, record.getExp());
         if (record.getAssignedNodeId() == null) {
-            insert.setNull(8, java.sql.Types.BIGINT);
+            insert.setNull(9, java.sql.Types.BIGINT);
         } else {
-            insert.setLong(8, record.getAssignedNodeId());
+            insert.setLong(9, record.getAssignedNodeId());
         }
-        insert.setString(9, record.getState());
+        insert.setString(10, record.getState());
     }
 }

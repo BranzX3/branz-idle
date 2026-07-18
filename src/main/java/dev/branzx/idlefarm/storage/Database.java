@@ -113,6 +113,7 @@ public final class Database {
                     trait VARCHAR(24) NOT NULL,
                     stats VARCHAR(64) NOT NULL,
                     name VARCHAR(32) NOT NULL,
+                    skin VARCHAR(64) NOT NULL DEFAULT 'Steve',
                     level INT NOT NULL DEFAULT 1,
                     exp BIGINT NOT NULL DEFAULT 0,
                     assigned_node_id BIGINT NULL,

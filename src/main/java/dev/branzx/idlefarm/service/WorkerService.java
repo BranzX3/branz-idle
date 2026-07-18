@@ -11,11 +11,13 @@ import dev.branzx.idlefarm.worker.WorkerRecord;
 import dev.branzx.idlefarm.worker.WorkerStats;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
@@ -119,11 +121,28 @@ public final class WorkerService {
                 random.nextInt(min, max + 1));
         Trait trait = Trait.values()[random.nextInt(Trait.values().length)];
         String name = NAMES[random.nextInt(NAMES.length)];
+        String skin = rollSkin();
 
         WorkerRecord record = new WorkerRecord(UUID.randomUUID(), rarity, trait, stats,
-                name, 1, 0, null, WorkerRecord.STATE_ITEM);
+                name, skin, 1, 0, null, WorkerRecord.STATE_ITEM);
         workerStore.insert(record);
         return record;
+    }
+
+    private String rollSkin() {
+        List<String> pool = plugin.getConfig().getStringList("workers.skin-pool");
+        if (pool.isEmpty()) {
+            return "Steve";
+        }
+        return pool.get(ThreadLocalRandom.current().nextInt(pool.size()));
+    }
+
+    /** Rank-gated cosmetic: change a worker's skin (item must be re-minted by caller). */
+    public Result setSkin(WorkerRecord worker, String skin) {
+        worker.setSkin(skin);
+        workerStore.update(worker);
+        return Result.ok(worker.getName() + "'s skin changed to " + skin + ".",
+                worker.isItemForm() ? createItem(worker) : null);
     }
 
     private int defaultStatMin(Rarity rarity) {
@@ -149,8 +168,12 @@ public final class WorkerService {
     // ---- item token ----
 
     public ItemStack createItem(WorkerRecord record) {
-        ItemStack item = new ItemStack(Material.PAPER);
+        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
         ItemMeta meta = item.getItemMeta();
+        // Head texture follows the worker's skin for instant recognition.
+        if (meta instanceof SkullMeta skull) {
+            skull.setOwningPlayer(Bukkit.getOfflinePlayer(record.getSkin()));
+        }
         meta.getPersistentDataContainer().set(workerKey, PersistentDataType.STRING,
                 record.getWorkerUuid().toString());
         meta.displayName(Component.text(record.getName(), record.getRarity().color())
@@ -158,6 +181,7 @@ public final class WorkerService {
         List<Component> lore = new ArrayList<>();
         lore.add(Component.text("Worker Contract", NamedTextColor.DARK_GRAY));
         lore.add(Component.text("Trait: " + record.getTrait(), NamedTextColor.YELLOW));
+        lore.add(Component.text("Skin: " + record.getSkin(), NamedTextColor.DARK_AQUA));
         lore.add(Component.text("Lv." + record.getLevel() + " / " + record.getRarity().levelCap(), NamedTextColor.GRAY));
         WorkerStats stats = record.getStats();
         lore.add(Component.text("DIL " + stats.diligence() + "  LCK " + stats.luck()

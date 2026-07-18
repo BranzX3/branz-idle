@@ -3,18 +3,17 @@ package dev.branzx.idlefarm.service;
 import dev.branzx.idlefarm.IdleFarmPlugin;
 import dev.branzx.idlefarm.node.ChunkKey;
 import dev.branzx.idlefarm.node.NodeRecord;
-import dev.branzx.idlefarm.node.NodeType;
 import dev.branzx.idlefarm.storage.NodeStore;
 import dev.branzx.idlefarm.storage.WorkerStore;
 import dev.branzx.idlefarm.worker.WorkerRecord;
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.api.npc.NPCRegistry;
+import net.citizensnpcs.trait.SkinTrait;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.EntityType;
-import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.world.ChunkLoadEvent;
@@ -99,17 +98,13 @@ public final class WorkerNpcManager implements Listener {
             if (WorkerRecord.STATE_EXPLORING.equals(worker.getState())) {
                 continue; // away on an exploration run — not visible
             }
-            NPC npc = registry.createNPC(EntityType.VILLAGER,
+            NPC npc = registry.createNPC(EntityType.PLAYER,
                     worker.getName() + " [" + worker.getRarity() + "]");
             npc.setProtected(true);
             npc.data().set(NPC.Metadata.NAMEPLATE_VISIBLE, true);
+            npc.getOrAddTrait(SkinTrait.class).setSkinName(worker.getSkin());
             Location spot = front.clone().add((i % 3) - 1, 0, i / 3);
             npc.spawn(spot);
-            if (npc.getEntity() instanceof Villager villager) {
-                villager.setProfession(professionFor(node.getType()));
-                villager.setAI(false);
-                villager.setSilent(true);
-            }
             npcs.add(npc);
             i++;
         }
@@ -141,14 +136,4 @@ public final class WorkerNpcManager implements Listener {
         return nodeStore.getByChunk(new ChunkKey(chunk.getWorld().getName(), chunk.getX(), chunk.getZ()));
     }
 
-    private Villager.Profession professionFor(NodeType type) {
-        return switch (type) {
-            case MINING -> Villager.Profession.ARMORER;
-            case FARMING -> Villager.Profession.FARMER;
-            case WOODCUTTING -> Villager.Profession.FLETCHER;
-            case LIVESTOCK -> Villager.Profession.BUTCHER;
-            case HUNTER -> Villager.Profession.LEATHERWORKER;
-            default -> Villager.Profession.NONE;
-        };
-    }
 }

@@ -16,3 +16,6 @@ permissions:
   idlefarm.admin:
     description: Allows use of /idle admin subcommands
     default: op
+  idlefarm.skin:
+    description: Allows changing worker skins (/idle skin) - rank perk
+    default: op

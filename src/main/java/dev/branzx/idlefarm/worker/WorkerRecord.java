@@ -15,22 +15,32 @@ public final class WorkerRecord {
     private final Trait trait;
     private volatile WorkerStats stats;
     private final String name;
+    private volatile String skin;
     private volatile int level;
     private volatile long exp;
     private volatile Long assignedNodeId; // null = item-form
     private volatile String state;
 
     public WorkerRecord(UUID workerUuid, Rarity rarity, Trait trait, WorkerStats stats,
-                        String name, int level, long exp, Long assignedNodeId, String state) {
+                        String name, String skin, int level, long exp, Long assignedNodeId, String state) {
         this.workerUuid = workerUuid;
         this.rarity = rarity;
         this.trait = trait;
         this.stats = stats;
         this.name = name;
+        this.skin = skin;
         this.level = level;
         this.exp = exp;
         this.assignedNodeId = assignedNodeId;
         this.state = state;
+    }
+
+    public String getSkin() {
+        return skin;
+    }
+
+    public void setSkin(String skin) {
+        this.skin = skin;
     }
 
     public UUID getWorkerUuid() {

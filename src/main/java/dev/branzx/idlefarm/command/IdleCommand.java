@@ -68,6 +68,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "fuse" -> fuse(sender);
             case "assign" -> assign(sender);
             case "eject" -> eject(sender, args);
+            case "skin" -> skin(sender, args);
             case "admin" -> admin(sender, args);
             default -> usage(sender);
         };
@@ -352,6 +353,35 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean skin(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can change worker skins.", NamedTextColor.RED));
+            return true;
+        }
+        if (!player.hasPermission("idlefarm.skin")) {
+            sender.sendMessage(Component.text("Changing worker skins requires a rank.", NamedTextColor.RED));
+            return true;
+        }
+        if (args.length < 2) {
+            sender.sendMessage(Component.text("Usage: /idle skin <playerName> (hold the worker contract)",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        ItemStack held = player.getInventory().getItemInMainHand();
+        WorkerRecord worker = workerService.fromItem(held);
+        if (worker == null) {
+            sender.sendMessage(Component.text("Hold a worker contract to change its skin.", NamedTextColor.RED));
+            return true;
+        }
+        WorkerService.Result result = workerService.setSkin(worker, args[1]);
+        if (result.success() && result.item() != null) {
+            player.getInventory().setItemInMainHand(result.item());
+        }
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
     private NodeRecord nodeAt(Player player) {
         return nodeStore.getByChunk(new ChunkKey(player.getWorld().getName(),
                 player.getLocation().getBlockX() >> 4,
@@ -383,7 +413,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             return List.of("balance", "top", "claim", "unclaim", "nodes", "trust", "untrust",
-                    "hire", "fuse", "assign", "eject", "admin");
+                    "hire", "fuse", "assign", "eject", "skin", "admin");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("claim")) {
             return List.of("residential", "mining", "farming", "woodcutting", "livestock", "hunter");
