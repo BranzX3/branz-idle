@@ -238,6 +238,64 @@ public final class WorkerService {
         return Result.ok("Fused into " + fused.getName() + " (" + next + ")!", createItem(fused));
     }
 
+    // ---- growth ----
+
+    /**
+     * Grants EXP (already Stamina-scaled by the caller) and applies level-ups:
+     * each level grants stat points allocated randomly, weighted toward the
+     * worker's Trait-favored stat. Level cap comes from rarity.
+     */
+    public void grantExp(WorkerRecord worker, long amount) {
+        if (amount <= 0 || worker.getLevel() >= worker.getRarity().levelCap()) {
+            return;
+        }
+        worker.setExp(worker.getExp() + amount);
+        boolean changed = false;
+        while (worker.getLevel() < worker.getRarity().levelCap()
+                && worker.getExp() >= expForNextLevel(worker.getLevel())) {
+            worker.setExp(worker.getExp() - expForNextLevel(worker.getLevel()));
+            worker.setLevel(worker.getLevel() + 1);
+            allocateStatPoints(worker);
+            changed = true;
+        }
+        if (changed) {
+            workerStore.update(worker);
+        }
+    }
+
+    public long expForNextLevel(int level) {
+        long base = plugin.getConfig().getLong("workers.exp-per-level-base", 100);
+        return base * level;
+    }
+
+    private void allocateStatPoints(WorkerRecord worker) {
+        int points = plugin.getConfig().getInt("workers.points-per-level", 3);
+        double favoredChance = plugin.getConfig().getDouble("workers.trait-favored-chance", 0.5);
+        String favored = worker.getTrait().favoredStat();
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        int dDil = 0, dLck = 0, dSta = 0, dSpd = 0;
+        for (int i = 0; i < points; i++) {
+            String stat;
+            if (favored != null && random.nextDouble() < favoredChance) {
+                stat = favored;
+            } else {
+                stat = switch (random.nextInt(4)) {
+                    case 0 -> "Diligence";
+                    case 1 -> "Luck";
+                    case 2 -> "Stamina";
+                    default -> "Speed";
+                };
+            }
+            switch (stat) {
+                case "Diligence" -> dDil++;
+                case "Luck" -> dLck++;
+                case "Stamina" -> dSta++;
+                default -> dSpd++;
+            }
+        }
+        worker.setStats(worker.getStats().plus(dDil, dLck, dSta, dSpd));
+    }
+
     // ---- assign / eject ----
 
     public Result assign(UUID actor, WorkerRecord worker, NodeRecord node) {

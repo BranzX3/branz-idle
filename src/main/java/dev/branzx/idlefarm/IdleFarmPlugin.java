@@ -6,6 +6,7 @@ import dev.branzx.idlefarm.schematic.SchematicRegistry;
 import dev.branzx.idlefarm.listener.PlayerConnectionListener;
 import dev.branzx.idlefarm.listener.ProtectionListener;
 import dev.branzx.idlefarm.service.ClaimService;
+import dev.branzx.idlefarm.service.ProductionEngine;
 import dev.branzx.idlefarm.service.SchematicService;
 import dev.branzx.idlefarm.service.TrustService;
 import dev.branzx.idlefarm.service.WorkerNpcManager;
@@ -28,6 +29,7 @@ public final class IdleFarmPlugin extends JavaPlugin {
     private WorkerNpcManager npcManager;
     private WorkerStore workerStore;
     private WorkerService workerService;
+    private ProductionEngine productionEngine;
     private PayoutTask payoutTask;
 
     @Override
@@ -69,12 +71,20 @@ public final class IdleFarmPlugin extends JavaPlugin {
         long intervalTicks = getConfig().getLong("payout-interval-seconds", 60) * 20L;
         this.payoutTask = new PayoutTask(this, dataStore);
         this.payoutTask.runTaskTimer(this, intervalTicks, intervalTicks);
+
+        long productionTicks = getConfig().getLong("production.tick-seconds", 60) * 20L;
+        this.productionEngine = new ProductionEngine(this, nodeStore, workerStore, workerService);
+        // First run settles any downtime accrued while the server was off.
+        this.productionEngine.runTaskTimer(this, 100L, productionTicks);
     }
 
     @Override
     public void onDisable() {
         if (payoutTask != null) {
             payoutTask.cancel();
+        }
+        if (productionEngine != null) {
+            productionEngine.cancel();
         }
         if (npcManager != null) {
             npcManager.shutdown();

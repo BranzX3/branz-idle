@@ -63,6 +63,12 @@ workers:
     legendary: {min: 28, max: 55}
   # Same-rarity workers consumed per fuse (result: next rarity).
   fuse-count: 3
+  # EXP needed for next level = base × current level.
+  exp-per-level-base: 100
+  # Stat points granted per level, randomly allocated.
+  points-per-level: 3
+  # Chance each point lands on the Trait's favored stat (rest uniform).
+  trait-favored-chance: 0.5
   # Player usernames whose skins are rolled for new workers. NPC skins and
   # the contract head texture both resolve from these names.
   skin-pool:
@@ -85,6 +91,65 @@ schematics:
   woodcutting: default_hut
   livestock: default_hut
   hunter: default_hut
+
+production:
+  # How often (seconds) production accrual is evaluated. Accrual itself is
+  # timestamp math, so this only affects update granularity, not totals.
+  tick-seconds: 60
+  # Buffer capacity = this × node tier. Full buffer stops production.
+  buffer-capacity-per-tier: 64
+  # Items per hour per node type, before worker power multipliers.
+  base-items-per-hour:
+    mining: 40
+    farming: 48
+    woodcutting: 44
+    livestock: 36
+    hunter: 30
+  # Worker power: rarity multiplier × (1 + level × level-power-per-level),
+  # then × (1 + diligence/100) per worker.
+  rarity-power:
+    common: 1.0
+    uncommon: 1.3
+    rare: 1.7
+    epic: 2.2
+    legendary: 3.0
+  level-power-per-level: 0.02
+  # Worker EXP per credited item (split across crew, scaled by Stamina).
+  worker-exp-per-item: 2.0
+  # Weighted drop tables per node type.
+  drop-tables:
+    mining:
+      cobblestone: 55
+      coal: 25
+      raw_iron: 14
+      raw_gold: 5
+      diamond: 1
+    farming:
+      wheat: 40
+      carrot: 25
+      potato: 25
+      beetroot: 8
+      pumpkin: 2
+    woodcutting:
+      oak_log: 40
+      birch_log: 25
+      spruce_log: 20
+      jungle_log: 10
+      dark_oak_log: 5
+    livestock:
+      beef: 25
+      porkchop: 25
+      chicken: 20
+      leather: 15
+      egg: 10
+      wool: 5
+    hunter:
+      rotten_flesh: 30
+      bone: 25
+      string: 20
+      gunpowder: 15
+      spider_eye: 8
+      ender_pearl: 2
 
 npc:
   # How often (ticks) NPC animation behaviors are evaluated.

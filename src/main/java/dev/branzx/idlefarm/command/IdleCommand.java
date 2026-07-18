@@ -72,6 +72,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "assign" -> assign(sender);
             case "eject" -> eject(sender, args);
             case "skin" -> skin(sender, args);
+            case "collect" -> collect(sender);
             case "admin" -> admin(sender, args);
             default -> usage(sender);
         };
@@ -184,9 +185,13 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         sender.sendMessage(Component.text("=== Your Nodes (" + owned.size() + ") ===", NamedTextColor.YELLOW));
         for (NodeRecord node : owned) {
+            String buffer = node.getType().isProduction()
+                    ? "  buffer " + node.storageTotal() + "/" + (plugin.getConfig()
+                            .getInt("production.buffer-capacity-per-tier", 64) * node.getTier())
+                    : "";
             sender.sendMessage(Component.text(
                     node.getType() + " T" + node.getTier() + " @ " + node.getChunk().x() + "," + node.getChunk().z()
-                            + " [" + node.getState() + "]",
+                            + " [" + node.getState() + "]" + buffer,
                     NamedTextColor.WHITE));
         }
         return true;
@@ -385,6 +390,44 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean collect(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can collect.", NamedTextColor.RED));
+            return true;
+        }
+        NodeRecord node = nodeAt(player);
+        if (node == null || !node.getType().isProduction()) {
+            sender.sendMessage(Component.text("Stand in a production node.", NamedTextColor.RED));
+            return true;
+        }
+        // Helper trust may collect (goes to their inventory for now;
+        // routed to the owner's Warehouse in the warehouse phase).
+        if (!trustService.canHelp(player.getUniqueId(), node.getOwnerUuid())) {
+            sender.sendMessage(Component.text("You are not trusted to collect here.", NamedTextColor.RED));
+            return true;
+        }
+        if (node.getStorage().isEmpty()) {
+            sender.sendMessage(Component.text("Nothing to collect yet.", NamedTextColor.YELLOW));
+            return true;
+        }
+        int total = 0;
+        for (var entry : List.copyOf(node.getStorage().entrySet())) {
+            org.bukkit.Material material = org.bukkit.Material.matchMaterial(entry.getKey());
+            if (material == null) {
+                node.getStorage().remove(entry.getKey());
+                continue;
+            }
+            giveOrDrop(player, new ItemStack(material, entry.getValue()));
+            total += entry.getValue();
+            node.getStorage().remove(entry.getKey());
+        }
+        node.setState("ACTIVE");
+        nodeStore.updateProduction(node);
+        npcManager.refreshNode(node, player.getWorld());
+        sender.sendMessage(Component.text("Collected " + total + " items.", NamedTextColor.GREEN));
+        return true;
+    }
+
     private NodeRecord nodeAt(Player player) {
         return nodeStore.getByChunk(new ChunkKey(player.getWorld().getName(),
                 player.getLocation().getBlockX() >> 4,
@@ -410,7 +453,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             return List.of("balance", "top", "claim", "unclaim", "nodes", "trust", "untrust",
-                    "hire", "fuse", "assign", "eject", "skin", "admin");
+                    "hire", "fuse", "assign", "eject", "skin", "collect", "admin");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("claim")) {
             return List.of("residential", "mining", "farming", "woodcutting", "livestock", "hunter");

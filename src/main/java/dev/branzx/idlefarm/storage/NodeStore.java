@@ -42,7 +42,8 @@ public final class NodeStore {
     public void loadAllSync() {
         try (Connection connection = database.getConnection()) {
             try (PreparedStatement select = connection.prepareStatement(
-                    "SELECT id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state, origin_y FROM idlefarm_nodes");
+                    "SELECT id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state, origin_y, "
+                            + "last_tick_at, storage_json FROM idlefarm_nodes");
                  ResultSet rs = select.executeQuery()) {
                 while (rs.next()) {
                     NodeRecord record = new NodeRecord(
@@ -52,7 +53,11 @@ public final class NodeStore {
                             NodeType.fromString(rs.getString("node_type")),
                             rs.getInt("tier"),
                             rs.getString("state"),
-                            rs.getInt("origin_y"));
+                            rs.getInt("origin_y"),
+                            rs.getTimestamp("last_tick_at") != null
+                                    ? rs.getTimestamp("last_tick_at").getTime()
+                                    : System.currentTimeMillis(),
+                            rs.getString("storage_json"));
                     index(record);
                     nextNodeId.accumulateAndGet(record.getId() + 1, Math::max);
                 }
@@ -105,12 +110,40 @@ public final class NodeStore {
         return List.copyOf(byOwner.getOrDefault(owner, List.of()));
     }
 
+    public List<NodeRecord> getAll() {
+        return List.copyOf(byChunk.values());
+    }
+
+    /** Persist production-mutable fields (state, buffer, tick anchor, tier). */
+    public void updateProduction(NodeRecord record) {
+        String storageJson = record.serializeStorage();
+        String state = record.getState();
+        long lastTick = record.getLastTickAt();
+        int tier = record.getTier();
+        database.submitWrite(() -> {
+            try (Connection connection = database.getConnection();
+                 PreparedStatement update = connection.prepareStatement(
+                         "UPDATE idlefarm_nodes SET state = ?, storage_json = ?, last_tick_at = ?, tier = ? "
+                                 + "WHERE id = ?")) {
+                update.setString(1, state);
+                update.setString(2, storageJson);
+                update.setTimestamp(3, new java.sql.Timestamp(lastTick));
+                update.setInt(4, tier);
+                update.setLong(5, record.getId());
+                update.executeUpdate();
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to update node " + record.getId() + ": " + e.getMessage());
+            }
+        });
+    }
+
     /**
      * Applies to the in-memory index immediately (main thread, authoritative)
      * and queues the durable insert. Never blocks on the DB.
      */
     public NodeRecord insert(UUID owner, ChunkKey chunk, NodeType type, int originY) {
-        NodeRecord record = new NodeRecord(nextNodeId.getAndIncrement(), owner, chunk, type, 1, "ACTIVE", originY);
+        NodeRecord record = new NodeRecord(nextNodeId.getAndIncrement(), owner, chunk, type, 1, "ACTIVE",
+                originY, System.currentTimeMillis(), null);
         index(record);
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
