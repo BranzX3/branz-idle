@@ -8,11 +8,21 @@ import org.bukkit.configuration.ConfigurationSection;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public final class Database {
 
     private final IdleFarmPlugin plugin;
     private HikariDataSource dataSource;
+    /**
+     * Single-threaded writer: preserves operation order (e.g. claim then
+     * unclaim of the same chunk) while keeping every DB write off the main
+     * thread. In-memory caches are the authority during runtime; the queue
+     * is the durability path.
+     */
+    private ExecutorService writeQueue;
 
     public Database(IdleFarmPlugin plugin) {
         this.plugin = plugin;
@@ -34,7 +44,23 @@ public final class Database {
         hikariConfig.setPoolName("IdleFarm-Pool");
 
         this.dataSource = new HikariDataSource(hikariConfig);
+        this.writeQueue = Executors.newSingleThreadExecutor(r -> {
+            Thread thread = new Thread(r, "IdleFarm-DB-Writer");
+            thread.setDaemon(false);
+            return thread;
+        });
         createSchema();
+    }
+
+    /** Queue a DB write to run off the main thread, in submission order. */
+    public void submitWrite(Runnable write) {
+        writeQueue.submit(() -> {
+            try {
+                write.run();
+            } catch (Exception e) {
+                plugin.getLogger().severe("Queued DB write failed: " + e.getMessage());
+            }
+        });
     }
 
     private void createSchema() {
@@ -108,6 +134,16 @@ public final class Database {
     }
 
     public void shutdown() {
+        if (writeQueue != null) {
+            writeQueue.shutdown();
+            try {
+                if (!writeQueue.awaitTermination(30, TimeUnit.SECONDS)) {
+                    plugin.getLogger().severe("DB write queue did not drain within 30s; some writes may be lost.");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
         }

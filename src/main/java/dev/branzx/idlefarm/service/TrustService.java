@@ -42,10 +42,10 @@ public final class TrustService {
     }
 
     public void setTrust(UUID owner, UUID trusted, TrustLevel level) {
-        nodeStore.setTrustSync(owner, trusted, level);
+        nodeStore.setTrust(owner, trusted, level);
     }
 
     public void removeTrust(UUID owner, UUID trusted) {
-        nodeStore.removeTrustSync(owner, trusted);
+        nodeStore.removeTrust(owner, trusted);
     }
 }

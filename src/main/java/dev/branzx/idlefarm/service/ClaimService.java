@@ -55,7 +55,7 @@ public final class ClaimService {
 
     public int nodeCap(UUID owner) {
         int defaultBase = plugin.getConfig().getInt("claims.base-node-cap", 4);
-        return nodeStore.loadCapSync(owner, defaultBase);
+        return nodeStore.getCap(owner, defaultBase);
     }
 
     public long countProductionNodes(UUID owner) {
@@ -70,8 +70,9 @@ public final class ClaimService {
     }
 
     /**
-     * Full claim validation + persistence. Must be called on the main thread
-     * for consistent in-memory state; DB writes are short single-row ops.
+     * Full claim validation + persistence. Must be called on the main thread:
+     * validation and in-memory mutation are synchronous and authoritative,
+     * while durability goes through the async DB write queue.
      */
     public Result claim(UUID owner, ChunkKey chunk, NodeType type) {
         if (nodeStore.getByChunk(chunk) != null) {
@@ -108,10 +109,7 @@ public final class ClaimService {
             return Result.fail("Not enough money (need " + cost + ").");
         }
 
-        NodeRecord record = nodeStore.insertSync(owner, chunk, type);
-        if (record == null) {
-            return Result.fail("Storage error, claim aborted.");
-        }
+        nodeStore.insert(owner, chunk, type);
         data.addBalance(-cost);
         return Result.ok(type + " node claimed at chunk " + chunk.x() + "," + chunk.z()
                 + " (-" + cost + ").");
@@ -140,9 +138,7 @@ public final class ClaimService {
         double refund = claimCost(record.getType())
                 * plugin.getConfig().getDouble("claims.unclaim-refund-ratio", 0.5);
 
-        if (!nodeStore.deleteSync(record)) {
-            return Result.fail("Storage error, unclaim aborted.");
-        }
+        nodeStore.delete(record);
         PlayerData data = playerDataStore.getOnline(owner);
         if (data != null) {
             data.addBalance(refund);
