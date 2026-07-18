@@ -5,6 +5,8 @@ import dev.branzx.idlefarm.node.ChunkKey;
 import dev.branzx.idlefarm.node.NodeRecord;
 import dev.branzx.idlefarm.node.NodeType;
 import dev.branzx.idlefarm.storage.NodeStore;
+import dev.branzx.idlefarm.storage.WorkerStore;
+import dev.branzx.idlefarm.worker.WorkerRecord;
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.api.npc.NPCRegistry;
@@ -37,6 +39,7 @@ public final class WorkerNpcManager implements Listener {
     private final IdleFarmPlugin plugin;
     private final NodeStore nodeStore;
     private final SchematicService schematicService;
+    private WorkerStore workerStore;
     private NPCRegistry registry;
     private final Map<Long, List<NPC>> npcsByNode = new ConcurrentHashMap<>();
 
@@ -44,6 +47,10 @@ public final class WorkerNpcManager implements Listener {
         this.plugin = plugin;
         this.nodeStore = nodeStore;
         this.schematicService = schematicService;
+    }
+
+    public void setWorkerStore(WorkerStore workerStore) {
+        this.workerStore = workerStore;
     }
 
     public void init() {
@@ -85,9 +92,15 @@ public final class WorkerNpcManager implements Listener {
         }
         despawnNode(node.getId());
         Location front = schematicService.housingFront(node, world);
+        List<WorkerRecord> assigned = workerStore == null ? List.of() : workerStore.getAssigned(node.getId());
         List<NPC> npcs = new ArrayList<>();
-        for (int i = 0; i < node.getTier(); i++) {
-            NPC npc = registry.createNPC(EntityType.VILLAGER, workerName(node, i));
+        int i = 0;
+        for (WorkerRecord worker : assigned) {
+            if (WorkerRecord.STATE_EXPLORING.equals(worker.getState())) {
+                continue; // away on an exploration run — not visible
+            }
+            NPC npc = registry.createNPC(EntityType.VILLAGER,
+                    worker.getName() + " [" + worker.getRarity() + "]");
             npc.setProtected(true);
             npc.data().set(NPC.Metadata.NAMEPLATE_VISIBLE, true);
             Location spot = front.clone().add((i % 3) - 1, 0, i / 3);
@@ -98,8 +111,14 @@ public final class WorkerNpcManager implements Listener {
                 villager.setSilent(true);
             }
             npcs.add(npc);
+            i++;
         }
         npcsByNode.put(node.getId(), npcs);
+    }
+
+    /** Re-sync NPCs after assignment changes. */
+    public void refreshNode(NodeRecord node, World world) {
+        spawnForNode(node, world);
     }
 
     public void despawnNode(long nodeId) {
@@ -120,10 +139,6 @@ public final class WorkerNpcManager implements Listener {
 
     private NodeRecord nodeAt(Chunk chunk) {
         return nodeStore.getByChunk(new ChunkKey(chunk.getWorld().getName(), chunk.getX(), chunk.getZ()));
-    }
-
-    private String workerName(NodeRecord node, int index) {
-        return "Worker #" + (index + 1);
     }
 
     private Villager.Profession professionFor(NodeType type) {

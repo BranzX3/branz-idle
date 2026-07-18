@@ -7,9 +7,11 @@ import dev.branzx.idlefarm.service.ClaimService;
 import dev.branzx.idlefarm.service.SchematicService;
 import dev.branzx.idlefarm.service.TrustService;
 import dev.branzx.idlefarm.service.WorkerNpcManager;
+import dev.branzx.idlefarm.service.WorkerService;
 import dev.branzx.idlefarm.storage.Database;
 import dev.branzx.idlefarm.storage.NodeStore;
 import dev.branzx.idlefarm.storage.PlayerDataStore;
+import dev.branzx.idlefarm.storage.WorkerStore;
 import dev.branzx.idlefarm.task.PayoutTask;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -22,6 +24,8 @@ public final class IdleFarmPlugin extends JavaPlugin {
     private TrustService trustService;
     private SchematicService schematicService;
     private WorkerNpcManager npcManager;
+    private WorkerStore workerStore;
+    private WorkerService workerService;
     private PayoutTask payoutTask;
 
     @Override
@@ -38,6 +42,10 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.schematicService = new SchematicService(this, database);
         this.schematicService.loadAllSync();
         this.npcManager = new WorkerNpcManager(this, nodeStore, schematicService);
+        this.workerStore = new WorkerStore(this, database);
+        this.workerStore.loadAllSync();
+        this.npcManager.setWorkerStore(workerStore);
+        this.workerService = new WorkerService(this, workerStore, dataStore);
         this.claimService = new ClaimService(this, nodeStore, dataStore, schematicService, npcManager);
         this.trustService = new TrustService(nodeStore);
 
@@ -48,7 +56,8 @@ public final class IdleFarmPlugin extends JavaPlugin {
         // Citizens is a hard dependency, so its API is ready by now.
         npcManager.init();
 
-        IdleCommand idleCommand = new IdleCommand(this, dataStore, nodeStore, claimService, trustService);
+        IdleCommand idleCommand = new IdleCommand(this, dataStore, nodeStore, claimService, trustService,
+                workerService, workerStore, npcManager);
         getCommand("idle").setExecutor(idleCommand);
         getCommand("idle").setTabCompleter(idleCommand);
 

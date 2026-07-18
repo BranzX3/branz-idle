@@ -107,6 +107,20 @@ public final class Database {
                 )
                 """,
                 """
+                CREATE TABLE IF NOT EXISTS idlefarm_workers (
+                    worker_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                    rarity VARCHAR(16) NOT NULL,
+                    trait VARCHAR(24) NOT NULL,
+                    stats VARCHAR(64) NOT NULL,
+                    name VARCHAR(32) NOT NULL,
+                    level INT NOT NULL DEFAULT 1,
+                    exp BIGINT NOT NULL DEFAULT 0,
+                    assigned_node_id BIGINT NULL,
+                    state VARCHAR(16) NOT NULL DEFAULT 'ITEM',
+                    KEY idx_assigned (assigned_node_id)
+                )
+                """,
+                """
                 CREATE TABLE IF NOT EXISTS idlefarm_snapshots (
                     node_id BIGINT NOT NULL PRIMARY KEY,
                     blocks_json MEDIUMTEXT NOT NULL

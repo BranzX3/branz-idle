@@ -7,9 +7,14 @@ import dev.branzx.idlefarm.node.NodeType;
 import dev.branzx.idlefarm.node.TrustLevel;
 import dev.branzx.idlefarm.service.ClaimService;
 import dev.branzx.idlefarm.service.TrustService;
+import dev.branzx.idlefarm.service.WorkerNpcManager;
+import dev.branzx.idlefarm.service.WorkerService;
 import dev.branzx.idlefarm.storage.NodeStore;
 import dev.branzx.idlefarm.storage.PlayerData;
 import dev.branzx.idlefarm.storage.PlayerDataStore;
+import dev.branzx.idlefarm.storage.WorkerStore;
+import dev.branzx.idlefarm.worker.WorkerRecord;
+import org.bukkit.inventory.ItemStack;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
@@ -31,14 +36,21 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     private final NodeStore nodeStore;
     private final ClaimService claimService;
     private final TrustService trustService;
+    private final WorkerService workerService;
+    private final WorkerStore workerStore;
+    private final WorkerNpcManager npcManager;
 
     public IdleCommand(IdleFarmPlugin plugin, PlayerDataStore dataStore, NodeStore nodeStore,
-                       ClaimService claimService, TrustService trustService) {
+                       ClaimService claimService, TrustService trustService,
+                       WorkerService workerService, WorkerStore workerStore, WorkerNpcManager npcManager) {
         this.plugin = plugin;
         this.dataStore = dataStore;
         this.nodeStore = nodeStore;
         this.claimService = claimService;
         this.trustService = trustService;
+        this.workerService = workerService;
+        this.workerStore = workerStore;
+        this.npcManager = npcManager;
     }
 
     @Override
@@ -52,6 +64,10 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "nodes" -> nodes(sender);
             case "trust" -> trust(sender, args);
             case "untrust" -> untrust(sender, args);
+            case "hire" -> hire(sender);
+            case "fuse" -> fuse(sender);
+            case "assign" -> assign(sender);
+            case "eject" -> eject(sender, args);
             case "admin" -> admin(sender, args);
             default -> usage(sender);
         };
@@ -217,6 +233,138 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean hire(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can hire workers.", NamedTextColor.RED));
+            return true;
+        }
+        WorkerService.Result result = workerService.hire(player.getUniqueId());
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        if (result.success() && result.item() != null) {
+            giveOrDrop(player, result.item());
+        }
+        return true;
+    }
+
+    private boolean fuse(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can fuse workers.", NamedTextColor.RED));
+            return true;
+        }
+        WorkerRecord held = workerService.fromItem(player.getInventory().getItemInMainHand());
+        if (held == null) {
+            sender.sendMessage(Component.text("Hold a worker contract to choose the fuse rarity.", NamedTextColor.RED));
+            return true;
+        }
+        int needed = workerService.fuseCount();
+        List<WorkerRecord> materials = new java.util.ArrayList<>();
+        List<Integer> slots = new java.util.ArrayList<>();
+        ItemStack[] contents = player.getInventory().getContents();
+        for (int slot = 0; slot < contents.length && materials.size() < needed; slot++) {
+            WorkerRecord record = workerService.fromItem(contents[slot]);
+            if (record != null && record.getRarity() == held.getRarity()
+                    && WorkerRecord.STATE_ITEM.equals(record.getState())) {
+                materials.add(record);
+                slots.add(slot);
+            }
+        }
+        if (materials.size() < needed) {
+            sender.sendMessage(Component.text("Need " + needed + " " + held.getRarity()
+                    + " workers in your inventory (found " + materials.size() + ").", NamedTextColor.RED));
+            return true;
+        }
+        WorkerService.Result result = workerService.fuse(materials);
+        if (result.success()) {
+            for (int slot : slots) {
+                player.getInventory().setItem(slot, null);
+            }
+            giveOrDrop(player, result.item());
+        }
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    private boolean assign(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can assign workers.", NamedTextColor.RED));
+            return true;
+        }
+        ItemStack held = player.getInventory().getItemInMainHand();
+        WorkerRecord worker = workerService.fromItem(held);
+        if (worker == null) {
+            sender.sendMessage(Component.text("Hold a worker contract to assign.", NamedTextColor.RED));
+            return true;
+        }
+        NodeRecord node = nodeAt(player);
+        if (node == null || !trustService.canManage(player.getUniqueId(), node.getOwnerUuid())) {
+            sender.sendMessage(Component.text("Stand in a production node you can manage.", NamedTextColor.RED));
+            return true;
+        }
+        WorkerService.Result result = workerService.assign(player.getUniqueId(), worker, node);
+        if (result.success()) {
+            held.setAmount(held.getAmount() - 1);
+            npcManager.refreshNode(node, player.getWorld());
+        }
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    private boolean eject(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can eject workers.", NamedTextColor.RED));
+            return true;
+        }
+        NodeRecord node = nodeAt(player);
+        if (node == null || !trustService.canManage(player.getUniqueId(), node.getOwnerUuid())) {
+            sender.sendMessage(Component.text("Stand in a production node you can manage.", NamedTextColor.RED));
+            return true;
+        }
+        List<WorkerRecord> assigned = workerStore.getAssigned(node.getId());
+        if (assigned.isEmpty()) {
+            sender.sendMessage(Component.text("No workers assigned here.", NamedTextColor.RED));
+            return true;
+        }
+        WorkerRecord target = null;
+        if (args.length >= 2) {
+            for (WorkerRecord worker : assigned) {
+                if (worker.getName().equalsIgnoreCase(args[1])) {
+                    target = worker;
+                    break;
+                }
+            }
+            if (target == null) {
+                sender.sendMessage(Component.text("No assigned worker named " + args[1] + ".", NamedTextColor.RED));
+                return true;
+            }
+        } else {
+            target = assigned.get(0);
+        }
+        WorkerService.Result result = workerService.eject(player.getUniqueId(), target);
+        if (result.success()) {
+            giveOrDrop(player, result.item());
+            npcManager.refreshNode(node, player.getWorld());
+        }
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    private NodeRecord nodeAt(Player player) {
+        return nodeStore.getByChunk(new ChunkKey(player.getWorld().getName(),
+                player.getLocation().getBlockX() >> 4,
+                player.getLocation().getBlockZ() >> 4));
+    }
+
+    private void giveOrDrop(Player player, ItemStack item) {
+        var leftover = player.getInventory().addItem(item);
+        for (ItemStack overflow : leftover.values()) {
+            player.getWorld().dropItemNaturally(player.getLocation(), overflow);
+        }
+    }
+
     private boolean admin(CommandSender sender, String[] args) {
         if (!sender.hasPermission("idlefarm.admin")) {
             sender.sendMessage(Component.text("You do not have permission to do that.", NamedTextColor.RED));
@@ -234,7 +382,8 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return List.of("balance", "top", "claim", "unclaim", "nodes", "trust", "untrust", "admin");
+            return List.of("balance", "top", "claim", "unclaim", "nodes", "trust", "untrust",
+                    "hire", "fuse", "assign", "eject", "admin");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("claim")) {
             return List.of("residential", "mining", "farming", "woodcutting", "livestock", "hunter");

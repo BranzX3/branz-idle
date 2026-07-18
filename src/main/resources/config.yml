@@ -39,3 +39,22 @@ claims:
   unclaim-refund-ratio: 0.5
   # Baseline production-node cap for players without a node_cap row.
   base-node-cap: 4
+
+workers:
+  hire-cost: 250.0
+  # Percent chance per rarity; should sum to 100.
+  gacha-odds:
+    common: 55.0
+    uncommon: 27.0
+    rare: 12.0
+    epic: 5.0
+    legendary: 1.0
+  # Base-stat roll range per rarity.
+  stat-ranges:
+    common: {min: 1, max: 10}
+    uncommon: {min: 5, max: 18}
+    rare: {min: 10, max: 28}
+    epic: {min: 18, max: 40}
+    legendary: {min: 28, max: 55}
+  # Same-rarity workers consumed per fuse (result: next rarity).
+  fuse-count: 3
