@@ -31,11 +31,16 @@ public final class ClaimService {
     private final IdleFarmPlugin plugin;
     private final NodeStore nodeStore;
     private final PlayerDataStore playerDataStore;
+    private final SchematicService schematicService;
+    private final WorkerNpcManager npcManager;
 
-    public ClaimService(IdleFarmPlugin plugin, NodeStore nodeStore, PlayerDataStore playerDataStore) {
+    public ClaimService(IdleFarmPlugin plugin, NodeStore nodeStore, PlayerDataStore playerDataStore,
+                        SchematicService schematicService, WorkerNpcManager npcManager) {
         this.plugin = plugin;
         this.nodeStore = nodeStore;
         this.playerDataStore = playerDataStore;
+        this.schematicService = schematicService;
+        this.npcManager = npcManager;
     }
 
     public boolean isClaimableWorld(World world) {
@@ -74,7 +79,7 @@ public final class ClaimService {
      * validation and in-memory mutation are synchronous and authoritative,
      * while durability goes through the async DB write queue.
      */
-    public Result claim(UUID owner, ChunkKey chunk, NodeType type) {
+    public Result claim(UUID owner, World world, ChunkKey chunk, NodeType type) {
         if (nodeStore.getByChunk(chunk) != null) {
             return Result.fail("This chunk is already claimed.");
         }
@@ -109,13 +114,17 @@ public final class ClaimService {
             return Result.fail("Not enough money (need " + cost + ").");
         }
 
-        nodeStore.insert(owner, chunk, type);
+        NodeRecord record = nodeStore.insert(owner, chunk, type);
         data.addBalance(-cost);
+        if (type.isProduction()) {
+            schematicService.buildHousing(record, world);
+            npcManager.spawnForNode(record, world);
+        }
         return Result.ok(type + " node claimed at chunk " + chunk.x() + "," + chunk.z()
                 + " (-" + cost + ").");
     }
 
-    public Result unclaim(UUID owner, ChunkKey chunk) {
+    public Result unclaim(UUID owner, World world, ChunkKey chunk) {
         NodeRecord record = nodeStore.getByChunk(chunk);
         if (record == null || !record.getOwnerUuid().equals(owner)) {
             return Result.fail("You do not own this chunk.");
@@ -138,6 +147,10 @@ public final class ClaimService {
         double refund = claimCost(record.getType())
                 * plugin.getConfig().getDouble("claims.unclaim-refund-ratio", 0.5);
 
+        if (record.getType().isProduction()) {
+            npcManager.despawnNode(record.getId());
+            schematicService.restoreTerrain(record, world);
+        }
         nodeStore.delete(record);
         PlayerData data = playerDataStore.getOnline(owner);
         if (data != null) {

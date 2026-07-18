@@ -107,6 +107,12 @@ public final class Database {
                 )
                 """,
                 """
+                CREATE TABLE IF NOT EXISTS idlefarm_snapshots (
+                    node_id BIGINT NOT NULL PRIMARY KEY,
+                    blocks_json MEDIUMTEXT NOT NULL
+                )
+                """,
+                """
                 CREATE TABLE IF NOT EXISTS idlefarm_audit_log (
                     id BIGINT AUTO_INCREMENT PRIMARY KEY,
                     actor_uuid VARCHAR(36) NOT NULL,

@@ -2,6 +2,7 @@ name: IdleFarm
 version: '${version}'
 main: dev.branzx.idlefarm.IdleFarmPlugin
 api-version: '26.2'
+depend: [Citizens]
 author: BranzX3
 description: Idle/AFK currency & EXP farming plugin
 

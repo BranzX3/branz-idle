@@ -131,7 +131,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         ChunkKey chunk = new ChunkKey(player.getWorld().getName(),
                 player.getLocation().getBlockX() >> 4,
                 player.getLocation().getBlockZ() >> 4);
-        ClaimService.Result result = claimService.claim(player.getUniqueId(), chunk, type);
+        ClaimService.Result result = claimService.claim(player.getUniqueId(), player.getWorld(), chunk, type);
         sender.sendMessage(Component.text(result.message(),
                 result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
         return true;
@@ -145,7 +145,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         ChunkKey chunk = new ChunkKey(player.getWorld().getName(),
                 player.getLocation().getBlockX() >> 4,
                 player.getLocation().getBlockZ() >> 4);
-        ClaimService.Result result = claimService.unclaim(player.getUniqueId(), chunk);
+        ClaimService.Result result = claimService.unclaim(player.getUniqueId(), player.getWorld(), chunk);
         sender.sendMessage(Component.text(result.message(),
                 result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
         return true;

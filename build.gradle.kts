@@ -14,10 +14,17 @@ repositories {
         name = "papermc"
         url = uri("https://repo.papermc.io/repository/maven-public/")
     }
+    maven {
+        name = "citizens"
+        url = uri("https://maven.citizensnpcs.co/repo")
+    }
 }
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.2.build.+")
+    compileOnly("net.citizensnpcs:citizens-main:2.0.43-SNAPSHOT") {
+        exclude(group = "*", module = "*")
+    }
 
     implementation("com.zaxxer:HikariCP:6.2.1")
     implementation("com.mysql:mysql-connector-j:9.1.0")
