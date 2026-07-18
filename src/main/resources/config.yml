@@ -1,0 +1,29 @@
+# IdleFarm configuration
+
+mysql:
+  host: localhost
+  port: 3306
+  database: idlefarm
+  username: root
+  password: "password"
+  useSSL: false
+  pool-size: 10
+
+# How often (in seconds) rewards are paid out to online players.
+payout-interval-seconds: 60
+
+# Rewards granted per payout interval to every online player,
+# regardless of whether they are AFK or actively playing.
+rewards:
+  money: 10.0
+  exp: 5
+
+# Currency display name used in messages/scoreboard.
+currency-name: "Coins"
+
+# Multiplier applied to rewards for players standing in an AFK-designated
+# region/world. Set to 1.0 to disable bonus.
+afk-bonus-multiplier: 1.0
+
+# Minimum minutes online required before a player shows up on /idle top.
+top-min-minutes: 1

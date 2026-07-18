@@ -1,0 +1,17 @@
+name: IdleFarm
+version: '${version}'
+main: dev.branzx.idlefarm.IdleFarmPlugin
+api-version: '26.2'
+author: BranzX3
+description: Idle/AFK currency & EXP farming plugin
+
+commands:
+  idle:
+    description: IdleFarm main command
+    usage: /idle [balance|top|admin]
+    aliases: [afk, idlefarm]
+
+permissions:
+  idlefarm.admin:
+    description: Allows use of /idle admin subcommands
+    default: op
