@@ -246,15 +246,80 @@ thematically. Hence each node has **two separate progressions**:
 - Node buffer (per-node, small, stops production when full) → Warehouse
   (big, central) → inventory is the item flow.
 
-### 6.2 Management GUI
+### 6.2 GUI system — full design (player & admin)
 
-- **`/idle nodes` GUI**: lists all owned nodes with type, tier, worker
-  state, buffer fill, exploration level; per-node collect and
-  **collect-all → Warehouse** button.
-- Node GUI: insert/eject worker items into slots, start Exploration
-  Events, tier upgrade.
-- Claiming, cap purchases, warehouse expansion also flow through GUI menus
-  (commands as fallback).
+All GUIs are chest-inventory menus (paged where needed). Shared
+conventions: bottom row = navigation (back / close / page arrows);
+green = confirm, red = destructive with a confirm click; every GUI
+action has a command fallback. GUI layer is presentation only — every
+click routes to the same service methods the commands use.
+
+#### Player menu tree
+
+```
+/idle  →  Main Hub
+├── Nodes            (list, paged)
+│   └── Node Detail
+│       ├── Worker Slots      insert/eject worker items per slot
+│       ├── Collect           buffer → Warehouse
+│       ├── Tier Upgrade      cost preview → confirm
+│       ├── Exploration       events available/running, send team, claim loot
+│       └── Convert Type      cost + "exploration level halved" warning
+├── Territory Map     chunk-grid view of the blob; claim/unclaim from map
+├── Warehouse         paged item store; withdraw/deposit; expand capacity
+├── Workers
+│   ├── Hire (gacha)          cost + odds display → roll animation → result
+│   └── Fuse                  place N same-rarity contracts → preview → fuse
+├── Trust             list trusted players, set level (Visitor/Helper/Manager)
+├── Boosters          active boosters + purchase
+├── Leaderboard       money/production/exploration tops
+└── Profile           balance, streak, node cap, playtime
+```
+
+- **Main Hub** (`/idle` with no args once GUIs land): 9x3, one icon per
+  section, live counters in lore (balance, buffer alerts, event ready).
+- **Node Detail** is the workhorse: worker slots rendered as head items
+  (drag a contract in = assign, click out = eject), buffer bar, state
+  icon mirroring NPC state, exploration level + bracket progress.
+- **Territory Map**: each chunk = one pane item, color by node type,
+  center = player position; click empty adjacent chunk → claim flow
+  (type picker → cost confirm); click owned chunk → jump to Node Detail.
+- **Gacha roll** shows a short slot-machine animation before revealing
+  rarity (pure presentation; roll already resolved server-side).
+
+#### Admin menu tree
+
+```
+/idle admin gui  →  Admin Hub
+├── Drop Pool Editor   per node type (per bracket after Phase 5)
+│   • real items shown in a chest grid, weight in lore
+│   • drag item in = add to pool; drag out = remove
+│   • L/R click = weight ±1, shift = ±10; close = write YAML + live apply
+├── Schem Definitions  list definitions; per definition:
+│   • anchors viewer (armor-stand markers toggled in-world)
+│   • bind animation profiles per state from a profile list
+│   • rebuild/paste preview at current node
+├── Node Inspector     info of the node stood in: owner, tier, workers,
+│                      buffer, exploration; force-state buttons (preview);
+│                      force-unclaim (double confirm)
+├── Economy            give/take money & items via player picker;
+│                      cap editor per player
+├── Balance            live-edit key numbers (rates, costs, odds) with
+│                      bounds; writes YAML + reload
+└── Audit Browser      paged recent audit-log entries, filter by player/action
+```
+
+- Admin GUIs write back to the same YAML files (config/schematics) the
+  file-based workflow uses — the two editing paths never diverge.
+- Every admin GUI mutation is recorded in the audit log.
+
+#### Build order
+
+GUI layer lands as its own phase after Warehouse (needs WarehouseService
+for collect-all), starting with Node Detail + Main Hub, then Territory
+Map, then the Admin Hub (Drop Pool Editor first — highest balance-tuning
+value). Commands remain first-class and are built before their GUI in
+every phase.
 
 ### 6.3 Territory visualization
 
