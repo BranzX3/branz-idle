@@ -90,9 +90,12 @@ npc:
   # How often (ticks) NPC animation behaviors are evaluated.
   animation-interval-ticks: 60
   # Behavior sets referenced by schematic definitions (profiles.<state>).
-  # Available behaviors: wander, walk_worksite, hold_tool, clear_tool,
-  # swing, look_close, sneak, stand.
+  # Available behaviors: wander, walk_worksite, return_spawn, depart,
+  # hold_tool, clear_tool, swing, look_close, sneak, stand.
+  # depart = walk off toward a work anchor and despawn ("gone out to work");
+  # the NPC walks back home when the state changes. return_spawn = walk back
+  # to the worker's own spawn anchor (bed point) and stay.
   animation-profiles:
-    default_working: [walk_worksite, hold_tool, swing]
-    default_idle: [wander, look_close, clear_tool]
-    default_stop: [stand, sneak, clear_tool]
+    default_working: [hold_tool, depart]
+    default_idle: [return_spawn, look_close, clear_tool]
+    default_stop: [return_spawn, sneak, clear_tool]

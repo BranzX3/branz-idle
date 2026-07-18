@@ -50,7 +50,32 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public final class WorkerNpcManager implements Listener {
 
-    private record SpawnedNpc(NPC npc, WorkerRecord worker, int slotIndex) {
+    private static final class SpawnedNpc {
+        final NPC npc;
+        final WorkerRecord worker;
+        final int slotIndex;
+        /** True once the NPC walked off-screen for WORKING (departed state). */
+        boolean departed;
+        /** Where the NPC despawned; it reappears there and walks home. */
+        Location departLocation;
+
+        SpawnedNpc(NPC npc, WorkerRecord worker, int slotIndex) {
+            this.npc = npc;
+            this.worker = worker;
+            this.slotIndex = slotIndex;
+        }
+
+        NPC npc() {
+            return npc;
+        }
+
+        WorkerRecord worker() {
+            return worker;
+        }
+
+        int slotIndex() {
+            return slotIndex;
+        }
     }
 
     private final IdleFarmPlugin plugin;
@@ -204,32 +229,49 @@ public final class WorkerNpcManager implements Listener {
             NodeRecord node = null;
             for (SpawnedNpc spawned : entry.getValue()) {
                 NPC npc = spawned.npc();
-                if (!npc.isSpawned()) {
-                    continue;
-                }
                 if (node == null) {
+                    Location ref = npc.isSpawned() ? npc.getEntity().getLocation() : spawned.departLocation;
+                    if (ref == null) {
+                        continue;
+                    }
                     node = nodeStore.getByChunk(new ChunkKey(
-                            npc.getEntity().getWorld().getName(),
-                            npc.getEntity().getLocation().getBlockX() >> 4,
-                            npc.getEntity().getLocation().getBlockZ() >> 4));
+                            ref.getWorld().getName(), ref.getBlockX() >> 4, ref.getBlockZ() >> 4));
                     if (node == null) {
                         break;
                     }
+                }
+                // Departed NPC whose state no longer wants "depart": bring it
+                // back at the point it left and let return-behaviors walk it home.
+                if (spawned.departed && !npc.isSpawned()) {
+                    String state = effectiveState(nodeId, spawned.worker());
+                    if (!currentBehaviors(node, state).contains("depart")) {
+                        npc.spawn(spawned.departLocation);
+                        spawned.departed = false;
+                        spawned.departLocation = null;
+                    } else {
+                        continue; // still away working
+                    }
+                }
+                if (!npc.isSpawned()) {
+                    continue;
                 }
                 applyBehaviors(node, spawned);
             }
         }
     }
 
-    private void applyBehaviors(NodeRecord node, SpawnedNpc spawned) {
-        String state = effectiveState(node.getId(), spawned.worker());
+    private List<String> currentBehaviors(NodeRecord node, String state) {
         SchematicDefinition definition = schematicService.getRegistry().forNodeType(node.getType());
         String profileName = definition.getProfiles().getOrDefault(state,
                 "default_" + state.toLowerCase(Locale.ROOT));
         List<String> behaviors = plugin.getConfig().getStringList("npc.animation-profiles." + profileName);
-        if (behaviors.isEmpty()) {
-            behaviors = List.of("stand");
-        }
+        return behaviors.isEmpty() ? List.of("stand") : behaviors;
+    }
+
+    private void applyBehaviors(NodeRecord node, SpawnedNpc spawned) {
+        String state = effectiveState(node.getId(), spawned.worker());
+        SchematicDefinition definition = schematicService.getRegistry().forNodeType(node.getType());
+        List<String> behaviors = currentBehaviors(node, state);
 
         NPC npc = spawned.npc();
         World world = npc.getEntity().getWorld();
@@ -238,6 +280,8 @@ public final class WorkerNpcManager implements Listener {
             switch (behavior.toLowerCase(Locale.ROOT)) {
                 case "wander" -> wander(node, definition, npc, world);
                 case "walk_worksite" -> walkWorksite(node, definition, spawned, world);
+                case "return_spawn" -> returnSpawn(node, definition, spawned, world);
+                case "depart" -> depart(node, definition, spawned, world);
                 case "hold_tool" -> holdTool(node, npc);
                 case "clear_tool" -> npc.getOrAddTrait(Equipment.class)
                         .set(Equipment.EquipmentSlot.HAND, null);
@@ -281,6 +325,43 @@ public final class WorkerNpcManager implements Listener {
             target = definition.spawnAnchorOrFallback(spawned.slotIndex());
         }
         npc.getNavigator().setTarget(schematicService.resolve(node, world, target));
+    }
+
+    /** Walk back to this worker's own spawn anchor and stay there. */
+    private void returnSpawn(NodeRecord node, SchematicDefinition definition, SpawnedNpc spawned, World world) {
+        NPC npc = spawned.npc();
+        Location home = schematicService.resolve(node, world,
+                definition.spawnAnchorOrFallback(spawned.slotIndex()));
+        if (npc.getEntity().getLocation().distanceSquared(home) > 2.25) {
+            if (!npc.getNavigator().isNavigating()) {
+                npc.getNavigator().setTarget(home);
+            }
+        } else {
+            npc.getNavigator().cancelNavigation();
+        }
+    }
+
+    /**
+     * WORKING visual: walk off toward a work anchor (or the wander-radius
+     * edge) and despawn on arrival — "gone out to work". The NPC reappears
+     * at that point and walks home when the state changes.
+     */
+    private void depart(NodeRecord node, SchematicDefinition definition, SpawnedNpc spawned, World world) {
+        NPC npc = spawned.npc();
+        List<RelPos> sites = definition.getWorkAnchors();
+        RelPos targetRel = !sites.isEmpty()
+                ? sites.get(spawned.slotIndex() % sites.size())
+                : new RelPos(definition.getWanderRadius() + 2, 0, definition.getWanderRadius() + 2);
+        Location target = schematicService.resolve(node, world, targetRel);
+        if (npc.getEntity().getLocation().distanceSquared(target) <= 4.0) {
+            spawned.departed = true;
+            spawned.departLocation = npc.getEntity().getLocation().clone();
+            npc.despawn();
+            return;
+        }
+        if (!npc.getNavigator().isNavigating()) {
+            npc.getNavigator().setTarget(target);
+        }
     }
 
     private void holdTool(NodeRecord node, NPC npc) {
