@@ -151,6 +151,19 @@ production:
       spider_eye: 8
       ender_pearl: 2
 
+warehouse:
+  # Starting warehouse capacity (total item count).
+  base-capacity: 2000
+  # Capacity added per expansion purchase.
+  expand-step: 1000
+  # Money cost per expansion.
+  expand-cost: 5000.0
+
+nodes:
+  # Tier upgrade cost = base × factor^(currentTier-1). Exponential per spec.
+  tier-base-cost: 1000.0
+  tier-cost-factor: 1.8
+
 exploration:
   # How often (seconds) event lifecycle is evaluated (spawn/expiry/completion).
   check-interval-seconds: 30

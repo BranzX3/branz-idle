@@ -2,6 +2,7 @@ package dev.branzx.idlefarm;
 
 import dev.branzx.idlefarm.command.AdminCommands;
 import dev.branzx.idlefarm.command.IdleCommand;
+import dev.branzx.idlefarm.gui.GuiManager;
 import dev.branzx.idlefarm.schematic.SchematicRegistry;
 import dev.branzx.idlefarm.listener.PlayerConnectionListener;
 import dev.branzx.idlefarm.listener.ProtectionListener;
@@ -10,6 +11,7 @@ import dev.branzx.idlefarm.service.ExplorationService;
 import dev.branzx.idlefarm.service.ProductionEngine;
 import dev.branzx.idlefarm.service.SchematicService;
 import dev.branzx.idlefarm.service.TrustService;
+import dev.branzx.idlefarm.service.WarehouseService;
 import dev.branzx.idlefarm.service.WorkerNpcManager;
 import dev.branzx.idlefarm.service.WorkerService;
 import dev.branzx.idlefarm.storage.Database;
@@ -32,6 +34,8 @@ public final class IdleFarmPlugin extends JavaPlugin {
     private WorkerService workerService;
     private ProductionEngine productionEngine;
     private ExplorationService explorationService;
+    private WarehouseService warehouseService;
+    private GuiManager guiManager;
     private PayoutTask payoutTask;
 
     @Override
@@ -56,27 +60,33 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.workerService = new WorkerService(this, workerStore, dataStore);
         this.claimService = new ClaimService(this, nodeStore, dataStore, schematicService, npcManager);
         this.trustService = new TrustService(nodeStore);
+        this.warehouseService = new WarehouseService(this, database);
+        this.warehouseService.loadAllSync();
+
+        this.explorationService = new ExplorationService(this, database, nodeStore, workerStore);
+        this.explorationService.loadAllSync();
+        this.explorationService.start();
+
+        this.guiManager = new GuiManager(this, nodeStore, workerStore, dataStore, workerService,
+                warehouseService, claimService, trustService, explorationService, npcManager);
 
         getServer().getPluginManager().registerEvents(new PlayerConnectionListener(this, dataStore), this);
         getServer().getPluginManager().registerEvents(new ProtectionListener(nodeStore, trustService), this);
         getServer().getPluginManager().registerEvents(npcManager, this);
+        getServer().getPluginManager().registerEvents(guiManager, this);
 
         // Citizens is a hard dependency, so its API is ready by now.
         npcManager.init();
 
         AdminCommands adminCommands = new AdminCommands(this, nodeStore, workerStore, schematicService, npcManager);
         IdleCommand idleCommand = new IdleCommand(this, dataStore, nodeStore, claimService, trustService,
-                workerService, workerStore, npcManager, adminCommands);
+                workerService, workerStore, npcManager, warehouseService, guiManager, adminCommands);
         getCommand("idle").setExecutor(idleCommand);
         getCommand("idle").setTabCompleter(idleCommand);
 
         long intervalTicks = getConfig().getLong("payout-interval-seconds", 60) * 20L;
         this.payoutTask = new PayoutTask(this, dataStore);
         this.payoutTask.runTaskTimer(this, intervalTicks, intervalTicks);
-
-        this.explorationService = new ExplorationService(this, database, nodeStore, workerStore);
-        this.explorationService.loadAllSync();
-        this.explorationService.start();
 
         long productionTicks = getConfig().getLong("production.tick-seconds", 60) * 20L;
         this.productionEngine = new ProductionEngine(this, nodeStore, workerStore, workerService);

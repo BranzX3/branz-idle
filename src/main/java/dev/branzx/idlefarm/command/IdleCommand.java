@@ -5,8 +5,10 @@ import dev.branzx.idlefarm.node.ChunkKey;
 import dev.branzx.idlefarm.node.NodeRecord;
 import dev.branzx.idlefarm.node.NodeType;
 import dev.branzx.idlefarm.node.TrustLevel;
+import dev.branzx.idlefarm.gui.GuiManager;
 import dev.branzx.idlefarm.service.ClaimService;
 import dev.branzx.idlefarm.service.TrustService;
+import dev.branzx.idlefarm.service.WarehouseService;
 import dev.branzx.idlefarm.service.WorkerNpcManager;
 import dev.branzx.idlefarm.service.WorkerService;
 import dev.branzx.idlefarm.storage.NodeStore;
@@ -39,15 +41,20 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     private final WorkerService workerService;
     private final WorkerStore workerStore;
     private final WorkerNpcManager npcManager;
+    private final WarehouseService warehouseService;
+    private final GuiManager guiManager;
     private final AdminCommands adminCommands;
 
     public IdleCommand(IdleFarmPlugin plugin, PlayerDataStore dataStore, NodeStore nodeStore,
                        ClaimService claimService, TrustService trustService,
                        WorkerService workerService, WorkerStore workerStore, WorkerNpcManager npcManager,
+                       WarehouseService warehouseService, GuiManager guiManager,
                        AdminCommands adminCommands) {
         this.plugin = plugin;
         this.dataStore = dataStore;
         this.nodeStore = nodeStore;
+        this.warehouseService = warehouseService;
+        this.guiManager = guiManager;
         this.claimService = claimService;
         this.trustService = trustService;
         this.workerService = workerService;
@@ -58,7 +65,15 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        String sub = args.length == 0 ? "balance" : args[0].toLowerCase(Locale.ROOT);
+        // Bare /idle opens the GUI hub for players.
+        if (args.length == 0) {
+            if (sender instanceof Player player) {
+                guiManager.openMainHub(player);
+                return true;
+            }
+            return balance(sender);
+        }
+        String sub = args[0].toLowerCase(Locale.ROOT);
         return switch (sub) {
             case "balance" -> balance(sender);
             case "top" -> top(sender);
@@ -74,6 +89,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "skin" -> skin(sender, args);
             case "collect" -> collect(sender);
             case "explore" -> explore(sender, args);
+            case "warehouse" -> warehouse(sender);
             case "admin" -> admin(sender, args);
             default -> usage(sender);
         };
@@ -411,21 +427,45 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(Component.text("Nothing to collect yet.", NamedTextColor.YELLOW));
             return true;
         }
-        int total = 0;
-        for (var entry : List.copyOf(node.getStorage().entrySet())) {
-            org.bukkit.Material material = org.bukkit.Material.matchMaterial(entry.getKey());
-            if (material == null) {
-                node.getStorage().remove(entry.getKey());
-                continue;
-            }
-            giveOrDrop(player, new ItemStack(material, entry.getValue()));
-            total += entry.getValue();
-            node.getStorage().remove(entry.getKey());
-        }
+        // Collect-all routes to the owner's Warehouse, not inventory.
+        int collected = collectToWarehouse(node);
+        int remaining = node.storageTotal();
         node.setState("ACTIVE");
         nodeStore.updateProduction(node);
         npcManager.refreshNode(node, player.getWorld());
-        sender.sendMessage(Component.text("Collected " + total + " items.", NamedTextColor.GREEN));
+        if (remaining > 0) {
+            sender.sendMessage(Component.text("Collected " + collected + " to Warehouse; "
+                    + remaining + " left (warehouse full).", NamedTextColor.YELLOW));
+        } else {
+            sender.sendMessage(Component.text("Collected " + collected + " items to Warehouse.",
+                    NamedTextColor.GREEN));
+        }
+        return true;
+    }
+
+    /** Moves node buffer into the owner's warehouse; returns amount stored. */
+    private int collectToWarehouse(NodeRecord node) {
+        java.util.UUID owner = node.getOwnerUuid();
+        int collected = 0;
+        for (var entry : List.copyOf(node.getStorage().entrySet())) {
+            int stored = warehouseService.deposit(owner, entry.getKey(), entry.getValue());
+            collected += stored;
+            if (stored >= entry.getValue()) {
+                node.getStorage().remove(entry.getKey());
+            } else {
+                node.getStorage().put(entry.getKey(), entry.getValue() - stored);
+                break; // warehouse full
+            }
+        }
+        return collected;
+    }
+
+    private boolean warehouse(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players have a warehouse.", NamedTextColor.RED));
+            return true;
+        }
+        guiManager.openWarehouse(player, player.getUniqueId());
         return true;
     }
 
@@ -538,7 +578,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             return List.of("balance", "top", "claim", "unclaim", "nodes", "trust", "untrust",
-                    "hire", "fuse", "assign", "eject", "skin", "collect", "explore", "admin");
+                    "hire", "fuse", "assign", "eject", "skin", "collect", "explore", "warehouse", "admin");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("claim")) {
             return List.of("residential", "mining", "farming", "woodcutting", "livestock", "hunter");

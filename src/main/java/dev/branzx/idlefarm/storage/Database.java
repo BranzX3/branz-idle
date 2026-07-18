@@ -143,6 +143,13 @@ public final class Database {
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS idlefarm_warehouse (
+                owner_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                capacity INT NOT NULL,
+                content_json LONGTEXT
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS idlefarm_snapshots (
                 node_id BIGINT NOT NULL PRIMARY KEY,
                 blocks_json MEDIUMTEXT NOT NULL
@@ -235,6 +242,13 @@ public final class Database {
             )
             """,
             "CREATE INDEX IF NOT EXISTS idx_workers_assigned ON idlefarm_workers (assigned_node_id)",
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_warehouse (
+                owner_uuid TEXT NOT NULL PRIMARY KEY,
+                capacity INTEGER NOT NULL,
+                content_json TEXT
+            )
+            """,
             """
             CREATE TABLE IF NOT EXISTS idlefarm_snapshots (
                 node_id INTEGER NOT NULL PRIMARY KEY,
