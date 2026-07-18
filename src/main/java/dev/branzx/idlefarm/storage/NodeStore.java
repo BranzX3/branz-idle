@@ -158,8 +158,7 @@ public final class NodeStore {
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement upsert = connection.prepareStatement(
-                         "INSERT INTO idlefarm_node_cap (owner_uuid, base_cap, bonus_cap) VALUES (?, ?, ?) "
-                                 + "ON DUPLICATE KEY UPDATE base_cap = VALUES(base_cap), bonus_cap = VALUES(bonus_cap)")) {
+                         "REPLACE INTO idlefarm_node_cap (owner_uuid, base_cap, bonus_cap) VALUES (?, ?, ?)")) {
                 upsert.setString(1, owner.toString());
                 upsert.setInt(2, baseCap);
                 upsert.setInt(3, bonusCap);
@@ -186,8 +185,7 @@ public final class NodeStore {
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement upsert = connection.prepareStatement(
-                         "INSERT INTO idlefarm_trust (owner_uuid, trusted_uuid, level) VALUES (?, ?, ?) "
-                                 + "ON DUPLICATE KEY UPDATE level = VALUES(level)")) {
+                         "REPLACE INTO idlefarm_trust (owner_uuid, trusted_uuid, level) VALUES (?, ?, ?)")) {
                 upsert.setString(1, owner.toString());
                 upsert.setString(2, trusted.toString());
                 upsert.setString(3, level.name());

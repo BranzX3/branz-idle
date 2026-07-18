@@ -70,8 +70,7 @@ public final class SchematicService {
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement upsert = connection.prepareStatement(
-                         "INSERT INTO idlefarm_snapshots (node_id, blocks_json) VALUES (?, ?) "
-                                 + "ON DUPLICATE KEY UPDATE blocks_json = VALUES(blocks_json)")) {
+                         "REPLACE INTO idlefarm_snapshots (node_id, blocks_json) VALUES (?, ?)")) {
                 upsert.setLong(1, node.getId());
                 upsert.setString(2, String.join("\n", snapshot));
                 upsert.executeUpdate();

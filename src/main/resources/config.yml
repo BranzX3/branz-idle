@@ -1,5 +1,10 @@
 # IdleFarm configuration
 
+# Storage backend: "sqlite" (zero-setup, single file in the plugin folder)
+# or "mysql" (use the mysql section below).
+storage:
+  type: sqlite
+
 mysql:
   host: localhost
   port: 3306

@@ -28,6 +28,9 @@ dependencies {
 
     implementation("com.zaxxer:HikariCP:6.2.1")
     implementation("com.mysql:mysql-connector-j:9.1.0")
+    // Not relocated: the native-library loader resolves resources by the
+    // original org.sqlite package path.
+    implementation("org.xerial:sqlite-jdbc:3.47.1.0")
 }
 
 java {
