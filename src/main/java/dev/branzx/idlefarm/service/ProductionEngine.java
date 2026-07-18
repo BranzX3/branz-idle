@@ -29,6 +29,11 @@ public final class ProductionEngine extends BukkitRunnable {
     private final NodeStore nodeStore;
     private final WorkerStore workerStore;
     private final WorkerService workerService;
+    private ExplorationService explorationService;
+
+    public void setExplorationService(ExplorationService explorationService) {
+        this.explorationService = explorationService;
+    }
 
     public ProductionEngine(IdleFarmPlugin plugin, NodeStore nodeStore,
                             WorkerStore workerStore, WorkerService workerService) {
@@ -78,6 +83,11 @@ public final class ProductionEngine extends BukkitRunnable {
             // Advance only by the time actually converted into items.
             node.setLastTickAt(node.getLastTickAt() + (long) (credited / ratePerHour * 3_600_000.0));
             grantCrewExp(crew, credited);
+            // Passive exploration EXP: working *is* exploring, thematically.
+            if (explorationService != null) {
+                double perItem = plugin.getConfig().getDouble("exploration.passive-exp-per-item", 1.0);
+                explorationService.grantExplorationExp(node, (long) Math.ceil(credited * perItem));
+            }
             dirty = true;
         }
 
@@ -121,6 +131,22 @@ public final class ProductionEngine extends BukkitRunnable {
         if (table == null) {
             node.getStorage().merge("COBBLESTONE", count, Integer::sum);
             return;
+        }
+        // Bracket-gated tables: if the type section contains bracket-N
+        // subsections, use the highest one unlocked by the node's bracket.
+        // A flat section (no bracket-* keys) applies to all brackets.
+        if (table.getConfigurationSection("bracket-1") != null && explorationService != null) {
+            int bracket = explorationService.bracket(node);
+            ConfigurationSection best = null;
+            for (int i = 1; i <= bracket; i++) {
+                ConfigurationSection candidate = table.getConfigurationSection("bracket-" + i);
+                if (candidate != null) {
+                    best = candidate;
+                }
+            }
+            if (best != null) {
+                table = best;
+            }
         }
         List<String> materials = List.copyOf(table.getKeys(false));
         double totalWeight = materials.stream().mapToDouble(table::getDouble).sum();

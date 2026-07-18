@@ -73,6 +73,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "eject" -> eject(sender, args);
             case "skin" -> skin(sender, args);
             case "collect" -> collect(sender);
+            case "explore" -> explore(sender, args);
             case "admin" -> admin(sender, args);
             default -> usage(sender);
         };
@@ -428,6 +429,90 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean explore(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can explore.", NamedTextColor.RED));
+            return true;
+        }
+        NodeRecord node = nodeAt(player);
+        if (node == null || !node.getType().isProduction()) {
+            sender.sendMessage(Component.text("Stand in a production node.", NamedTextColor.RED));
+            return true;
+        }
+        var exploration = plugin.getExplorationService();
+        String action = args.length >= 2 ? args[1].toLowerCase(java.util.Locale.ROOT) : "info";
+
+        switch (action) {
+            case "info" -> {
+                int bracket = exploration.bracket(node);
+                sender.sendMessage(Component.text("Exploration Lv." + node.getExplorationLevel()
+                        + " (Bracket " + toRoman(bracket) + ")  exp "
+                        + node.getExplorationExp() + "/"
+                        + exploration.expForNextExplorationLevel(node.getExplorationLevel()),
+                        NamedTextColor.AQUA));
+                var event = exploration.getEvent(node.getId());
+                if (event == null) {
+                    sender.sendMessage(Component.text("No event at this node right now.", NamedTextColor.GRAY));
+                } else {
+                    long now = System.currentTimeMillis();
+                    String detail = switch (event.getState()) {
+                        case "AVAILABLE" -> "waiting — expires in "
+                                + Math.max(0, (event.getExpiresAt() - now) / 60000) + "m. /idle explore start [team]";
+                        case "RUNNING" -> "team away — returns in "
+                                + Math.max(0, (event.getEndsAt() - now) / 60000) + "m";
+                        default -> event.getGrade() + " result ready! /idle explore claim";
+                    };
+                    sender.sendMessage(Component.text(exploration.eventName(event.getEventType())
+                            + " [" + event.getState() + "] " + detail, NamedTextColor.YELLOW));
+                }
+            }
+            case "start" -> {
+                if (!trustService.canManage(player.getUniqueId(), node.getOwnerUuid())) {
+                    sender.sendMessage(Component.text("Manager trust required.", NamedTextColor.RED));
+                    return true;
+                }
+                int team = args.length >= 3 ? Integer.parseInt(args[2]) : Integer.MAX_VALUE;
+                String error = exploration.start(node, team);
+                if (error != null) {
+                    sender.sendMessage(Component.text(error, NamedTextColor.RED));
+                } else {
+                    npcManager.refreshNode(node, player.getWorld());
+                    sender.sendMessage(Component.text("Expedition sent!", NamedTextColor.GREEN));
+                }
+            }
+            case "claim" -> {
+                if (!trustService.canManage(player.getUniqueId(), node.getOwnerUuid())) {
+                    sender.sendMessage(Component.text("Manager trust required.", NamedTextColor.RED));
+                    return true;
+                }
+                var loot = exploration.claim(node);
+                if (loot == null) {
+                    sender.sendMessage(Component.text("No completed expedition to claim.", NamedTextColor.RED));
+                    return true;
+                }
+                int total = 0;
+                for (var entry : loot.entrySet()) {
+                    org.bukkit.Material material = org.bukkit.Material.matchMaterial(entry.getKey());
+                    if (material != null) {
+                        giveOrDrop(player, new ItemStack(material, entry.getValue()));
+                        total += entry.getValue();
+                    }
+                }
+                npcManager.refreshNode(node, player.getWorld());
+                sender.sendMessage(Component.text("Expedition loot claimed: " + total + " items!",
+                        NamedTextColor.GOLD));
+            }
+            default -> sender.sendMessage(Component.text("Usage: /idle explore [info|start [team]|claim]",
+                    NamedTextColor.YELLOW));
+        }
+        return true;
+    }
+
+    private String toRoman(int number) {
+        String[] romans = {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"};
+        return number >= 1 && number <= 10 ? romans[number - 1] : String.valueOf(number);
+    }
+
     private NodeRecord nodeAt(Player player) {
         return nodeStore.getByChunk(new ChunkKey(player.getWorld().getName(),
                 player.getLocation().getBlockX() >> 4,
@@ -453,13 +538,16 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             return List.of("balance", "top", "claim", "unclaim", "nodes", "trust", "untrust",
-                    "hire", "fuse", "assign", "eject", "skin", "collect", "admin");
+                    "hire", "fuse", "assign", "eject", "skin", "collect", "explore", "admin");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("claim")) {
             return List.of("residential", "mining", "farming", "woodcutting", "livestock", "hunter");
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("trust")) {
             return List.of("visitor", "helper", "manager");
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("explore")) {
+            return List.of("info", "start", "claim");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("admin")) {
             return List.of("reload", "schem", "npc", "node");

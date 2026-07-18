@@ -16,6 +16,8 @@ public final class NodeRecord {
     private final int originY;
     /** Anchor for lazy production accrual (epoch millis). */
     private volatile long lastTickAt;
+    private volatile int explorationLevel;
+    private volatile long explorationExp;
     /** Buffered uncollected output: material name -> count. */
     private final Map<String, Integer> storage = new ConcurrentHashMap<>();
 
@@ -49,6 +51,22 @@ public final class NodeRecord {
 
     public void setLastTickAt(long lastTickAt) {
         this.lastTickAt = lastTickAt;
+    }
+
+    public int getExplorationLevel() {
+        return explorationLevel;
+    }
+
+    public void setExplorationLevel(int explorationLevel) {
+        this.explorationLevel = explorationLevel;
+    }
+
+    public long getExplorationExp() {
+        return explorationExp;
+    }
+
+    public void setExplorationExp(long explorationExp) {
+        this.explorationExp = explorationExp;
     }
 
     public Map<String, Integer> getStorage() {

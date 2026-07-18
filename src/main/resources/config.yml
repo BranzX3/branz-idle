@@ -151,6 +151,83 @@ production:
       spider_eye: 8
       ender_pearl: 2
 
+exploration:
+  # How often (seconds) event lifecycle is evaluated (spawn/expiry/completion).
+  check-interval-seconds: 30
+  # Chance per check that an event spawns at an event-less node whose owner
+  # is online.
+  spawn-chance-per-check: 0.05
+  # Levels per bracket: bracket = level/size + 1.
+  bracket-size: 10
+  level-cap: 100
+  # Exploration EXP needed for next level = base × (level + 1).
+  exp-per-level-base: 500
+  # Passive exploration EXP per produced item.
+  passive-exp-per-item: 1.0
+  # Lump exploration EXP for completing an event.
+  event-exp-bonus: 2000
+  # Outcome grade odds (percent) shifted by team Luck.
+  grade-odds:
+    jackpot-base: 5
+    jackpot-per-luck: 0.1
+    great-base: 20
+    great-per-luck: 0.2
+  grade-multiplier:
+    great: 1.8
+    jackpot: 3.0
+  # Event catalog. min-bracket gates availability; loot uses weighted rolls.
+  events:
+    abandoned_shaft:
+      name: "Abandoned Shaft"
+      min-bracket: 1
+      duration-minutes: 20
+      expiry-minutes: 30
+      loot-count-base: 8
+      loot:
+        iron_ingot: 40
+        gold_ingot: 25
+        lapis_lazuli: 20
+        redstone: 10
+        diamond: 5
+    lost_caravan:
+      name: "Lost Caravan"
+      min-bracket: 1
+      duration-minutes: 15
+      expiry-minutes: 25
+      loot-count-base: 10
+      loot:
+        bread: 35
+        leather: 25
+        paper: 20
+        emerald: 15
+        saddle: 5
+    deep_ruins:
+      name: "Deep Ruins"
+      min-bracket: 2
+      duration-minutes: 35
+      expiry-minutes: 30
+      loot-count-base: 10
+      loot:
+        emerald: 30
+        diamond: 25
+        amethyst_shard: 20
+        experience_bottle: 15
+        golden_apple: 8
+        enchanted_golden_apple: 2
+    ancient_vault:
+      name: "Ancient Vault"
+      min-bracket: 4
+      duration-minutes: 60
+      expiry-minutes: 20
+      loot-count-base: 12
+      loot:
+        diamond: 35
+        netherite_scrap: 15
+        golden_apple: 20
+        enchanted_golden_apple: 5
+        heavy_core: 1
+        emerald_block: 24
+
 npc:
   # How often (ticks) NPC animation behaviors are evaluated.
   animation-interval-ticks: 60
@@ -164,3 +241,5 @@ npc:
     default_working: [hold_tool, depart]
     default_idle: [return_spawn, look_close, clear_tool]
     default_stop: [return_spawn, sneak, clear_tool]
+    # EXPLORING workers walk off and stay gone for the whole run.
+    default_exploring: [depart]

@@ -149,6 +149,22 @@ public final class Database {
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS idlefarm_exploration_events (
+                id BIGINT NOT NULL PRIMARY KEY,
+                node_id BIGINT NOT NULL,
+                event_type VARCHAR(32) NOT NULL,
+                state VARCHAR(16) NOT NULL,
+                spawned_at TIMESTAMP NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                started_at TIMESTAMP NULL,
+                ends_at TIMESTAMP NULL,
+                worker_uuids VARCHAR(512),
+                outcome_grade VARCHAR(16) NULL,
+                loot VARCHAR(1024) NULL,
+                KEY idx_node (node_id)
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS idlefarm_audit_log (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 actor_uuid VARCHAR(36) NOT NULL,
@@ -225,6 +241,22 @@ public final class Database {
                 blocks_json TEXT NOT NULL
             )
             """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_exploration_events (
+                id INTEGER NOT NULL PRIMARY KEY,
+                node_id INTEGER NOT NULL,
+                event_type TEXT NOT NULL,
+                state TEXT NOT NULL,
+                spawned_at TIMESTAMP NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                started_at TIMESTAMP NULL,
+                ends_at TIMESTAMP NULL,
+                worker_uuids TEXT,
+                outcome_grade TEXT NULL,
+                loot TEXT NULL
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_events_node ON idlefarm_exploration_events (node_id)",
             """
             CREATE TABLE IF NOT EXISTS idlefarm_audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

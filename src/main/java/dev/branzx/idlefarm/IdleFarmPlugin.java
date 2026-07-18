@@ -6,6 +6,7 @@ import dev.branzx.idlefarm.schematic.SchematicRegistry;
 import dev.branzx.idlefarm.listener.PlayerConnectionListener;
 import dev.branzx.idlefarm.listener.ProtectionListener;
 import dev.branzx.idlefarm.service.ClaimService;
+import dev.branzx.idlefarm.service.ExplorationService;
 import dev.branzx.idlefarm.service.ProductionEngine;
 import dev.branzx.idlefarm.service.SchematicService;
 import dev.branzx.idlefarm.service.TrustService;
@@ -30,6 +31,7 @@ public final class IdleFarmPlugin extends JavaPlugin {
     private WorkerStore workerStore;
     private WorkerService workerService;
     private ProductionEngine productionEngine;
+    private ExplorationService explorationService;
     private PayoutTask payoutTask;
 
     @Override
@@ -72,8 +74,13 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.payoutTask = new PayoutTask(this, dataStore);
         this.payoutTask.runTaskTimer(this, intervalTicks, intervalTicks);
 
+        this.explorationService = new ExplorationService(this, database, nodeStore, workerStore);
+        this.explorationService.loadAllSync();
+        this.explorationService.start();
+
         long productionTicks = getConfig().getLong("production.tick-seconds", 60) * 20L;
         this.productionEngine = new ProductionEngine(this, nodeStore, workerStore, workerService);
+        this.productionEngine.setExplorationService(explorationService);
         // First run settles any downtime accrued while the server was off.
         this.productionEngine.runTaskTimer(this, 100L, productionTicks);
     }
@@ -85,6 +92,9 @@ public final class IdleFarmPlugin extends JavaPlugin {
         }
         if (productionEngine != null) {
             productionEngine.cancel();
+        }
+        if (explorationService != null) {
+            explorationService.stop();
         }
         if (npcManager != null) {
             npcManager.shutdown();
@@ -111,5 +121,9 @@ public final class IdleFarmPlugin extends JavaPlugin {
 
     public TrustService getTrustService() {
         return trustService;
+    }
+
+    public ExplorationService getExplorationService() {
+        return explorationService;
     }
 }

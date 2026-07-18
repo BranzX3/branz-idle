@@ -149,6 +149,9 @@ public final class ClaimService {
                 * plugin.getConfig().getDouble("claims.unclaim-refund-ratio", 0.5);
 
         if (record.getType().isProduction()) {
+            if (plugin.getExplorationService() != null) {
+                plugin.getExplorationService().cancel(record); // in-progress event: no loot
+            }
             npcManager.despawnNode(record.getId());
             schematicService.restoreTerrain(record, world);
         }
