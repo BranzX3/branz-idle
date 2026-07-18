@@ -2,25 +2,42 @@ package dev.branzx.idlefarm;
 
 import dev.branzx.idlefarm.command.IdleCommand;
 import dev.branzx.idlefarm.listener.PlayerConnectionListener;
+import dev.branzx.idlefarm.listener.ProtectionListener;
+import dev.branzx.idlefarm.service.ClaimService;
+import dev.branzx.idlefarm.service.TrustService;
+import dev.branzx.idlefarm.storage.Database;
+import dev.branzx.idlefarm.storage.NodeStore;
 import dev.branzx.idlefarm.storage.PlayerDataStore;
 import dev.branzx.idlefarm.task.PayoutTask;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class IdleFarmPlugin extends JavaPlugin {
 
+    private Database database;
     private PlayerDataStore dataStore;
+    private NodeStore nodeStore;
+    private ClaimService claimService;
+    private TrustService trustService;
     private PayoutTask payoutTask;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
 
-        this.dataStore = new PlayerDataStore(this);
-        this.dataStore.init();
+        this.database = new Database(this);
+        this.database.init();
+
+        this.dataStore = new PlayerDataStore(this, database);
+        this.nodeStore = new NodeStore(this, database);
+        this.nodeStore.loadAllSync();
+
+        this.claimService = new ClaimService(this, nodeStore, dataStore);
+        this.trustService = new TrustService(nodeStore);
 
         getServer().getPluginManager().registerEvents(new PlayerConnectionListener(this, dataStore), this);
+        getServer().getPluginManager().registerEvents(new ProtectionListener(nodeStore, trustService), this);
 
-        IdleCommand idleCommand = new IdleCommand(this, dataStore);
+        IdleCommand idleCommand = new IdleCommand(this, dataStore, nodeStore, claimService, trustService);
         getCommand("idle").setExecutor(idleCommand);
         getCommand("idle").setTabCompleter(idleCommand);
 
@@ -36,11 +53,25 @@ public final class IdleFarmPlugin extends JavaPlugin {
         }
         if (dataStore != null) {
             dataStore.saveAllOnlineSync();
-            dataStore.shutdown();
+        }
+        if (database != null) {
+            database.shutdown();
         }
     }
 
     public PlayerDataStore getDataStore() {
         return dataStore;
+    }
+
+    public NodeStore getNodeStore() {
+        return nodeStore;
+    }
+
+    public ClaimService getClaimService() {
+        return claimService;
+    }
+
+    public TrustService getTrustService() {
+        return trustService;
     }
 }

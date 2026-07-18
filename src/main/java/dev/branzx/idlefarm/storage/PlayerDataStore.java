@@ -1,15 +1,11 @@
 package dev.branzx.idlefarm.storage;
 
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
 import dev.branzx.idlefarm.IdleFarmPlugin;
-import org.bukkit.configuration.ConfigurationSection;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -20,53 +16,16 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class PlayerDataStore {
 
     private final IdleFarmPlugin plugin;
-    private HikariDataSource dataSource;
+    private final Database database;
     private final Map<UUID, PlayerData> online = new ConcurrentHashMap<>();
 
-    public PlayerDataStore(IdleFarmPlugin plugin) {
+    public PlayerDataStore(IdleFarmPlugin plugin, Database database) {
         this.plugin = plugin;
-    }
-
-    public void init() {
-        ConfigurationSection cfg = plugin.getConfig().getConfigurationSection("mysql");
-        HikariConfig hikariConfig = new HikariConfig();
-        String host = cfg.getString("host", "localhost");
-        int port = cfg.getInt("port", 3306);
-        String database = cfg.getString("database", "idlefarm");
-        boolean useSSL = cfg.getBoolean("useSSL", false);
-
-        hikariConfig.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database
-                + "?useSSL=" + useSSL + "&autoReconnect=true&characterEncoding=utf8");
-        hikariConfig.setUsername(cfg.getString("username", "root"));
-        hikariConfig.setPassword(cfg.getString("password", ""));
-        hikariConfig.setMaximumPoolSize(cfg.getInt("pool-size", 10));
-        hikariConfig.setPoolName("IdleFarm-Pool");
-
-        this.dataSource = new HikariDataSource(hikariConfig);
-
-        try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement()) {
-            statement.executeUpdate("""
-                    CREATE TABLE IF NOT EXISTS idlefarm_players (
-                        uuid VARCHAR(36) NOT NULL PRIMARY KEY,
-                        name VARCHAR(16) NOT NULL,
-                        balance DOUBLE NOT NULL DEFAULT 0,
-                        total_online_minutes BIGINT NOT NULL DEFAULT 0
-                    )
-                    """);
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to initialize MySQL schema: " + e.getMessage());
-        }
-    }
-
-    public void shutdown() {
-        if (dataSource != null && !dataSource.isClosed()) {
-            dataSource.close();
-        }
+        this.database = database;
     }
 
     public PlayerData loadOrCreateSync(UUID uuid, String name) {
-        try (Connection connection = dataSource.getConnection();
+        try (Connection connection = database.getConnection();
              PreparedStatement select = connection.prepareStatement(
                      "SELECT balance, total_online_minutes FROM idlefarm_players WHERE uuid = ?")) {
             select.setString(1, uuid.toString());
@@ -97,7 +56,7 @@ public final class PlayerDataStore {
     }
 
     public void saveSync(PlayerData data) {
-        try (Connection connection = dataSource.getConnection();
+        try (Connection connection = database.getConnection();
              PreparedStatement update = connection.prepareStatement(
                      "UPDATE idlefarm_players SET name = ?, balance = ?, total_online_minutes = ? WHERE uuid = ?")) {
             update.setString(1, data.getName());
@@ -134,7 +93,7 @@ public final class PlayerDataStore {
 
     public List<PlayerData> loadTopSync(int limit, int minMinutes) {
         List<PlayerData> result = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection();
+        try (Connection connection = database.getConnection();
              PreparedStatement select = connection.prepareStatement(
                      "SELECT uuid, name, balance, total_online_minutes FROM idlefarm_players "
                              + "WHERE total_online_minutes >= ? ORDER BY balance DESC LIMIT ?")) {

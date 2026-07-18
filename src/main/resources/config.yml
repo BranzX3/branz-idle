@@ -27,3 +27,15 @@ afk-bonus-multiplier: 1.0
 
 # Minimum minutes online required before a player shows up on /idle top.
 top-min-minutes: 1
+
+claims:
+  # Worlds where claiming is allowed. Empty list = any Overworld
+  # (NORMAL environment) world.
+  worlds: []
+  # Money cost per claim.
+  residential-cost: 500.0
+  production-cost: 1000.0
+  # Fraction of the claim cost refunded on unclaim (tier spend never refunds).
+  unclaim-refund-ratio: 0.5
+  # Baseline production-node cap for players without a node_cap row.
+  base-node-cap: 4
