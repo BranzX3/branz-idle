@@ -142,6 +142,10 @@ public final class GuiManager implements Listener {
         new WorkersMenu(player, this).open();
     }
 
+    public void openFuse(Player player) {
+        new FuseMenu(player, this).open();
+    }
+
     public void openTerritoryMap(Player player) {
         new TerritoryMapMenu(player, this).open();
     }
@@ -171,26 +175,49 @@ public final class GuiManager implements Listener {
         if (!(event.getInventory().getHolder() instanceof Menu menu)) {
             return;
         }
-        // Click in the top (menu) inventory.
-        if (event.getRawSlot() < menu.getInventory().getSize()) {
-            boolean handled = menu.click(event);
-            if (!menu.allowItemMovement()) {
-                event.setCancelled(true);
-            } else if (!handled) {
-                event.setCancelled(true);
+        boolean topClick = event.getRawSlot() < menu.getInventory().getSize();
+        if (topClick) {
+            // Free input slots (e.g. fuse inputs): allow the placement, then
+            // let the menu react on the next tick to recompute its display.
+            if (menu.isInputSlot(event.getRawSlot())) {
+                menu.onInputChanged();
+                return; // not cancelled — the item moves normally
             }
-        } else if (!menu.allowItemMovement()) {
-            // Clicking own inventory while a locked menu is open: block shift-move in.
-            if (event.isShiftClick()) {
+            boolean handled = menu.click(event);
+            event.setCancelled(true);
+            if (handled) {
+                return;
+            }
+        } else {
+            // Shift-clicking from the player inventory could dump items into a
+            // locked menu; only allow it when the menu has input slots to catch it.
+            if (event.isShiftClick() && !menu.hasInputSlots()) {
                 event.setCancelled(true);
+            } else if (event.isShiftClick()) {
+                menu.onInputChanged();
             }
         }
     }
 
     @EventHandler
     public void onDrag(InventoryDragEvent event) {
-        if (event.getInventory().getHolder() instanceof Menu menu && !menu.allowItemMovement()) {
-            event.setCancelled(true);
+        if (!(event.getInventory().getHolder() instanceof Menu menu)) {
+            return;
+        }
+        // Cancel drags that touch any non-input slot in the menu area.
+        for (int raw : event.getRawSlots()) {
+            if (raw < menu.getInventory().getSize() && !menu.isInputSlot(raw)) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+        menu.onInputChanged();
+    }
+
+    @EventHandler
+    public void onClose(org.bukkit.event.inventory.InventoryCloseEvent event) {
+        if (event.getInventory().getHolder() instanceof Menu menu) {
+            menu.onClose();
         }
     }
 }

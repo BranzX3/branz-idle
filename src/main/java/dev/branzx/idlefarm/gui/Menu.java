@@ -9,7 +9,9 @@ import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Base chest menu. Holds its own inventory (so the click listener can
@@ -21,6 +23,8 @@ public abstract class Menu implements InventoryHolder {
     protected final Player viewer;
     private Inventory inventory;
     private final Map<Integer, ClickHandler> handlers = new HashMap<>();
+    /** Slots where the player may freely place/take items (e.g. fuse inputs). */
+    private final Set<Integer> inputSlots = new HashSet<>();
 
     @FunctionalInterface
     public interface ClickHandler {
@@ -46,7 +50,37 @@ public abstract class Menu implements InventoryHolder {
     public void redraw() {
         inventory.clear();
         handlers.clear();
+        inputSlots.clear();
         build();
+    }
+
+    /** Marks a slot as a free input slot (item placement allowed). */
+    protected void markInputSlot(int slot) {
+        inputSlots.add(slot);
+    }
+
+    public boolean isInputSlot(int rawSlot) {
+        return inputSlots.contains(rawSlot);
+    }
+
+    public boolean hasInputSlots() {
+        return !inputSlots.isEmpty();
+    }
+
+    /** Override to recompute display after the player edits an input slot. */
+    public void onInputChanged() {
+    }
+
+    public ItemStack itemAt(int slot) {
+        return inventory.getItem(slot);
+    }
+
+    public void setRaw(int slot, ItemStack item) {
+        inventory.setItem(slot, item);
+    }
+
+    /** Override to react after the player closes the menu (e.g. return items). */
+    public void onClose() {
     }
 
     protected void set(int slot, ItemStack item, ClickHandler handler) {
