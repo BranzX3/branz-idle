@@ -6,8 +6,10 @@ import dev.branzx.idlefarm.gui.GuiManager;
 import dev.branzx.idlefarm.schematic.SchematicRegistry;
 import dev.branzx.idlefarm.listener.PlayerConnectionListener;
 import dev.branzx.idlefarm.listener.ProtectionListener;
+import dev.branzx.idlefarm.service.AuditService;
 import dev.branzx.idlefarm.service.BoosterService;
 import dev.branzx.idlefarm.service.ClaimService;
+import dev.branzx.idlefarm.service.DropTableService;
 import dev.branzx.idlefarm.service.ExplorationService;
 import dev.branzx.idlefarm.service.PerkService;
 import dev.branzx.idlefarm.service.StreakService;
@@ -93,7 +95,14 @@ public final class IdleFarmPlugin extends JavaPlugin {
         // Citizens is a hard dependency, so its API is ready by now.
         npcManager.init();
 
+        AuditService auditService = new AuditService(this, database);
+        DropTableService dropTableService = new DropTableService(this);
+        dropTableService.load();
+        this.claimService.setAuditService(auditService);
+        this.workerService.setAuditService(auditService);
+
         AdminCommands adminCommands = new AdminCommands(this, nodeStore, workerStore, schematicService, npcManager);
+        adminCommands.setPhase8Services(dropTableService, auditService, guiManager, dataStore);
         IdleCommand idleCommand = new IdleCommand(this, dataStore, nodeStore, claimService, trustService,
                 workerService, workerStore, npcManager, warehouseService, guiManager, adminCommands);
         getCommand("idle").setExecutor(idleCommand);
@@ -109,6 +118,7 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.productionEngine.setExplorationService(explorationService);
         this.productionEngine.setBoosterService(boosterService);
         this.productionEngine.setPerkServices(perkService, warehouseService);
+        this.productionEngine.setDropTableService(dropTableService);
         // First run settles any downtime accrued while the server was off.
         this.productionEngine.runTaskTimer(this, 100L, productionTicks);
     }

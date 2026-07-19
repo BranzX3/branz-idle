@@ -35,6 +35,20 @@ public final class AdminCommands {
     private final SchematicService schematicService;
     private final WorkerNpcManager npcManager;
     private final Map<UUID, EditSession> sessions = new ConcurrentHashMap<>();
+    private dev.branzx.idlefarm.service.DropTableService dropTableService;
+    private dev.branzx.idlefarm.service.AuditService auditService;
+    private dev.branzx.idlefarm.gui.GuiManager guiManager;
+    private dev.branzx.idlefarm.storage.PlayerDataStore dataStore;
+
+    public void setPhase8Services(dev.branzx.idlefarm.service.DropTableService dropTableService,
+                                  dev.branzx.idlefarm.service.AuditService auditService,
+                                  dev.branzx.idlefarm.gui.GuiManager guiManager,
+                                  dev.branzx.idlefarm.storage.PlayerDataStore dataStore) {
+        this.dropTableService = dropTableService;
+        this.auditService = auditService;
+        this.guiManager = guiManager;
+        this.dataStore = dataStore;
+    }
 
     public AdminCommands(IdleFarmPlugin plugin, NodeStore nodeStore, WorkerStore workerStore,
                          SchematicService schematicService, WorkerNpcManager npcManager) {
@@ -55,6 +69,10 @@ public final class AdminCommands {
             case "schem" -> schem(sender, args);
             case "npc" -> npc(sender, args);
             case "node" -> nodeInfo(sender);
+            case "pool" -> pool(sender, args);
+            case "give" -> give(sender, args);
+            case "setcap" -> setcap(sender, args);
+            case "audit" -> audit(sender, args);
             default -> usage(sender);
         };
     }
@@ -64,7 +82,132 @@ public final class AdminCommands {
                 /idle admin reload
                 /idle admin schem edit <id> | setspawn <slot> | setwork | setwander <r> | setanim <state> <profile> | save | rebuild
                 /idle admin npc refresh | list | state <state|clear>
-                /idle admin node""", NamedTextColor.YELLOW));
+                /idle admin node
+                /idle admin pool <type[.bracket-N]>
+                /idle admin give money <player> <amount>
+                /idle admin give item <player> <material> <count>
+                /idle admin setcap <player> <base> [bonus]
+                /idle admin audit [player]""", NamedTextColor.YELLOW));
+        return true;
+    }
+
+    // ---- pool editor ----
+
+    private boolean pool(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("In-game only.", NamedTextColor.RED));
+            return true;
+        }
+        if (args.length < 3) {
+            sender.sendMessage(Component.text(
+                    "Usage: /idle admin pool <mining|farming|woodcutting|livestock|hunter>[.bracket-N]",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        new dev.branzx.idlefarm.gui.PoolEditorMenu(player, guiManager, dropTableService,
+                auditService, args[2].toLowerCase(Locale.ROOT)).open();
+        return true;
+    }
+
+    // ---- economy ----
+
+    private boolean give(CommandSender sender, String[] args) {
+        if (args.length < 5) {
+            sender.sendMessage(Component.text(
+                    "Usage: /idle admin give money <player> <amount> | give item <player> <material> <count>",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        Player target = plugin.getServer().getPlayer(args[3]);
+        if (target == null) {
+            sender.sendMessage(Component.text("Player must be online: " + args[3], NamedTextColor.RED));
+            return true;
+        }
+        UUID actor = sender instanceof Player p ? p.getUniqueId() : new UUID(0, 0);
+
+        if (args[2].equalsIgnoreCase("money")) {
+            double amount = Double.parseDouble(args[4]);
+            var data = dataStore.getOnline(target.getUniqueId());
+            if (data == null) {
+                sender.sendMessage(Component.text("Target data not loaded.", NamedTextColor.RED));
+                return true;
+            }
+            data.addBalance(amount);
+            auditService.log(actor, "ADMIN_GIVE", "money " + amount + " -> " + target.getName());
+            sender.sendMessage(Component.text((amount >= 0 ? "Gave " : "Took ") + Math.abs(amount)
+                    + " money " + (amount >= 0 ? "to " : "from ") + target.getName(), NamedTextColor.GREEN));
+            return true;
+        }
+        if (args[2].equalsIgnoreCase("item")) {
+            if (args.length < 6) {
+                sender.sendMessage(Component.text("Usage: /idle admin give item <player> <material> <count>",
+                        NamedTextColor.YELLOW));
+                return true;
+            }
+            var material = org.bukkit.Material.matchMaterial(args[4]);
+            if (material == null) {
+                sender.sendMessage(Component.text("Unknown material: " + args[4], NamedTextColor.RED));
+                return true;
+            }
+            int count = Integer.parseInt(args[5]);
+            var leftover = target.getInventory().addItem(new org.bukkit.inventory.ItemStack(material, count));
+            for (var overflow : leftover.values()) {
+                target.getWorld().dropItemNaturally(target.getLocation(), overflow);
+            }
+            auditService.log(actor, "ADMIN_GIVE", "item " + material + " x" + count + " -> " + target.getName());
+            sender.sendMessage(Component.text("Gave " + count + "x " + material + " to " + target.getName(),
+                    NamedTextColor.GREEN));
+            return true;
+        }
+        return usage(sender);
+    }
+
+    private boolean setcap(CommandSender sender, String[] args) {
+        if (args.length < 4) {
+            sender.sendMessage(Component.text("Usage: /idle admin setcap <player> <base> [bonus]",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        var target = plugin.getServer().getOfflinePlayer(args[2]);
+        int base = Integer.parseInt(args[3]);
+        int bonus = args.length >= 5 ? Integer.parseInt(args[4]) : 0;
+        nodeStore.setCap(target.getUniqueId(), base, bonus);
+        UUID actor = sender instanceof Player p ? p.getUniqueId() : new UUID(0, 0);
+        auditService.log(actor, "ADMIN_SETCAP", args[2] + " base=" + base + " bonus=" + bonus);
+        sender.sendMessage(Component.text("Node cap for " + args[2] + " = " + (base + bonus),
+                NamedTextColor.GREEN));
+        return true;
+    }
+
+    // ---- audit browser ----
+
+    private boolean audit(CommandSender sender, String[] args) {
+        UUID filter = null;
+        if (args.length >= 3) {
+            filter = plugin.getServer().getOfflinePlayer(args[2]).getUniqueId();
+        }
+        UUID finalFilter = filter;
+        new org.bukkit.scheduler.BukkitRunnable() {
+            @Override
+            public void run() {
+                var entries = auditService.recentSync(finalFilter, 15);
+                sender.sendMessage(Component.text("=== Audit (latest " + entries.size() + ") ===",
+                        NamedTextColor.YELLOW));
+                for (var entry : entries) {
+                    String name = entry.actor();
+                    try {
+                        var offline = plugin.getServer().getOfflinePlayer(UUID.fromString(entry.actor()));
+                        if (offline.getName() != null) {
+                            name = offline.getName();
+                        }
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                    sender.sendMessage(Component.text(
+                            entry.createdAt() + " " + name + " " + entry.action() + " " + entry.detail(),
+                            NamedTextColor.WHITE));
+                }
+            }
+        }.runTaskAsynchronously(plugin);
         return true;
     }
 

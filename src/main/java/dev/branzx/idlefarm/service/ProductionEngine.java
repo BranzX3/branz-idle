@@ -47,6 +47,12 @@ public final class ProductionEngine extends BukkitRunnable {
         this.warehouseService = warehouseService;
     }
 
+    private DropTableService dropTableService;
+
+    public void setDropTableService(DropTableService dropTableService) {
+        this.dropTableService = dropTableService;
+    }
+
     public ProductionEngine(IdleFarmPlugin plugin, NodeStore nodeStore,
                             WorkerStore workerStore, WorkerService workerService) {
         this.plugin = plugin;
@@ -157,37 +163,18 @@ public final class ProductionEngine extends BukkitRunnable {
     }
 
     private void rollItems(NodeRecord node, int count) {
-        ConfigurationSection table = plugin.getConfig().getConfigurationSection(
-                "production.drop-tables." + node.getType().name().toLowerCase(Locale.ROOT));
-        if (table == null) {
-            node.getStorage().merge("COBBLESTONE", count, Integer::sum);
-            return;
-        }
-        // Bracket-gated tables: if the type section contains bracket-N
-        // subsections, use the highest one unlocked by the node's bracket.
-        // A flat section (no bracket-* keys) applies to all brackets.
-        if (table.getConfigurationSection("bracket-1") != null && explorationService != null) {
-            int bracket = explorationService.bracket(node);
-            ConfigurationSection best = null;
-            for (int i = 1; i <= bracket; i++) {
-                ConfigurationSection candidate = table.getConfigurationSection("bracket-" + i);
-                if (candidate != null) {
-                    best = candidate;
-                }
-            }
-            if (best != null) {
-                table = best;
-            }
-        }
-        List<String> materials = List.copyOf(table.getKeys(false));
-        double totalWeight = materials.stream().mapToDouble(table::getDouble).sum();
+        int bracket = explorationService == null ? 1 : explorationService.bracket(node);
+        java.util.Map<String, Double> table = dropTableService != null
+                ? dropTableService.table(node.getType(), bracket)
+                : java.util.Map.of("cobblestone", 1.0);
+        double totalWeight = table.values().stream().mapToDouble(Double::doubleValue).sum();
         for (int i = 0; i < count; i++) {
             double roll = ThreadLocalRandom.current().nextDouble() * totalWeight;
             double cumulative = 0;
-            for (String material : materials) {
-                cumulative += table.getDouble(material);
+            for (var entry : table.entrySet()) {
+                cumulative += entry.getValue();
                 if (roll < cumulative) {
-                    node.getStorage().merge(material.toUpperCase(Locale.ROOT), 1, Integer::sum);
+                    node.getStorage().merge(entry.getKey().toUpperCase(Locale.ROOT), 1, Integer::sum);
                     break;
                 }
             }

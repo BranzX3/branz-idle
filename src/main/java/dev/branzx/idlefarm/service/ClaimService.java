@@ -46,11 +46,23 @@ public final class ClaimService {
         this.npcManager = npcManager;
     }
 
+    private AuditService auditService;
+
     public void setLateServices(ExplorationService explorationService, WorkerService workerService,
                                 dev.branzx.idlefarm.storage.WorkerStore workerStore) {
         this.explorationService = explorationService;
         this.workerService = workerService;
         this.workerStore = workerStore;
+    }
+
+    public void setAuditService(AuditService auditService) {
+        this.auditService = auditService;
+    }
+
+    private void audit(UUID actor, String action, String detail) {
+        if (auditService != null) {
+            auditService.log(actor, action, detail);
+        }
     }
 
     public boolean isClaimableWorld(World world) {
@@ -131,6 +143,8 @@ public final class ClaimService {
             schematicService.buildHousing(record, world);
             npcManager.spawnForNode(record, world);
         }
+        audit(owner, "CLAIM", type + " @ " + chunk.world() + " " + chunk.x() + "," + chunk.z()
+                + " cost=" + cost);
         return Result.ok(type + " node claimed at chunk " + chunk.x() + "," + chunk.z()
                 + " (-" + cost + ").");
     }
@@ -176,6 +190,8 @@ public final class ClaimService {
         if (data != null) {
             data.addBalance(refund);
         }
+        audit(owner, "UNCLAIM", record.getType() + " @ " + chunk.world() + " " + chunk.x() + ","
+                + chunk.z() + " refund=" + refund);
         return Result.ok("Node unclaimed (+" + refund + " refund). Worker contracts returned.");
     }
 
@@ -242,6 +258,7 @@ public final class ClaimService {
         nodeStore.updateProduction(record);
         schematicService.rebuild(record, world);
         npcManager.refreshNode(record, world);
+        audit(owner, "CONVERT", "node#" + record.getId() + " -> " + newType + " cost=" + cost);
         return Result.ok("Node converted to " + newType + " (-" + cost
                 + "). Worker contracts returned — reassign them.");
     }

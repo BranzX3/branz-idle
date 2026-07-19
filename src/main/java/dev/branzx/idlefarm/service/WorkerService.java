@@ -67,6 +67,18 @@ public final class WorkerService {
         this.workerKey = new NamespacedKey(plugin, "worker_uuid");
     }
 
+    private AuditService auditService;
+
+    public void setAuditService(AuditService auditService) {
+        this.auditService = auditService;
+    }
+
+    private void audit(UUID actor, String action, String detail) {
+        if (auditService != null) {
+            auditService.log(actor, action, detail);
+        }
+    }
+
     public void loadPitySync() {
         try (var connection = database.getConnection();
              var select = connection.prepareStatement(
@@ -105,6 +117,7 @@ public final class WorkerService {
         Rarity rarity = rollRarity();
         WorkerRecord record = mint(rarity);
         ItemStack item = createItem(record);
+        audit(owner, "HIRE", record.getName() + " " + rarity + " cost=" + cost);
         return Result.ok("Hired " + record.getName() + " (" + rarity + ")!", item);
     }
 
@@ -321,12 +334,14 @@ public final class WorkerService {
         if (success) {
             setPity(owner, rarity, 0);
             WorkerRecord fused = mint(next);
+            audit(owner, "FUSE", rarity + " SUCCESS -> " + next + " chance=" + Math.round(chance * 100) + "%");
             return Result.ok("SUCCESS! Fused into " + fused.getName() + " (" + next + ")!",
                     createItem(fused));
         } else {
             int fails = pityCount(owner, rarity) + 1;
             setPity(owner, rarity, fails);
             double nextChance = fuseChance(owner, rarity);
+            audit(owner, "FUSE", rarity + " FAIL pity=" + fails + " chance=" + Math.round(chance * 100) + "%");
             return Result.fail("Fuse failed — both workers lost. Pity +1 (next "
                     + rarity + " fuse: " + Math.round(nextChance * 100) + "% success).");
         }
