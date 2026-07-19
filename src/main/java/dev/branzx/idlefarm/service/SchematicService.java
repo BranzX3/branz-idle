@@ -95,8 +95,19 @@ public final class SchematicService {
         paste(definition, origin(node, world), null);
     }
 
+    private record PasteBlock(int x, int y, int z, BlockData data) {
+    }
+
+    /**
+     * Two-pass paste (WorldEdit-style stage ordering): air + occluding solids
+     * first, then non-occluding "attachables" (doors, torches, signs, crops)
+     * once their supports exist. All sets use applyPhysics=false so nothing
+     * pops or flows mid-paste; Y is clamped to the world's build limits.
+     */
     private void paste(SchematicDefinition definition, Location origin, List<String> snapshotOut) {
         World world = origin.getWorld();
+        List<PasteBlock> structural = new ArrayList<>();
+        List<PasteBlock> attachable = new ArrayList<>();
         for (String entry : definition.getBlocks()) {
             int pipe = entry.indexOf('|');
             if (pipe < 0) {
@@ -106,11 +117,36 @@ public final class SchematicService {
             int x = origin.getBlockX() + Integer.parseInt(rel[0]);
             int y = origin.getBlockY() + Integer.parseInt(rel[1]);
             int z = origin.getBlockZ() + Integer.parseInt(rel[2]);
-            Block block = world.getBlockAt(x, y, z);
-            if (snapshotOut != null) {
-                snapshotOut.add(x + "," + y + "," + z + "|" + block.getBlockData().getAsString());
+            if (y < world.getMinHeight() || y >= world.getMaxHeight()) {
+                continue; // clamp to build limits
             }
-            block.setBlockData(plugin.getServer().createBlockData(entry.substring(pipe + 1)), false);
+            BlockData data;
+            try {
+                data = plugin.getServer().createBlockData(entry.substring(pipe + 1));
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Skipping invalid block data in schematic '"
+                        + definition.getId() + "': " + entry.substring(pipe + 1));
+                continue;
+            }
+            var material = data.getMaterial();
+            if (material.isAir() || material.isOccluding()) {
+                structural.add(new PasteBlock(x, y, z, data));
+            } else {
+                attachable.add(new PasteBlock(x, y, z, data));
+            }
+        }
+        applyPass(world, structural, snapshotOut);
+        applyPass(world, attachable, snapshotOut);
+    }
+
+    private void applyPass(World world, List<PasteBlock> blocks, List<String> snapshotOut) {
+        for (PasteBlock paste : blocks) {
+            Block block = world.getBlockAt(paste.x(), paste.y(), paste.z());
+            if (snapshotOut != null) {
+                snapshotOut.add(paste.x() + "," + paste.y() + "," + paste.z()
+                        + "|" + block.getBlockData().getAsString());
+            }
+            block.setBlockData(paste.data(), false);
         }
     }
 
@@ -118,16 +154,34 @@ public final class SchematicService {
     public void restoreTerrain(NodeRecord node, World world) {
         List<String> snapshot = snapshots.remove(node.getId());
         if (snapshot != null) {
+            List<PasteBlock> structural = new ArrayList<>();
+            List<PasteBlock> attachable = new ArrayList<>();
             for (String line : snapshot) {
                 int pipe = line.indexOf('|');
                 if (pipe < 0) {
                     continue;
                 }
                 String[] coords = line.substring(0, pipe).split(",");
-                BlockData data = plugin.getServer().createBlockData(line.substring(pipe + 1));
-                world.getBlockAt(Integer.parseInt(coords[0]), Integer.parseInt(coords[1]),
-                        Integer.parseInt(coords[2])).setBlockData(data, false);
+                int y = Integer.parseInt(coords[1]);
+                if (y < world.getMinHeight() || y >= world.getMaxHeight()) {
+                    continue;
+                }
+                BlockData data;
+                try {
+                    data = plugin.getServer().createBlockData(line.substring(pipe + 1));
+                } catch (IllegalArgumentException e) {
+                    continue; // e.g. block removed in a MC update
+                }
+                PasteBlock block = new PasteBlock(Integer.parseInt(coords[0]), y,
+                        Integer.parseInt(coords[2]), data);
+                if (data.getMaterial().isAir() || data.getMaterial().isOccluding()) {
+                    structural.add(block);
+                } else {
+                    attachable.add(block);
+                }
             }
+            applyPass(world, structural, null);
+            applyPass(world, attachable, null);
         }
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
