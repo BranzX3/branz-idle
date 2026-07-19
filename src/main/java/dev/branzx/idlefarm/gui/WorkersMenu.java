@@ -44,14 +44,19 @@ public final class WorkersMenu extends Menu {
                 odds.add("  " + key + ": " + oddsSection.getDouble(key) + "%");
             }
         }
-        set(11, Icon.of(Material.EXPERIENCE_BOTTLE).name("Hire Worker", NamedTextColor.GREEN)
+        set(10, Icon.of(Material.EXPERIENCE_BOTTLE).name("Hire Worker", NamedTextColor.GREEN)
                 .lore(odds, NamedTextColor.GRAY).build(), e -> hire());
 
-        set(15, Icon.of(Material.SMITHING_TABLE).name("Fuse Station", NamedTextColor.LIGHT_PURPLE)
-                .lore(List.of("Open the fuse station:",
-                        "drop 2 same-rarity workers in",
-                        "the slots and see live odds",
-                        "before you roll."),
+        int used = gui.workerStore().bagCount(viewer.getUniqueId());
+        int cap = gui.workerService().bagCapacity(viewer.getUniqueId());
+        set(12, Icon.of(Material.CHEST_MINECART).name("Worker Bag", NamedTextColor.AQUA)
+                .lore(List.of(used + "/" + cap + " stored",
+                        "View, withdraw & deposit workers"), NamedTextColor.GRAY).build(),
+                e -> gui.openWorkerBag(viewer));
+
+        set(14, Icon.of(Material.SMITHING_TABLE).name("Fuse Station", NamedTextColor.LIGHT_PURPLE)
+                .lore(List.of("Pick 2 same-rarity workers",
+                        "and see live odds before you roll."),
                         NamedTextColor.GRAY).build(), e -> gui.openFuse(viewer));
 
         set(22, Icon.of(Material.NETHER_STAR).name("Main Menu", NamedTextColor.GREEN).build(),

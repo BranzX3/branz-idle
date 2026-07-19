@@ -155,17 +155,18 @@ public final class FuseMenu extends Menu {
     }
 
     private void doFuse(WorkerRecord a, WorkerRecord b) {
-        // Re-consume both by UUID at action time (inventory is the source of truth).
-        if (!WorkerPickerMenu.consumeFromInventory(viewer, gui, a.getWorkerUuid())
-                || !WorkerPickerMenu.consumeFromInventory(viewer, gui, b.getWorkerUuid())) {
-            viewer.sendMessage(Component.text("A selected worker is no longer in your inventory.",
-                    NamedTextColor.RED));
-            pickedA = null;
-            pickedB = null;
-            redraw();
-            return;
-        }
+        // Loose inventory items must be pulled out (fuse deletes the DB rows,
+        // which would otherwise leave dead item tokens behind); bag workers
+        // are removed by the service via delete().
+        boolean aItem = WorkerRecord.STATE_ITEM.equals(a.getState());
+        boolean bItem = WorkerRecord.STATE_ITEM.equals(b.getState());
         WorkerService.Result result = gui.workerService().fuse(viewer.getUniqueId(), List.of(a, b));
+        if (aItem) {
+            WorkerPickerMenu.consumeFromInventory(viewer, gui, a.getWorkerUuid());
+        }
+        if (bItem) {
+            WorkerPickerMenu.consumeFromInventory(viewer, gui, b.getWorkerUuid());
+        }
         if (result.success() && result.item() != null) {
             giveOrDrop(result.item());
         }
@@ -181,12 +182,18 @@ public final class FuseMenu extends Menu {
             return null;
         }
         WorkerRecord record = gui.workerStore().get(uuid);
-        // Must still be an item-form worker actually held by the player.
-        if (record == null || !WorkerRecord.STATE_ITEM.equals(record.getState())
-                || !hasInInventory(uuid)) {
+        if (record == null) {
             return null;
         }
-        return record;
+        // Available = in the player's bag, or a loose item still in inventory.
+        if (WorkerRecord.STATE_BAG.equals(record.getState())
+                && viewer.getUniqueId().equals(record.getOwnerUuid())) {
+            return record;
+        }
+        if (WorkerRecord.STATE_ITEM.equals(record.getState()) && hasInInventory(uuid)) {
+            return record;
+        }
+        return null;
     }
 
     private boolean hasInInventory(UUID uuid) {

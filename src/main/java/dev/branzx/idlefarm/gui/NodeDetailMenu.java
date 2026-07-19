@@ -217,19 +217,15 @@ public final class NodeDetailMenu extends Menu {
                         new NodeDetailMenu(viewer, gui, nodeId).open();
                         return;
                     }
-                    // Consume the item first; assign() never fails after its
-                    // own checks, but if it did we'd refund below.
-                    if (!WorkerPickerMenu.consumeFromInventory(viewer, gui, choice.workerUuid())) {
-                        viewer.sendMessage(Component.text("That worker is no longer in your inventory.",
-                                NamedTextColor.RED));
-                        new NodeDetailMenu(viewer, gui, nodeId).open();
-                        return;
-                    }
+                    // A bag worker is moved out by assign() itself; a loose
+                    // inventory item must be removed here on success.
+                    boolean wasItem = WorkerRecord.STATE_ITEM.equals(worker.getState());
                     var result = gui.workerService().assign(viewer.getUniqueId(), worker, node);
                     if (result.success()) {
+                        if (wasItem) {
+                            WorkerPickerMenu.consumeFromInventory(viewer, gui, choice.workerUuid());
+                        }
                         gui.npcManager().refreshNode(node, viewer.getWorld());
-                    } else {
-                        giveOrDrop(gui.workerService().createItem(worker)); // refund
                     }
                     viewer.sendMessage(Component.text(result.message(),
                             result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));

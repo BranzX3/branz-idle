@@ -146,6 +146,10 @@ public final class GuiManager implements Listener {
         new FuseMenu(player, this).open();
     }
 
+    public void openWorkerBag(Player player) {
+        new WorkerBagMenu(player, this, 0).open();
+    }
+
     public void openTerritoryMap(Player player) {
         new TerritoryMapMenu(player, this).open();
     }

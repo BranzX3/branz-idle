@@ -83,6 +83,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "trust" -> trust(sender, args);
             case "untrust" -> untrust(sender, args);
             case "hire" -> hire(sender);
+            case "bag" -> bag(sender);
             case "fuse" -> fuse(sender);
             case "assign" -> assign(sender);
             case "eject" -> eject(sender, args);
@@ -275,6 +276,15 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         if (result.success() && result.item() != null) {
             giveOrDrop(player, result.item());
         }
+        return true;
+    }
+
+    private boolean bag(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players have a worker bag.", NamedTextColor.RED));
+            return true;
+        }
+        guiManager.openWorkerBag(player);
         return true;
     }
 
@@ -686,7 +696,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             return List.of("balance", "top", "claim", "unclaim", "nodes", "trust", "untrust",
-                    "hire", "fuse", "assign", "eject", "skin", "collect", "explore", "warehouse",
+                    "hire", "bag", "fuse", "assign", "eject", "skin", "collect", "explore", "warehouse",
                     "map", "shop", "convert", "expedition", "visit", "admin");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("claim")) {

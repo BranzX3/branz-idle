@@ -4,6 +4,7 @@ import java.util.UUID;
 
 public final class WorkerRecord {
 
+    public static final String STATE_BAG = "BAG";
     public static final String STATE_ITEM = "ITEM";
     public static final String STATE_WORKING = "WORKING";
     public static final String STATE_IDLE = "IDLE";
@@ -11,6 +12,7 @@ public final class WorkerRecord {
     public static final String STATE_EXPLORING = "EXPLORING";
 
     private final UUID workerUuid;
+    private volatile UUID ownerUuid; // bag owner; null when a free-floating item
     private final Rarity rarity;
     private final Trait trait;
     private volatile WorkerStats stats;
@@ -18,12 +20,13 @@ public final class WorkerRecord {
     private volatile String skin;
     private volatile int level;
     private volatile long exp;
-    private volatile Long assignedNodeId; // null = item-form
+    private volatile Long assignedNodeId; // null = item-form or in bag
     private volatile String state;
 
-    public WorkerRecord(UUID workerUuid, Rarity rarity, Trait trait, WorkerStats stats,
+    public WorkerRecord(UUID workerUuid, UUID ownerUuid, Rarity rarity, Trait trait, WorkerStats stats,
                         String name, String skin, int level, long exp, Long assignedNodeId, String state) {
         this.workerUuid = workerUuid;
+        this.ownerUuid = ownerUuid;
         this.rarity = rarity;
         this.trait = trait;
         this.stats = stats;
@@ -33,6 +36,18 @@ public final class WorkerRecord {
         this.exp = exp;
         this.assignedNodeId = assignedNodeId;
         this.state = state;
+    }
+
+    public UUID getOwnerUuid() {
+        return ownerUuid;
+    }
+
+    public void setOwnerUuid(UUID ownerUuid) {
+        this.ownerUuid = ownerUuid;
+    }
+
+    public boolean isInBag() {
+        return STATE_BAG.equals(state);
     }
 
     public String getSkin() {

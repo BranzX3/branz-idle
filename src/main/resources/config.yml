@@ -51,6 +51,12 @@ claims:
 
 workers:
   hire-cost: 250.0
+  # Virtual worker bag: hired/fused workers land here; when full they
+  # overflow into the inventory as tradeable item contracts. Expandable.
+  bag:
+    base-capacity: 54
+    expand-step: 9
+    expand-cost: 5000.0
   # Percent chance per rarity; should sum to 100.
   gacha-odds:
     common: 55.0

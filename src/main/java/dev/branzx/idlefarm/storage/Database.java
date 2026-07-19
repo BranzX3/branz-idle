@@ -130,6 +130,7 @@ public final class Database {
             """
             CREATE TABLE IF NOT EXISTS idlefarm_workers (
                 worker_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                owner_uuid VARCHAR(36) NULL,
                 rarity VARCHAR(16) NOT NULL,
                 trait VARCHAR(24) NOT NULL,
                 stats VARCHAR(64) NOT NULL,
@@ -139,7 +140,8 @@ public final class Database {
                 exp BIGINT NOT NULL DEFAULT 0,
                 assigned_node_id BIGINT NULL,
                 state VARCHAR(16) NOT NULL DEFAULT 'ITEM',
-                KEY idx_assigned (assigned_node_id)
+                KEY idx_assigned (assigned_node_id),
+                KEY idx_owner_state (owner_uuid, state)
             )
             """,
             """
@@ -168,6 +170,12 @@ public final class Database {
                 rarity VARCHAR(16) NOT NULL,
                 fails INT NOT NULL DEFAULT 0,
                 PRIMARY KEY (owner_uuid, rarity)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_bag_cap (
+                owner_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                bonus INT NOT NULL DEFAULT 0
             )
             """,
             """
@@ -275,6 +283,7 @@ public final class Database {
             """
             CREATE TABLE IF NOT EXISTS idlefarm_workers (
                 worker_uuid TEXT NOT NULL PRIMARY KEY,
+                owner_uuid TEXT NULL,
                 rarity TEXT NOT NULL,
                 trait TEXT NOT NULL,
                 stats TEXT NOT NULL,
@@ -287,6 +296,7 @@ public final class Database {
             )
             """,
             "CREATE INDEX IF NOT EXISTS idx_workers_assigned ON idlefarm_workers (assigned_node_id)",
+            "CREATE INDEX IF NOT EXISTS idx_workers_owner_state ON idlefarm_workers (owner_uuid, state)",
             """
             CREATE TABLE IF NOT EXISTS idlefarm_warehouse (
                 owner_uuid TEXT NOT NULL PRIMARY KEY,
@@ -313,6 +323,12 @@ public final class Database {
                 rarity TEXT NOT NULL,
                 fails INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (owner_uuid, rarity)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_bag_cap (
+                owner_uuid TEXT NOT NULL PRIMARY KEY,
+                bonus INTEGER NOT NULL DEFAULT 0
             )
             """,
             """

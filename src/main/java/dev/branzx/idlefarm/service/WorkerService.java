@@ -116,9 +116,8 @@ public final class WorkerService {
 
         Rarity rarity = rollRarity();
         WorkerRecord record = mint(rarity);
-        ItemStack item = createItem(record);
         audit(owner, "HIRE", record.getName() + " " + rarity + " cost=" + cost);
-        return Result.ok("Hired " + record.getName() + " (" + rarity + ")!", item);
+        return deposit(owner, record, "Hired " + record.getName() + " (" + rarity + ")!");
     }
 
     private Rarity rollRarity() {
@@ -161,10 +160,91 @@ public final class WorkerService {
         String name = NAMES[random.nextInt(NAMES.length)];
         String skin = rollSkin();
 
-        WorkerRecord record = new WorkerRecord(UUID.randomUUID(), rarity, trait, stats,
+        WorkerRecord record = new WorkerRecord(UUID.randomUUID(), null, rarity, trait, stats,
                 name, skin, 1, 0, null, WorkerRecord.STATE_ITEM);
         workerStore.insert(record);
         return record;
+    }
+
+    // ---- virtual bag ----
+
+    public int bagCapacity(UUID owner) {
+        int base = plugin.getConfig().getInt("workers.bag.base-capacity", 54);
+        int bonus = bagBonus.getOrDefault(owner, 0);
+        return base + bonus;
+    }
+
+    private final java.util.Map<UUID, Integer> bagBonus = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public void loadBagBonusSync() {
+        try (var connection = database.getConnection();
+             var select = connection.prepareStatement(
+                     "SELECT owner_uuid, bonus FROM idlefarm_bag_cap");
+             var rs = select.executeQuery()) {
+            while (rs.next()) {
+                bagBonus.put(UUID.fromString(rs.getString("owner_uuid")), rs.getInt("bonus"));
+            }
+        } catch (java.sql.SQLException e) {
+            plugin.getLogger().severe("Failed to load bag caps: " + e.getMessage());
+        }
+    }
+
+    public String expandBag(UUID owner) {
+        PlayerData data = playerDataStore.getOnline(owner);
+        double cost = plugin.getConfig().getDouble("workers.bag.expand-cost", 5000);
+        int step = plugin.getConfig().getInt("workers.bag.expand-step", 9);
+        if (data == null || data.getBalance() < cost) {
+            return "Not enough money (need " + cost + ").";
+        }
+        data.addBalance(-cost);
+        int bonus = bagBonus.merge(owner, step, Integer::sum);
+        database.submitWrite(() -> {
+            try (var connection = database.getConnection();
+                 var upsert = connection.prepareStatement(
+                         "REPLACE INTO idlefarm_bag_cap (owner_uuid, bonus) VALUES (?, ?)")) {
+                upsert.setString(1, owner.toString());
+                upsert.setInt(2, bonus);
+                upsert.executeUpdate();
+            } catch (java.sql.SQLException e) {
+                plugin.getLogger().severe("Failed to persist bag cap: " + e.getMessage());
+            }
+        });
+        return null;
+    }
+
+    /**
+     * Sends a freshly minted worker to the owner's bag; if the bag is full it
+     * overflows into inventory as an item (dropped at feet if inventory full).
+     */
+    public Result deposit(UUID owner, WorkerRecord record, String successMessage) {
+        if (workerStore.bagCount(owner) < bagCapacity(owner)) {
+            workerStore.moveToBag(record, owner);
+            return Result.ok(successMessage + " → Worker Bag.");
+        }
+        // Bag full: hand out an item.
+        workerStore.moveToItem(record);
+        return Result.ok(successMessage + " (bag full → item)", createItem(record));
+    }
+
+    /** Deposit an existing item-form worker (e.g. from inventory) into the bag. */
+    public String depositItem(UUID owner, WorkerRecord record) {
+        if (!WorkerRecord.STATE_ITEM.equals(record.getState())) {
+            return "That worker is not an item.";
+        }
+        if (workerStore.bagCount(owner) >= bagCapacity(owner)) {
+            return "Your worker bag is full.";
+        }
+        workerStore.moveToBag(record, owner);
+        return null;
+    }
+
+    /** Withdraw a bag worker to item form; returns the item or null on error. */
+    public ItemStack withdraw(UUID owner, WorkerRecord record) {
+        if (!record.isInBag() || !owner.equals(record.getOwnerUuid())) {
+            return null;
+        }
+        workerStore.moveToItem(record);
+        return createItem(record);
     }
 
     private String rollSkin() {
@@ -315,7 +395,10 @@ public final class WorkerService {
             if (material.getRarity() != rarity) {
                 return Result.fail("Both workers must share the same rarity.");
             }
-            if (!material.isItemForm() || !WorkerRecord.STATE_ITEM.equals(material.getState())) {
+            // Bag or item form is fine; assigned workers must be ejected first.
+            boolean available = WorkerRecord.STATE_ITEM.equals(material.getState())
+                    || WorkerRecord.STATE_BAG.equals(material.getState());
+            if (!available) {
                 return Result.fail(material.getName() + " is assigned to a node — eject it first.");
             }
         }
@@ -335,8 +418,7 @@ public final class WorkerService {
             setPity(owner, rarity, 0);
             WorkerRecord fused = mint(next);
             audit(owner, "FUSE", rarity + " SUCCESS -> " + next + " chance=" + Math.round(chance * 100) + "%");
-            return Result.ok("SUCCESS! Fused into " + fused.getName() + " (" + next + ")!",
-                    createItem(fused));
+            return deposit(owner, fused, "SUCCESS! Fused into " + fused.getName() + " (" + next + ")!");
         } else {
             int fails = pityCount(owner, rarity) + 1;
             setPity(owner, rarity, fails);
@@ -427,14 +509,21 @@ public final class WorkerService {
         if (!node.getType().isProduction()) {
             return Result.fail("Workers can only be assigned to production nodes.");
         }
-        // Dupe guard: the DB/cache state is authoritative, not the item.
-        if (!worker.isItemForm() || !WorkerRecord.STATE_ITEM.equals(worker.getState())) {
-            return Result.fail("This worker contract is stale — the worker is already assigned.");
+        // Dupe guard: must be available (bag or item), not already assigned.
+        boolean available = WorkerRecord.STATE_ITEM.equals(worker.getState())
+                || WorkerRecord.STATE_BAG.equals(worker.getState());
+        if (!available) {
+            return Result.fail("That worker is already assigned.");
         }
         int slots = node.getTier();
         int used = workerStore.getAssigned(node.getId()).size();
         if (used >= slots) {
             return Result.fail("No free worker slots (tier " + node.getTier() + " = " + slots + " slots).");
+        }
+        boolean wasBag = worker.isInBag();
+        if (wasBag) {
+            // Remove from the bag index cleanly before assigning.
+            workerStore.moveToItem(worker);
         }
         worker.setAssignedNodeId(node.getId());
         worker.setState(WorkerRecord.STATE_WORKING);
@@ -442,8 +531,12 @@ public final class WorkerService {
         return Result.ok(worker.getName() + " assigned to " + node.getType() + " node.");
     }
 
+    /**
+     * Ejects an assigned worker back to the owner's bag (overflow to item if
+     * the bag is full). Returns an item only on overflow.
+     */
     public Result eject(UUID actor, WorkerRecord worker) {
-        if (worker.isItemForm()) {
+        if (worker.getAssignedNodeId() == null) {
             return Result.fail("This worker is not assigned.");
         }
         if (WorkerRecord.STATE_EXPLORING.equals(worker.getState())) {
@@ -453,6 +546,11 @@ public final class WorkerService {
         worker.setAssignedNodeId(null);
         worker.setState(WorkerRecord.STATE_ITEM);
         workerStore.reindexAssignment(worker, previous);
-        return Result.ok(worker.getName() + " ejected.", createItem(worker));
+        // Try to settle it into the actor's bag; overflow becomes an item.
+        if (workerStore.bagCount(actor) < bagCapacity(actor)) {
+            workerStore.moveToBag(worker, actor);
+            return Result.ok(worker.getName() + " ejected → Worker Bag.");
+        }
+        return Result.ok(worker.getName() + " ejected (bag full → item).", createItem(worker));
     }
 }

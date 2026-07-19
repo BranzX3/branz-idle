@@ -196,29 +196,30 @@ public final class ClaimService {
     }
 
     /**
-     * Ejected worker items are handed to the online owner (or dropped at the
-     * node) — unclaim/convert must never destroy player-owned workers.
+     * Ejected workers return to the owner's bag; on bag overflow they become
+     * items handed to the online owner (or dropped at the node). Unclaim/
+     * convert must never destroy player-owned workers.
      */
     private void ejectAllWorkers(NodeRecord record) {
         if (workerStore == null || workerService == null) {
             return;
         }
-        var owner = org.bukkit.Bukkit.getPlayer(record.getOwnerUuid());
+        UUID ownerId = record.getOwnerUuid();
+        var owner = org.bukkit.Bukkit.getPlayer(ownerId);
         for (var worker : workerStore.getAssigned(record.getId())) {
-            Long previous = worker.getAssignedNodeId();
-            worker.setAssignedNodeId(null);
-            worker.setState(dev.branzx.idlefarm.worker.WorkerRecord.STATE_ITEM);
-            workerStore.reindexAssignment(worker, previous);
-            var item = workerService.createItem(worker);
+            var result = workerService.eject(ownerId, worker);
+            if (result.item() == null) {
+                continue; // settled into the bag
+            }
             if (owner != null && owner.isOnline()) {
-                var leftover = owner.getInventory().addItem(item);
+                var leftover = owner.getInventory().addItem(result.item());
                 for (var overflow : leftover.values()) {
                     owner.getWorld().dropItemNaturally(owner.getLocation(), overflow);
                 }
             } else {
                 World world = org.bukkit.Bukkit.getWorld(record.getChunk().world());
                 if (world != null) {
-                    world.dropItemNaturally(schematicService.origin(record, world), item);
+                    world.dropItemNaturally(schematicService.origin(record, world), result.item());
                 }
             }
         }

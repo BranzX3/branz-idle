@@ -91,23 +91,35 @@ public final class WorkerPickerMenu extends Menu {
         }
     }
 
-    /** Item-form worker contracts currently in the player's inventory. */
+    /**
+     * Available worker contracts: the player's virtual bag first, then any
+     * item-form contracts loose in their inventory (both are assignable).
+     */
     private List<Choice> scan() {
         List<Choice> choices = new ArrayList<>();
+        java.util.Set<UUID> seen = new java.util.HashSet<>();
+        // Bag workers.
+        for (WorkerRecord record : gui.workerStore().getBag(viewer.getUniqueId())) {
+            if (accept(record) && seen.add(record.getWorkerUuid())) {
+                choices.add(new Choice(record.getWorkerUuid(), record));
+            }
+        }
+        // Loose item-form contracts in inventory.
         for (ItemStack item : viewer.getInventory().getContents()) {
             WorkerRecord record = gui.workerService().fromItem(item);
-            if (record == null || !WorkerRecord.STATE_ITEM.equals(record.getState())) {
-                continue;
+            if (record != null && WorkerRecord.STATE_ITEM.equals(record.getState())
+                    && accept(record) && seen.add(record.getWorkerUuid())) {
+                choices.add(new Choice(record.getWorkerUuid(), record));
             }
-            if (filter != null && record.getRarity() != filter) {
-                continue;
-            }
-            if (exclude != null && record.getWorkerUuid().equals(exclude)) {
-                continue;
-            }
-            choices.add(new Choice(record.getWorkerUuid(), record));
         }
         return choices;
+    }
+
+    private boolean accept(WorkerRecord record) {
+        if (filter != null && record.getRarity() != filter) {
+            return false;
+        }
+        return exclude == null || !record.getWorkerUuid().equals(exclude);
     }
 
     /** Removes one worker item by UUID from the player's inventory; true if found. */
