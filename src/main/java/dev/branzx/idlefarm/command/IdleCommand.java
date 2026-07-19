@@ -708,7 +708,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             return List.of("money", "item");
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("admin") && args[1].equalsIgnoreCase("schem")) {
-            return List.of("edit", "setspawn", "setwork", "setwander", "setanim", "save", "rebuild");
+            return List.of("capture", "edit", "setspawn", "setwork", "setwander", "setanim", "save", "rebuild");
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("admin") && args[1].equalsIgnoreCase("npc")) {
             return List.of("refresh", "list", "state");
