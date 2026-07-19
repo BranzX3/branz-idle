@@ -127,12 +127,13 @@ Every building is registered as a **Schematic Definition**: the block data
 plus admin-authored metadata. One definition serves every node that uses
 that building type/tier — set once, applies everywhere.
 
-**Anchor points (per definition):**
-- **Spawn anchors `1..N`** — one per worker slot, like a bed per worker.
-  Worker in slot 1 spawns/idles at anchor 1, slot 2 at anchor 2, etc.
-  N matches the building's max slots (tier).
-- **Work-site anchors** — points where WORKING NPCs walk to / stand at.
+**Anchor points (per definition, PER SLOT):**
+- Each worker slot `1..N` has its **own pair**: a **spawn anchor** (its
+  home/bed, where it idles/returns) and a **work anchor** (where it walks
+  to / departs for when WORKING). Slot 1 → spawn[1] ↔ work[1], slot 2 →
+  spawn[2] ↔ work[2], etc. N matches the building's max slots (tier).
 - **Wander zone** — radius or region for IDLE random walking.
+- Each tier is its own definition, so anchors are inherently per-tier.
 
 **Animation profiles (per definition, per state):**
 - Admin chooses which visuals each state uses for this building —
@@ -145,14 +146,56 @@ that building type/tier — set once, applies everywhere.
   count → filled by auto-layout fallback (line in front of the building).
 
 **Admin authoring flow (in-game):**
+- `/idle admin schem capture <id> [baseY]` — capture the chunk building
 - `/idle admin schem edit <definition>` — enter edit mode on a definition
-- `/idle admin schem setspawn <slot>` — set spawn anchor at admin's feet
-- `/idle admin schem setwork` — add a work-site anchor
+- `/idle admin schem setspawn <slot>` — set slot's spawn anchor at feet
+- `/idle admin schem setwork <slot>` — set slot's work anchor at feet
 - `/idle admin schem setanim <state> <profile>` — bind animation profile
 - `/idle admin schem save` — persist definition; nodes pick it up on
   next NPC refresh/chunk load
 - Definitions persist as YAML files under `plugins/IdleFarm/schematics/`
   (block data + anchors + profiles) — season content is a file drop.
+
+### 4.5 Player-placed worker positioning (Stage B)
+
+Buildings are real, breakable blocks, so players who remodel their
+housing can position workers themselves. There are **two assign paths**:
+
+1. **GUI assign** (easy): click an empty slot in the Node Detail menu,
+   pick a worker from the bag → assigned using the tier preset's default
+   spawn/work anchors. No positioning needed.
+2. **World placement** (DIY): the **worker contract head IS the marker** —
+   no separate marker items. Placing a worker head block inside your own
+   production node both assigns it and positions it.
+
+**World-placement flow:**
+- Worker contract heads cannot be placed as decoration anywhere else
+  (placement is otherwise blocked).
+- Placing one inside **your own production node with a free slot**:
+  - The block placement is consumed (no head block is left); the worker is
+    assigned to the free slot and its **spawn anchor = the exact placed
+    position**. The NPC appears there immediately.
+  - The player enters **set-work mode** for that worker:
+    - **Click a block within the node's own chunk** → that worker's work
+      anchor. Clicks **outside the node chunk are rejected**.
+    - Type **`auto`** in chat → use the tier preset's default work anchor.
+    - Type **`cancel`** in chat → abort the whole assign: the worker
+      returns to the bag/item, the slot is freed, spawn setting undone.
+- Placing where there is no free slot / not your node / not a production
+  node → placement is cancelled with a message.
+
+**Per-node anchor overrides** live in the DB (world coords, authoritative;
+the placed position is the source of truth, not any physical block).
+
+**Resolution order per slot** (NPC spawn & work):
+1. Player per-node override (from world placement), if set
+2. Tier preset default anchor (admin-authored)
+3. Auto-layout fallback (line in front of the building)
+
+**Lifecycle:**
+- **Eject** a worker → its custom spawn/work override is cleared with it.
+- **Tier upgrade** → the building changes, so **all custom overrides are
+  cleared** and the node reverts to the new tier preset's default anchors.
 
 ## 5. Production model
 
