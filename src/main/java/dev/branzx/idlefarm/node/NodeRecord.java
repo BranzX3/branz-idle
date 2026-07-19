@@ -18,6 +18,8 @@ public final class NodeRecord {
     private volatile long lastTickAt;
     private volatile int explorationLevel;
     private volatile long explorationExp;
+    /** Epoch millis a tier upgrade completes; 0 = not upgrading. */
+    private volatile long upgradeEndsAt;
     /** Buffered uncollected output: material name -> count. */
     private final Map<String, Integer> storage = new ConcurrentHashMap<>();
 
@@ -67,6 +69,18 @@ public final class NodeRecord {
 
     public void setExplorationExp(long explorationExp) {
         this.explorationExp = explorationExp;
+    }
+
+    public long getUpgradeEndsAt() {
+        return upgradeEndsAt;
+    }
+
+    public void setUpgradeEndsAt(long upgradeEndsAt) {
+        this.upgradeEndsAt = upgradeEndsAt;
+    }
+
+    public boolean isUpgrading() {
+        return upgradeEndsAt > 0;
     }
 
     public Map<String, Integer> getStorage() {

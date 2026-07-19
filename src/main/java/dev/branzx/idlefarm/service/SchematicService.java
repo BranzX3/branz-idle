@@ -68,31 +68,119 @@ public final class SchematicService {
         return world.getHighestBlockYAt((chunk.x() << 4) + 8, (chunk.z() << 4) + 8) + 1;
     }
 
-    /** Builds housing from the node's definition, capturing the snapshot first. */
+    /** Builds housing from the node's tier definition, capturing the snapshot first. */
     public void buildHousing(NodeRecord node, World world) {
-        SchematicDefinition definition = registry.forNodeType(node.getType());
+        SchematicDefinition definition = registry.forNodeType(node.getType(), node.getTier());
         Location origin = origin(node, world);
         List<String> snapshot = new ArrayList<>();
         paste(definition, origin, snapshot);
+        persistSnapshot(node.getId(), snapshot);
+    }
 
-        snapshots.put(node.getId(), snapshot);
+    private void persistSnapshot(long nodeId, List<String> snapshot) {
+        snapshots.put(nodeId, snapshot);
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement upsert = connection.prepareStatement(
                          "REPLACE INTO idlefarm_snapshots (node_id, blocks_json) VALUES (?, ?)")) {
-                upsert.setLong(1, node.getId());
+                upsert.setLong(1, nodeId);
                 upsert.setString(2, String.join("\n", snapshot));
                 upsert.executeUpdate();
             } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to persist snapshot for node " + node.getId() + ": " + e.getMessage());
+                plugin.getLogger().severe("Failed to persist snapshot for node " + nodeId + ": " + e.getMessage());
             }
         });
     }
 
     /** Re-paste a damaged building; the original terrain snapshot is untouched. */
     public void rebuild(NodeRecord node, World world) {
-        SchematicDefinition definition = registry.forNodeType(node.getType());
+        SchematicDefinition definition = registry.forNodeType(node.getType(), node.getTier());
         paste(definition, origin(node, world), null);
+    }
+
+    /**
+     * Rebuilds the housing for the node's CURRENT tier with a layered
+     * construction animation (bottom-up). Restores the previous building's
+     * terrain snapshot first, then rises the new building a few Y-layers per
+     * interval. Used on tier-upgrade completion.
+     */
+    public void animateUpgrade(NodeRecord node, World world, Runnable onDone) {
+        // Restore old terrain (removes the previous building) and re-snapshot
+        // fresh terrain for the new building footprint.
+        restoreTerrain(node, world);
+
+        SchematicDefinition definition = registry.forNodeType(node.getType(), node.getTier());
+        Location origin = origin(node, world);
+        List<PasteBlock> structural = new ArrayList<>();
+        List<PasteBlock> attachable = new ArrayList<>();
+        List<String> snapshot = new ArrayList<>();
+        collect(definition, origin, structural, attachable);
+
+        // Snapshot the terrain we're about to overwrite (for a future unclaim).
+        for (PasteBlock pb : structural) {
+            snapshot.add(pb.x() + "," + pb.y() + "," + pb.z() + "|"
+                    + world.getBlockAt(pb.x(), pb.y(), pb.z()).getBlockData().getAsString());
+        }
+        for (PasteBlock pb : attachable) {
+            snapshot.add(pb.x() + "," + pb.y() + "," + pb.z() + "|"
+                    + world.getBlockAt(pb.x(), pb.y(), pb.z()).getBlockData().getAsString());
+        }
+        persistSnapshot(node.getId(), snapshot);
+
+        // Group structural by absolute Y for a rising build; attachables last.
+        java.util.TreeMap<Integer, List<PasteBlock>> byLayer = new java.util.TreeMap<>();
+        for (PasteBlock pb : structural) {
+            byLayer.computeIfAbsent(pb.y(), k -> new ArrayList<>()).add(pb);
+        }
+        java.util.Iterator<Integer> layers = byLayer.keySet().iterator();
+        long ticksPerLayer = Math.max(1, plugin.getConfig().getLong("nodes.build-ticks-per-layer", 4));
+
+        new org.bukkit.scheduler.BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!layers.hasNext()) {
+                    applyPass(world, attachable, null); // doors/torches once solids exist
+                    cancel();
+                    if (onDone != null) {
+                        onDone.run();
+                    }
+                    return;
+                }
+                applyPass(world, byLayer.get(layers.next()), null);
+                world.playSound(origin, org.bukkit.Sound.BLOCK_STONE_PLACE, 0.8f, 1.0f);
+            }
+        }.runTaskTimer(plugin, 0L, ticksPerLayer);
+    }
+
+    /** Splits a definition into structural + attachable target blocks (no placement). */
+    private void collect(SchematicDefinition definition, Location origin,
+                         List<PasteBlock> structural, List<PasteBlock> attachable) {
+        World world = origin.getWorld();
+        for (String entry : definition.getBlocks()) {
+            int pipe = entry.indexOf('|');
+            if (pipe < 0) {
+                continue;
+            }
+            String[] rel = entry.substring(0, pipe).split(",");
+            int x = origin.getBlockX() + Integer.parseInt(rel[0]);
+            int y = origin.getBlockY() + Integer.parseInt(rel[1]);
+            int z = origin.getBlockZ() + Integer.parseInt(rel[2]);
+            if (y < world.getMinHeight() || y >= world.getMaxHeight()) {
+                continue;
+            }
+            BlockData data;
+            try {
+                data = plugin.getServer().createBlockData(entry.substring(pipe + 1));
+            } catch (IllegalArgumentException e) {
+                continue;
+            }
+            var material = data.getMaterial();
+            if (material.isAir() || material.isOccluding()) {
+                structural.add(new PasteBlock(x, y, z, data));
+            } else {
+                attachable.add(new PasteBlock(x, y, z, data));
+            }
+        }
     }
 
     private record PasteBlock(int x, int y, int z, BlockData data) {

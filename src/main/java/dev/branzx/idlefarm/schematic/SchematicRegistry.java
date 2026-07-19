@@ -54,11 +54,31 @@ public final class SchematicRegistry {
         return definitions.get(id);
     }
 
-    /** Definition for a node type: config mapping, else the default hut. */
+    /** Tier-1 / default definition for a node type. */
     public SchematicDefinition forNodeType(NodeType type) {
-        String id = plugin.getConfig().getString(
-                "schematics." + type.name().toLowerCase(Locale.ROOT), DEFAULT_ID);
-        SchematicDefinition definition = definitions.get(id);
+        return forNodeType(type, 1);
+    }
+
+    /**
+     * Definition for a node type at a given tier. Config key
+     * {@code schematics.<type>} may be a plain string (used for all tiers)
+     * or a section with {@code tier-N} keys (falling back to the highest
+     * defined tier at or below the request, then the default hut).
+     */
+    public SchematicDefinition forNodeType(NodeType type, int tier) {
+        String base = "schematics." + type.name().toLowerCase(Locale.ROOT);
+        String id = null;
+        if (plugin.getConfig().isConfigurationSection(base)) {
+            for (int t = tier; t >= 1 && id == null; t--) {
+                id = plugin.getConfig().getString(base + ".tier-" + t);
+            }
+            if (id == null) {
+                id = plugin.getConfig().getString(base + ".default");
+            }
+        } else {
+            id = plugin.getConfig().getString(base, DEFAULT_ID);
+        }
+        SchematicDefinition definition = id == null ? null : definitions.get(id);
         return definition != null ? definition : definitions.get(DEFAULT_ID);
     }
 

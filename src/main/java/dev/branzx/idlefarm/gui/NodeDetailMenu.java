@@ -129,10 +129,32 @@ public final class NodeDetailMenu extends Menu {
                 });
 
         // Tier upgrade.
-        double upgradeCost = tierCost(node.getTier());
-        set(31, Icon.of(Material.ANVIL).name("Upgrade Tier → T" + (node.getTier() + 1), NamedTextColor.AQUA)
-                .lore(List.of("Adds a worker slot", "Cost: " + formatAmount(upgradeCost)), NamedTextColor.GRAY).build(),
-                e -> upgradeTier(node, upgradeCost));
+        if (node.isUpgrading()) {
+            long remaining = node.getUpgradeEndsAt() - System.currentTimeMillis();
+            set(31, Icon.of(Material.SCAFFOLDING).name("Upgrading → T" + (node.getTier() + 1),
+                            NamedTextColor.YELLOW)
+                    .loreComponents(List.of(
+                            Ui.line("Building…", NamedTextColor.GRAY),
+                            Ui.line("Ready in " + Ui.time(Math.max(0, remaining)), NamedTextColor.AQUA),
+                            Ui.line("Production continues meanwhile", NamedTextColor.DARK_GRAY))).build());
+        } else if (node.getTier() >= gui.claimService().maxTier()) {
+            set(31, Icon.of(Material.ANVIL).name("Max Tier (" + node.getTier() + ")", NamedTextColor.GOLD)
+                    .lore("Fully upgraded", NamedTextColor.GRAY).build());
+        } else {
+            double upgradeCost = gui.claimService().tierCost(node.getTier());
+            set(31, Icon.of(Material.ANVIL).name("Upgrade → T" + (node.getTier() + 1), NamedTextColor.AQUA)
+                    .loreComponents(List.of(
+                            Ui.line("Adds a worker slot + bigger building", NamedTextColor.GRAY),
+                            Ui.line("Cost: " + Ui.num(upgradeCost), NamedTextColor.GOLD),
+                            Ui.line("Build time: " + Ui.time(gui.claimService()
+                                    .buildSeconds(node.getTier() + 1) * 1000L), NamedTextColor.AQUA))).build(),
+                    e -> {
+                        var result = gui.claimService().startUpgrade(viewer.getUniqueId(), node);
+                        viewer.sendMessage(Component.text(result.message(),
+                                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+                        redraw();
+                    });
+        }
 
         // Exploration.
         ExplorationService exploration = gui.explorationService();
@@ -263,27 +285,6 @@ public final class NodeDetailMenu extends Menu {
             viewer.sendMessage(Component.text("Expedition still in progress.", NamedTextColor.YELLOW));
         }
         redraw();
-    }
-
-    private void upgradeTier(NodeRecord node, double cost) {
-        PlayerData data = gui.dataStore().getOnline(viewer.getUniqueId());
-        if (data == null || data.getBalance() < cost) {
-            viewer.sendMessage(Component.text("Not enough money (need " + formatAmount(cost) + ").",
-                    NamedTextColor.RED));
-            return;
-        }
-        data.addBalance(-cost);
-        node.setTier(node.getTier() + 1);
-        gui.nodeStore().updateProduction(node);
-        gui.npcManager().refreshNode(node, viewer.getWorld());
-        viewer.sendMessage(Component.text("Upgraded to T" + node.getTier() + "!", NamedTextColor.GREEN));
-        redraw();
-    }
-
-    private double tierCost(int currentTier) {
-        double base = gui.plugin().getConfig().getDouble("nodes.tier-base-cost", 1000);
-        double factor = gui.plugin().getConfig().getDouble("nodes.tier-cost-factor", 1.8);
-        return base * Math.pow(factor, currentTier - 1);
     }
 
     private int collectToWarehouse(NodeRecord node) {

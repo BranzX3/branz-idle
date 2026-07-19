@@ -43,7 +43,8 @@ public final class NodeStore {
         try (Connection connection = database.getConnection()) {
             try (PreparedStatement select = connection.prepareStatement(
                     "SELECT id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state, origin_y, "
-                            + "last_tick_at, storage_json, exploration_level, exploration_exp FROM idlefarm_nodes");
+                            + "last_tick_at, storage_json, exploration_level, exploration_exp, "
+                            + "upgrade_ends_at FROM idlefarm_nodes");
                  ResultSet rs = select.executeQuery()) {
                 while (rs.next()) {
                     NodeRecord record = new NodeRecord(
@@ -60,6 +61,7 @@ public final class NodeStore {
                             rs.getString("storage_json"));
                     record.setExplorationLevel(rs.getInt("exploration_level"));
                     record.setExplorationExp(rs.getLong("exploration_exp"));
+                    record.setUpgradeEndsAt(rs.getLong("upgrade_ends_at"));
                     index(record);
                     nextNodeId.accumulateAndGet(record.getId() + 1, Math::max);
                 }
@@ -127,7 +129,8 @@ public final class NodeStore {
             try (Connection connection = database.getConnection();
                  PreparedStatement update = connection.prepareStatement(
                          "UPDATE idlefarm_nodes SET state = ?, storage_json = ?, last_tick_at = ?, tier = ?, "
-                                 + "exploration_level = ?, exploration_exp = ?, node_type = ? WHERE id = ?")) {
+                                 + "exploration_level = ?, exploration_exp = ?, node_type = ?, "
+                                 + "upgrade_ends_at = ? WHERE id = ?")) {
                 update.setString(1, state);
                 update.setString(2, storageJson);
                 update.setTimestamp(3, new java.sql.Timestamp(lastTick));
@@ -135,7 +138,8 @@ public final class NodeStore {
                 update.setInt(5, record.getExplorationLevel());
                 update.setLong(6, record.getExplorationExp());
                 update.setString(7, nodeType);
-                update.setLong(8, record.getId());
+                update.setLong(8, record.getUpgradeEndsAt());
+                update.setLong(9, record.getId());
                 update.executeUpdate();
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to update node " + record.getId() + ": " + e.getMessage());

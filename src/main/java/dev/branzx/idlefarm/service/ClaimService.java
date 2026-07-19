@@ -241,6 +241,75 @@ public final class ClaimService {
         }
     }
 
+    // ---- timed tier upgrades ----
+
+    public double tierCost(int currentTier) {
+        double base = plugin.getConfig().getDouble("nodes.tier-base-cost", 1000);
+        double factor = plugin.getConfig().getDouble("nodes.tier-cost-factor", 1.8);
+        return base * Math.pow(factor, currentTier - 1);
+    }
+
+    public int maxTier() {
+        return plugin.getConfig().getInt("nodes.max-tier", 5);
+    }
+
+    public long buildSeconds(int targetTier) {
+        long base = plugin.getConfig().getLong("nodes.build-seconds-base", 60);
+        return base * targetTier;
+    }
+
+    /** Begins a timed tier upgrade; production keeps running at the old tier. */
+    public Result startUpgrade(UUID owner, NodeRecord node) {
+        if (!node.getType().isProduction()) {
+            return Result.fail("Only production nodes can be upgraded.");
+        }
+        if (node.isUpgrading()) {
+            return Result.fail("This node is already upgrading.");
+        }
+        if (node.getTier() >= maxTier()) {
+            return Result.fail("Already at max tier (" + maxTier() + ").");
+        }
+        double cost = tierCost(node.getTier());
+        PlayerData data = playerDataStore.getOnline(owner);
+        if (data == null || data.getBalance() < cost) {
+            return Result.fail("Not enough money (need " + cost + ").");
+        }
+        data.addBalance(-cost);
+        node.setUpgradeEndsAt(System.currentTimeMillis() + buildSeconds(node.getTier() + 1) * 1000L);
+        nodeStore.updateProduction(node);
+        audit(owner, "UPGRADE_START", "node#" + node.getId() + " -> T" + (node.getTier() + 1)
+                + " cost=" + cost);
+        return Result.ok("Upgrade to T" + (node.getTier() + 1) + " started ("
+                + buildSeconds(node.getTier() + 1) + "s).");
+    }
+
+    /** Completes any due upgrades. Call on a repeating main-thread tick. */
+    public void tickUpgrades() {
+        long now = System.currentTimeMillis();
+        for (NodeRecord node : nodeStore.getAll()) {
+            if (!node.isUpgrading() || now < node.getUpgradeEndsAt()) {
+                continue;
+            }
+            World world = org.bukkit.Bukkit.getWorld(node.getChunk().world());
+            // Defer completion until the chunk is loaded, so the build
+            // animation always plays and the building never desyncs from tier.
+            if (world == null || !world.isChunkLoaded(node.getChunk().x(), node.getChunk().z())) {
+                continue;
+            }
+            node.setUpgradeEndsAt(0);
+            node.setTier(node.getTier() + 1);
+            nodeStore.updateProduction(node);
+            schematicService.animateUpgrade(node, world,
+                    () -> npcManager.refreshNode(node, world));
+            var owner = org.bukkit.Bukkit.getPlayer(node.getOwnerUuid());
+            if (owner != null) {
+                owner.sendMessage(net.kyori.adventure.text.Component.text(
+                        "[IdleFarm] Your " + node.getType() + " node reached Tier " + node.getTier() + "!",
+                        net.kyori.adventure.text.format.NamedTextColor.GREEN));
+            }
+        }
+    }
+
     /** Convert a production node's type in place (spec §8b). */
     public Result convert(UUID owner, World world, ChunkKey chunk, NodeType newType) {
         NodeRecord record = nodeStore.getByChunk(chunk);

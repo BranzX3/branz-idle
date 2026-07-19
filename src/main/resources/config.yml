@@ -106,7 +106,14 @@ workers:
     - TommyInnit
 
 # Map node types to schematic definition ids (files in schematics/).
-# Unlisted types use default_hut.
+# Each type may be a single id (used for all tiers) OR a section with
+# tier-N keys for per-tier buildings (falls back to the highest defined
+# tier at or below the node's tier, then default_hut). Capture buildings
+# with /idle admin schem capture, then reference their ids here.
+# Example per-tier:
+#   mining:
+#     tier-1: mining_t1
+#     tier-3: mining_t3   # tier 2 keeps tier-1 until you define tier-2
 schematics:
   mining: default_hut
   farming: default_hut
@@ -284,6 +291,13 @@ nodes:
   # Tier upgrade cost = base × factor^(currentTier-1). Exponential per spec.
   tier-base-cost: 1000.0
   tier-cost-factor: 1.8
+  # Highest tier a node can reach.
+  max-tier: 5
+  # Upgrade build time (seconds) = base × target tier. Production continues
+  # at the old tier while building.
+  build-seconds-base: 60
+  # Construction animation speed: ticks between each rising Y-layer (0 = instant).
+  build-ticks-per-layer: 4
 
 exploration:
   # How often (seconds) event lifecycle is evaluated (spawn/expiry/completion).

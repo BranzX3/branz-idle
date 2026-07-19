@@ -130,6 +130,9 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.productionEngine.setDropTableService(dropTableService);
         // First run settles any downtime accrued while the server was off.
         this.productionEngine.runTaskTimer(this, 100L, productionTicks);
+
+        // Complete due tier upgrades once per second (needs the chunk loaded).
+        getServer().getScheduler().runTaskTimer(this, () -> claimService.tickUpgrades(), 40L, 20L);
     }
 
     @Override
