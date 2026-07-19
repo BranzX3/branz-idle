@@ -93,8 +93,11 @@ public final class SchematicRegistry {
     public void save(SchematicDefinition definition) {
         YamlConfiguration yaml = new YamlConfiguration();
         yaml.set("blocks", definition.getBlocks());
-        yaml.set("spawn-anchors", definition.getSpawnAnchors().stream().map(RelPos::serialize).toList());
-        yaml.set("work-anchors", definition.getWorkAnchors().stream().map(RelPos::serialize).toList());
+        // Null-safe: unset per-slot anchors serialize as "" and restore as null.
+        yaml.set("spawn-anchors", definition.getSpawnAnchors().stream()
+                .map(p -> p == null ? "" : p.serialize()).toList());
+        yaml.set("work-anchors", definition.getWorkAnchors().stream()
+                .map(p -> p == null ? "" : p.serialize()).toList());
         yaml.set("wander-radius", definition.getWanderRadius());
         for (Map.Entry<String, String> entry : definition.getProfiles().entrySet()) {
             yaml.set("profiles." + entry.getKey().toLowerCase(Locale.ROOT), entry.getValue());
@@ -112,10 +115,10 @@ public final class SchematicRegistry {
         SchematicDefinition definition = new SchematicDefinition(id);
         definition.getBlocks().addAll(yaml.getStringList("blocks"));
         for (String pos : yaml.getStringList("spawn-anchors")) {
-            definition.getSpawnAnchors().add(RelPos.deserialize(pos));
+            definition.getSpawnAnchors().add(pos.isBlank() ? null : RelPos.deserialize(pos));
         }
         for (String pos : yaml.getStringList("work-anchors")) {
-            definition.getWorkAnchors().add(RelPos.deserialize(pos));
+            definition.getWorkAnchors().add(pos.isBlank() ? null : RelPos.deserialize(pos));
         }
         definition.setWanderRadius(yaml.getInt("wander-radius", 5));
         var profiles = yaml.getConfigurationSection("profiles");

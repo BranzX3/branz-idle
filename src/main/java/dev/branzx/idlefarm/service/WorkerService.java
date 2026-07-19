@@ -68,9 +68,14 @@ public final class WorkerService {
     }
 
     private AuditService auditService;
+    private NodeAnchorStore anchorStore;
 
     public void setAuditService(AuditService auditService) {
         this.auditService = auditService;
+    }
+
+    public void setAnchorStore(NodeAnchorStore anchorStore) {
+        this.anchorStore = anchorStore;
     }
 
     private void audit(UUID actor, String action, String detail) {
@@ -564,6 +569,10 @@ public final class WorkerService {
         worker.setAssignedNodeId(null);
         worker.setState(WorkerRecord.STATE_ITEM);
         workerStore.reindexAssignment(worker, previous);
+        // Custom spawn/work override is cleared with the worker (spec §4.5).
+        if (anchorStore != null) {
+            anchorStore.clearWorker(worker.getWorkerUuid());
+        }
         // Try to settle it into the actor's bag; overflow becomes an item.
         if (workerStore.bagCount(actor) < bagCapacity(actor)) {
             workerStore.moveToBag(worker, actor);

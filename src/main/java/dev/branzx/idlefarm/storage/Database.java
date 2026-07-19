@@ -180,6 +180,15 @@ public final class Database {
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS idlefarm_worker_anchors (
+                worker_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                node_id BIGINT NOT NULL,
+                spawn_x INT NOT NULL, spawn_y INT NOT NULL, spawn_z INT NOT NULL,
+                work_x INT NOT NULL, work_y INT NOT NULL, work_z INT NOT NULL,
+                KEY idx_wa_node (node_id)
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS idlefarm_expedition (
                 week VARCHAR(10) NOT NULL,
                 owner_uuid VARCHAR(36) NOT NULL,
@@ -333,6 +342,15 @@ public final class Database {
                 bonus INTEGER NOT NULL DEFAULT 0
             )
             """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_worker_anchors (
+                worker_uuid TEXT NOT NULL PRIMARY KEY,
+                node_id INTEGER NOT NULL,
+                spawn_x INTEGER NOT NULL, spawn_y INTEGER NOT NULL, spawn_z INTEGER NOT NULL,
+                work_x INTEGER NOT NULL, work_y INTEGER NOT NULL, work_z INTEGER NOT NULL
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_wa_node ON idlefarm_worker_anchors (node_id)",
             """
             CREATE TABLE IF NOT EXISTS idlefarm_expedition (
                 week TEXT NOT NULL,

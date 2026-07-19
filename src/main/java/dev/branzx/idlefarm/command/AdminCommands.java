@@ -428,19 +428,16 @@ public final class AdminCommands {
             case "setspawn" -> {
                 int slot = args.length >= 4 ? Integer.parseInt(args[3]) : 1;
                 RelPos rel = relFeet(player, session);
-                List<RelPos> anchors = definition.getSpawnAnchors();
-                while (anchors.size() < slot) {
-                    anchors.add(rel);
-                }
-                anchors.set(slot - 1, rel);
+                SchematicDefinition.setSlot(definition.getSpawnAnchors(), slot - 1, rel);
                 sender.sendMessage(Component.text("Spawn anchor " + slot + " = " + rel.serialize(),
                         NamedTextColor.GREEN));
             }
             case "setwork" -> {
+                int slot = args.length >= 4 ? Integer.parseInt(args[3]) : 1;
                 RelPos rel = relFeet(player, session);
-                definition.getWorkAnchors().add(rel);
-                sender.sendMessage(Component.text("Work anchor #" + definition.getWorkAnchors().size()
-                        + " = " + rel.serialize(), NamedTextColor.GREEN));
+                SchematicDefinition.setSlot(definition.getWorkAnchors(), slot - 1, rel);
+                sender.sendMessage(Component.text("Work anchor " + slot + " = " + rel.serialize(),
+                        NamedTextColor.GREEN));
             }
             case "setwander" -> {
                 int radius = args.length >= 4 ? Integer.parseInt(args[3]) : 5;

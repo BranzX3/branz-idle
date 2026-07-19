@@ -66,6 +66,12 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.workerService = new WorkerService(this, workerStore, dataStore, database);
         this.workerService.loadPitySync();
         this.workerService.loadBagBonusSync();
+
+        dev.branzx.idlefarm.service.NodeAnchorStore anchorStore =
+                new dev.branzx.idlefarm.service.NodeAnchorStore(this, database);
+        anchorStore.loadAllSync();
+        this.npcManager.setAnchorStore(anchorStore);
+        this.workerService.setAnchorStore(anchorStore);
         this.claimService = new ClaimService(this, nodeStore, dataStore, schematicService, npcManager);
         this.trustService = new TrustService(nodeStore);
         this.warehouseService = new WarehouseService(this, database);
@@ -75,6 +81,10 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.explorationService.loadAllSync();
         this.explorationService.start();
         this.claimService.setLateServices(explorationService, workerService, workerStore);
+        this.claimService.setAnchorStore(anchorStore);
+        getServer().getPluginManager().registerEvents(
+                new dev.branzx.idlefarm.listener.WorkerPlacementListener(this, nodeStore, workerStore,
+                        workerService, anchorStore, npcManager, schematicService), this);
 
         BoosterService boosterService = new BoosterService(this, database, dataStore);
         boosterService.loadAllSync();

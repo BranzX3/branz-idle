@@ -82,10 +82,41 @@ public final class WorkerNpcManager implements Listener {
     private final NodeStore nodeStore;
     private final SchematicService schematicService;
     private WorkerStore workerStore;
+    private NodeAnchorStore anchorStore;
     private NPCRegistry registry;
     private final Map<Long, List<SpawnedNpc>> npcsByNode = new ConcurrentHashMap<>();
     private final Map<Long, String> overrideState = new ConcurrentHashMap<>();
     private BukkitRunnable animationTask;
+
+    public void setAnchorStore(NodeAnchorStore anchorStore) {
+        this.anchorStore = anchorStore;
+    }
+
+    /** Spawn location: worker's own override → tier preset → auto-layout. */
+    private org.bukkit.Location spawnLocation(NodeRecord node, World world,
+                                              SchematicDefinition definition,
+                                              WorkerRecord worker, int slot) {
+        if (anchorStore != null) {
+            var override = anchorStore.get(worker.getWorkerUuid());
+            if (override != null) {
+                return override.spawn(world);
+            }
+        }
+        return schematicService.resolve(node, world, definition.spawnAnchorOrFallback(slot));
+    }
+
+    /** Work location: worker's own override → tier preset → spawn fallback. */
+    private org.bukkit.Location workLocation(NodeRecord node, World world,
+                                             SchematicDefinition definition,
+                                             WorkerRecord worker, int slot) {
+        if (anchorStore != null) {
+            var override = anchorStore.get(worker.getWorkerUuid());
+            if (override != null) {
+                return override.work(world);
+            }
+        }
+        return schematicService.resolve(node, world, definition.workAnchorOrFallback(slot));
+    }
 
     public WorkerNpcManager(IdleFarmPlugin plugin, NodeStore nodeStore, SchematicService schematicService) {
         this.plugin = plugin;
@@ -146,7 +177,8 @@ public final class WorkerNpcManager implements Listener {
             return;
         }
         despawnNode(node.getId());
-        SchematicDefinition definition = schematicService.getRegistry().forNodeType(node.getType());
+        SchematicDefinition definition = schematicService.getRegistry()
+                .forNodeType(node.getType(), node.getTier());
         List<WorkerRecord> assigned = workerStore == null ? List.of() : workerStore.getAssigned(node.getId());
         List<SpawnedNpc> npcs = new ArrayList<>();
         int slot = 0;
@@ -160,8 +192,7 @@ public final class WorkerNpcManager implements Listener {
             npc.setProtected(true);
             npc.data().set(NPC.Metadata.NAMEPLATE_VISIBLE, true);
             npc.getOrAddTrait(SkinTrait.class).setSkinName(worker.getSkin());
-            RelPos anchor = definition.spawnAnchorOrFallback(slot);
-            npc.spawn(schematicService.resolve(node, world, anchor));
+            npc.spawn(spawnLocation(node, world, definition, worker, slot));
             npcs.add(new SpawnedNpc(npc, worker, slot));
             slot++;
         }
@@ -261,7 +292,8 @@ public final class WorkerNpcManager implements Listener {
     }
 
     private List<String> currentBehaviors(NodeRecord node, String state) {
-        SchematicDefinition definition = schematicService.getRegistry().forNodeType(node.getType());
+        SchematicDefinition definition = schematicService.getRegistry()
+                .forNodeType(node.getType(), node.getTier());
         String profileName = definition.getProfiles().getOrDefault(state,
                 "default_" + state.toLowerCase(Locale.ROOT));
         List<String> behaviors = plugin.getConfig().getStringList("npc.animation-profiles." + profileName);
@@ -270,7 +302,8 @@ public final class WorkerNpcManager implements Listener {
 
     private void applyBehaviors(NodeRecord node, SpawnedNpc spawned) {
         String state = effectiveState(node.getId(), spawned.worker());
-        SchematicDefinition definition = schematicService.getRegistry().forNodeType(node.getType());
+        SchematicDefinition definition = schematicService.getRegistry()
+                .forNodeType(node.getType(), node.getTier());
         List<String> behaviors = currentBehaviors(node, state);
 
         NPC npc = spawned.npc();
@@ -316,22 +349,17 @@ public final class WorkerNpcManager implements Listener {
         if (npc.getNavigator().isNavigating() || ThreadLocalRandom.current().nextDouble() > 0.5) {
             return;
         }
-        List<RelPos> sites = definition.getWorkAnchors();
-        RelPos target;
-        // Alternate between a work anchor and the worker's own spawn anchor.
-        if (!sites.isEmpty() && ThreadLocalRandom.current().nextBoolean()) {
-            target = sites.get(ThreadLocalRandom.current().nextInt(sites.size()));
-        } else {
-            target = definition.spawnAnchorOrFallback(spawned.slotIndex());
-        }
-        npc.getNavigator().setTarget(schematicService.resolve(node, world, target));
+        // Alternate between this slot's own work point and its spawn point.
+        Location target = ThreadLocalRandom.current().nextBoolean()
+                ? workLocation(node, world, definition, spawned.worker(), spawned.slotIndex())
+                : spawnLocation(node, world, definition, spawned.worker(), spawned.slotIndex());
+        npc.getNavigator().setTarget(target);
     }
 
     /** Walk back to this worker's own spawn anchor and stay there. */
     private void returnSpawn(NodeRecord node, SchematicDefinition definition, SpawnedNpc spawned, World world) {
         NPC npc = spawned.npc();
-        Location home = schematicService.resolve(node, world,
-                definition.spawnAnchorOrFallback(spawned.slotIndex()));
+        Location home = spawnLocation(node, world, definition, spawned.worker(), spawned.slotIndex());
         if (npc.getEntity().getLocation().distanceSquared(home) > 2.25) {
             if (!npc.getNavigator().isNavigating()) {
                 npc.getNavigator().setTarget(home);
@@ -342,17 +370,13 @@ public final class WorkerNpcManager implements Listener {
     }
 
     /**
-     * WORKING visual: walk off toward a work anchor (or the wander-radius
-     * edge) and despawn on arrival — "gone out to work". The NPC reappears
-     * at that point and walks home when the state changes.
+     * WORKING visual: walk off toward this slot's work anchor and despawn on
+     * arrival — "gone out to work". The NPC reappears at that point and
+     * walks home when the state changes.
      */
     private void depart(NodeRecord node, SchematicDefinition definition, SpawnedNpc spawned, World world) {
         NPC npc = spawned.npc();
-        List<RelPos> sites = definition.getWorkAnchors();
-        RelPos targetRel = !sites.isEmpty()
-                ? sites.get(spawned.slotIndex() % sites.size())
-                : new RelPos(definition.getWanderRadius() + 2, 0, definition.getWanderRadius() + 2);
-        Location target = schematicService.resolve(node, world, targetRel);
+        Location target = workLocation(node, world, definition, spawned.worker(), spawned.slotIndex());
         if (npc.getEntity().getLocation().distanceSquared(target) <= 4.0) {
             spawned.departed = true;
             spawned.departLocation = npc.getEntity().getLocation().clone();

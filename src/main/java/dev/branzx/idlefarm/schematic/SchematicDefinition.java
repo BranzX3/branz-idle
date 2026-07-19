@@ -64,4 +64,20 @@ public final class SchematicDefinition {
         }
         return new RelPos((slotIndex % 3) - 1, 0, 3 + (slotIndex / 3));
     }
+
+    /** Work anchor for a slot; falls back to the spawn anchor if unset. */
+    public RelPos workAnchorOrFallback(int slotIndex) {
+        if (slotIndex < workAnchors.size() && workAnchors.get(slotIndex) != null) {
+            return workAnchors.get(slotIndex);
+        }
+        return spawnAnchorOrFallback(slotIndex);
+    }
+
+    /** Set a per-slot anchor in a list, growing with nulls as needed. */
+    public static void setSlot(List<RelPos> anchors, int slotIndex, RelPos pos) {
+        while (anchors.size() <= slotIndex) {
+            anchors.add(null);
+        }
+        anchors.set(slotIndex, pos);
+    }
 }

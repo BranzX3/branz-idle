@@ -59,6 +59,12 @@ public final class ClaimService {
         this.auditService = auditService;
     }
 
+    private NodeAnchorStore anchorStore;
+
+    public void setAnchorStore(NodeAnchorStore anchorStore) {
+        this.anchorStore = anchorStore;
+    }
+
     private void audit(UUID actor, String action, String detail) {
         if (auditService != null) {
             auditService.log(actor, action, detail);
@@ -198,6 +204,9 @@ public final class ClaimService {
                 explorationService.cancel(record); // in-progress event: no loot
             }
             ejectAllWorkers(record); // workers return to roster, never destroyed
+            if (anchorStore != null) {
+                anchorStore.clearNode(record.getId());
+            }
             npcManager.despawnNode(record.getId());
             schematicService.restoreTerrain(record, world);
         }
@@ -299,6 +308,10 @@ public final class ClaimService {
             node.setUpgradeEndsAt(0);
             node.setTier(node.getTier() + 1);
             nodeStore.updateProduction(node);
+            // Building layout changed → drop custom anchor overrides (§4.5).
+            if (anchorStore != null) {
+                anchorStore.clearNode(node.getId());
+            }
             schematicService.animateUpgrade(node, world,
                     () -> npcManager.refreshNode(node, world));
             var owner = org.bukkit.Bukkit.getPlayer(node.getOwnerUuid());
