@@ -45,6 +45,14 @@ public final class Icon {
         return lore(List.of(line), color);
     }
 
+    /** Pre-styled Component lore lines (from {@link Ui} helpers). */
+    public Icon loreComponents(List<Component> lines) {
+        ItemMeta meta = item.getItemMeta();
+        meta.lore(lines);
+        item.setItemMeta(meta);
+        return this;
+    }
+
     public Icon amount(int amount) {
         item.setAmount(Math.max(1, Math.min(64, amount)));
         return this;

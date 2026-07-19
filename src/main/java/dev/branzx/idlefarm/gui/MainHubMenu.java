@@ -49,26 +49,32 @@ public final class MainHubMenu extends Menu {
         }).count();
 
         // Row 1: core sections.
-        List<String> nodeLore = new ArrayList<>();
-        nodeLore.add(production + " production nodes");
+        List<net.kyori.adventure.text.Component> nodeLore = new ArrayList<>();
+        nodeLore.add(Ui.line(production + "/" + gui.claimService().nodeCap(viewer.getUniqueId())
+                + " production nodes", NamedTextColor.GRAY));
         if (fullBuffers > 0) {
-            nodeLore.add("⚠ " + fullBuffers + " buffer(s) FULL");
+            nodeLore.add(Ui.line("⚠ " + fullBuffers + " buffer(s) FULL", NamedTextColor.RED));
         }
         if (eventsReady > 0) {
-            nodeLore.add("★ " + eventsReady + " event(s) waiting");
+            nodeLore.add(Ui.line("★ " + eventsReady + " event(s) waiting", NamedTextColor.GOLD));
+        }
+        if (fullBuffers == 0 && eventsReady == 0) {
+            nodeLore.add(Ui.line("● All running smoothly", NamedTextColor.GREEN));
         }
         set(10, Icon.of(Material.GRASS_BLOCK).name("Nodes", NamedTextColor.GREEN)
-                .lore(nodeLore, fullBuffers + eventsReady > 0 ? NamedTextColor.YELLOW : NamedTextColor.GRAY)
+                .loreComponents(nodeLore)
                 .build(), e -> gui.openNodes(viewer));
 
         set(11, Icon.of(Material.FILLED_MAP).name("Territory Map", NamedTextColor.GREEN)
                 .lore("Claim & manage from a chunk map", NamedTextColor.GRAY).build(),
                 e -> gui.openTerritoryMap(viewer));
 
+        int stored = gui.warehouseService().total(viewer.getUniqueId());
+        int capacity = gui.warehouseService().getCapacity(viewer.getUniqueId());
         set(13, Icon.of(Material.CHEST).name("Warehouse", NamedTextColor.GOLD)
-                .lore(gui.warehouseService().total(viewer.getUniqueId()) + "/"
-                        + gui.warehouseService().getCapacity(viewer.getUniqueId()) + " stored",
-                        NamedTextColor.GRAY).build(),
+                .loreComponents(List.of(Ui.bar("", capacity == 0 ? 0 : stored / (double) capacity,
+                        stored >= capacity ? NamedTextColor.RED : NamedTextColor.GOLD,
+                        Ui.num(stored) + "/" + Ui.num(capacity)))).build(),
                 e -> gui.openWarehouse(viewer, viewer.getUniqueId()));
 
         set(15, Icon.of(Material.VILLAGER_SPAWN_EGG).name("Workers", NamedTextColor.AQUA)
@@ -90,12 +96,23 @@ public final class MainHubMenu extends Menu {
         double balance = data == null ? 0 : data.getBalance();
         int streak = gui.streakService() == null ? 0
                 : gui.streakService().currentStreak(viewer.getUniqueId());
+        List<net.kyori.adventure.text.Component> profileLore = new ArrayList<>();
+        profileLore.add(Ui.line("⛁ " + Ui.num(balance) + " " + currency, NamedTextColor.GOLD));
+        profileLore.add(Ui.line("⌚ " + Ui.time((data == null ? 0 : data.getTotalOnlineMinutes()) * 60_000L)
+                + " online", NamedTextColor.AQUA));
+        profileLore.add(Ui.line("🔥 Streak " + streak + " day(s)", NamedTextColor.RED));
+        if (gui.boosterService() != null) {
+            long moneyMs = gui.boosterService().remainingMillis(viewer.getUniqueId(), "money");
+            long prodMs = gui.boosterService().remainingMillis(viewer.getUniqueId(), "production");
+            if (moneyMs > 0) {
+                profileLore.add(Ui.line("▲ Money boost " + Ui.time(moneyMs), NamedTextColor.LIGHT_PURPLE));
+            }
+            if (prodMs > 0) {
+                profileLore.add(Ui.line("▲ Production boost " + Ui.time(prodMs), NamedTextColor.LIGHT_PURPLE));
+            }
+        }
         set(23, Icon.of(Material.SUNFLOWER).name("Profile", NamedTextColor.YELLOW)
-                .lore(List.of(formatAmount(balance) + " " + currency,
-                        (data == null ? 0 : data.getTotalOnlineMinutes()) + " min online",
-                        "Login streak: " + streak + " day(s)",
-                        "Nodes: " + production + "/" + gui.claimService().nodeCap(viewer.getUniqueId())),
-                        NamedTextColor.GRAY).build());
+                .loreComponents(profileLore).build());
 
         set(31, Icon.of(Material.BARRIER).name("Close", NamedTextColor.RED).build(),
                 e -> viewer.closeInventory());

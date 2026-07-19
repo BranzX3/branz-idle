@@ -54,13 +54,16 @@ public final class ShopMenu extends Menu {
     private void booster(int slot, String type, Material material, String label) {
         BoosterService boosters = gui.boosterService();
         long remaining = boosters.remainingMillis(viewer.getUniqueId(), type);
-        String status = remaining > 0
-                ? "ACTIVE: " + (remaining / 60_000) + "m left (buy extends)"
-                : "Inactive";
+        var status = remaining > 0
+                ? Ui.line("● ACTIVE — " + Ui.time(remaining) + " left (buy extends)", NamedTextColor.GREEN)
+                : Ui.line("○ Inactive", NamedTextColor.DARK_GRAY);
         set(slot, Icon.of(material).name(label, NamedTextColor.YELLOW)
-                .lore(List.of("x" + boosters.boostMultiplier(type) + " for "
-                                + boosters.durationMinutes(type) + "m",
-                        "Cost: " + boosters.cost(type), status), NamedTextColor.GRAY).build(),
+                .loreComponents(List.of(
+                        Ui.line("×" + boosters.boostMultiplier(type) + " for "
+                                + boosters.durationMinutes(type) + "m", NamedTextColor.AQUA),
+                        Ui.line("⛁ " + Ui.num(boosters.cost(type)), NamedTextColor.GOLD),
+                        Ui.divider(),
+                        status)).build(),
                 e -> {
                     String error = boosters.buy(viewer.getUniqueId(), type);
                     viewer.sendMessage(Component.text(error == null ? label + " activated!" : error,

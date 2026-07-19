@@ -1,6 +1,7 @@
 package dev.branzx.idlefarm.service;
 
 import dev.branzx.idlefarm.IdleFarmPlugin;
+import dev.branzx.idlefarm.gui.Ui;
 import dev.branzx.idlefarm.node.NodeRecord;
 import dev.branzx.idlefarm.storage.PlayerData;
 import dev.branzx.idlefarm.storage.PlayerDataStore;
@@ -200,19 +201,44 @@ public final class WorkerService {
         }
         meta.getPersistentDataContainer().set(workerKey, PersistentDataType.STRING,
                 record.getWorkerUuid().toString());
-        meta.displayName(Component.text(record.getName(), record.getRarity().color())
-                .append(Component.text(" [" + record.getRarity() + "]", NamedTextColor.GRAY)));
-        List<Component> lore = new ArrayList<>();
-        lore.add(Component.text("Worker Contract", NamedTextColor.DARK_GRAY));
-        lore.add(Component.text("Trait: " + record.getTrait(), NamedTextColor.YELLOW));
-        lore.add(Component.text("Skin: " + record.getSkin(), NamedTextColor.DARK_AQUA));
-        lore.add(Component.text("Lv." + record.getLevel() + " / " + record.getRarity().levelCap(), NamedTextColor.GRAY));
-        WorkerStats stats = record.getStats();
-        lore.add(Component.text("DIL " + stats.diligence() + "  LCK " + stats.luck()
-                + "  STA " + stats.stamina() + "  SPD " + stats.speed(), NamedTextColor.AQUA));
-        meta.lore(lore);
+        meta.displayName(Component.text("✦ ", record.getRarity().color())
+                .append(Component.text(record.getName(), record.getRarity().color(),
+                        net.kyori.adventure.text.format.TextDecoration.BOLD))
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
+        meta.lore(workerLore(record));
         item.setItemMeta(meta);
         return item;
+    }
+
+    /** Shared fancy lore used by the contract item and the node-slot icon. */
+    public List<Component> workerLore(WorkerRecord record) {
+        WorkerStats stats = record.getStats();
+        long needed = expForNextLevel(record.getLevel());
+        double levelFrac = needed <= 0 ? 1.0 : Math.min(1.0, record.getExp() / (double) needed);
+        boolean capped = record.getLevel() >= record.getRarity().levelCap();
+
+        List<Component> lore = new ArrayList<>();
+        lore.add(Ui.stars(record.getRarity())
+                .append(Ui.line("  " + record.getRarity(), record.getRarity().color())));
+        lore.add(Ui.divider());
+        lore.add(Ui.line("Trait ", NamedTextColor.GRAY)
+                .append(Ui.line("✧ " + Ui.pretty(record.getTrait().name()), NamedTextColor.YELLOW)));
+        lore.add(Ui.line("Skin  ", NamedTextColor.GRAY)
+                .append(Ui.line(record.getSkin(), NamedTextColor.DARK_AQUA)));
+        lore.add(Ui.divider());
+        lore.add(Ui.stat("⛏", "Diligence", stats.diligence(), 60, NamedTextColor.GOLD));
+        lore.add(Ui.stat("☘", "Luck", stats.luck(), 60, NamedTextColor.GREEN));
+        lore.add(Ui.stat("❤", "Stamina", stats.stamina(), 60, NamedTextColor.RED));
+        lore.add(Ui.stat("➟", "Speed", stats.speed(), 60, NamedTextColor.AQUA));
+        lore.add(Ui.divider());
+        if (capped) {
+            lore.add(Ui.line("Lv." + record.getLevel() + "  MAX", NamedTextColor.GOLD));
+        } else {
+            lore.add(Ui.bar("Lv." + record.getLevel(), levelFrac, NamedTextColor.GREEN,
+                    Ui.num(record.getExp()) + "/" + Ui.num(needed) + " xp"));
+        }
+        lore.add(Ui.line("Worker Contract", NamedTextColor.DARK_GRAY));
+        return lore;
     }
 
     /** Returns the worker bound to this item, or null if it is not a worker token. */

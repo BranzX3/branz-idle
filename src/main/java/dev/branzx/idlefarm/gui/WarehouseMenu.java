@@ -56,9 +56,11 @@ public final class WarehouseMenu extends Menu {
             set(i, Icon.of(material)
                     .name(prettify(entry.getKey()), NamedTextColor.WHITE)
                     .amount(Math.min(64, entry.getValue()))
-                    .lore(List.of("Stored: " + entry.getValue(),
-                            "Click: withdraw 1 stack", "Shift-click: withdraw all"),
-                            NamedTextColor.GRAY).build(),
+                    .loreComponents(List.of(
+                            Ui.line("Stored ×" + Ui.num(entry.getValue()), NamedTextColor.GOLD),
+                            Ui.divider(),
+                            Ui.line("Click: withdraw 1 stack", NamedTextColor.GRAY),
+                            Ui.line("Shift-click: withdraw all", NamedTextColor.GRAY))).build(),
                     e -> withdraw(entry.getKey(), material, e.isShiftClick()));
         }
 

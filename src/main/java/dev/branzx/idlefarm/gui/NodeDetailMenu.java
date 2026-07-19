@@ -60,8 +60,23 @@ public final class NodeDetailMenu extends Menu {
             set(i, Icon.filler());
         }
 
+        // Header: node summary.
+        List<WorkerRecord> headerCrew = gui.workerStore().getAssigned(node.getId());
+        List<Component> headerLore = new java.util.ArrayList<>();
+        headerLore.add(Ui.line("Chunk " + node.getChunk().x() + "," + node.getChunk().z(),
+                NamedTextColor.GRAY));
+        headerLore.add(Ui.line("Tier " + roman(node.getTier()) + "  •  " + headerCrew.size() + "/"
+                + node.getTier() + " workers", NamedTextColor.AQUA));
+        headerLore.add("STORAGE_FULL".equals(node.getState())
+                ? Ui.line("■ Production halted — buffer full", NamedTextColor.RED)
+                : (headerCrew.isEmpty()
+                        ? Ui.line("○ No workers — assign contracts!", NamedTextColor.YELLOW)
+                        : Ui.line("● Producing", NamedTextColor.GREEN)));
+        set(4, Icon.of(Material.LECTERN).name(node.getType() + " Node", NamedTextColor.GREEN)
+                .loreComponents(headerLore).build());
+
         // Worker slots (row 2): one per tier.
-        List<WorkerRecord> assigned = gui.workerStore().getAssigned(node.getId());
+        List<WorkerRecord> assigned = headerCrew;
         for (int slot = 0; slot < node.getTier() && slot < 9; slot++) {
             int guiSlot = 9 + slot;
             if (slot < assigned.size()) {
@@ -86,8 +101,23 @@ public final class NodeDetailMenu extends Menu {
 
         // Collect.
         int cap = gui.plugin().getConfig().getInt("production.buffer-capacity-per-tier", 64) * node.getTier();
+        List<Component> bufferLore = new java.util.ArrayList<>();
+        bufferLore.add(Ui.bar("Buffer", cap == 0 ? 0 : node.storageTotal() / (double) cap,
+                node.storageTotal() >= cap ? NamedTextColor.RED : NamedTextColor.GOLD,
+                node.storageTotal() + "/" + cap));
+        if (!node.getStorage().isEmpty()) {
+            bufferLore.add(Ui.divider());
+            node.getStorage().entrySet().stream().limit(6).forEach(entry ->
+                    bufferLore.add(Ui.line(" • " + Ui.pretty(entry.getKey()) + " ×" + entry.getValue(),
+                            NamedTextColor.WHITE)));
+            if (node.getStorage().size() > 6) {
+                bufferLore.add(Ui.line("  …and " + (node.getStorage().size() - 6) + " more",
+                        NamedTextColor.DARK_GRAY));
+            }
+        }
+        bufferLore.add(Ui.line("Click: collect to Warehouse", NamedTextColor.DARK_GRAY));
         set(29, Icon.of(Material.HOPPER).name("Collect → Warehouse", NamedTextColor.GOLD)
-                .lore(List.of("Buffer: " + node.storageTotal() + "/" + cap), NamedTextColor.GRAY).build(),
+                .loreComponents(bufferLore).build(),
                 e -> {
                     int moved = collectToWarehouse(node);
                     node.setState("ACTIVE");
@@ -107,12 +137,36 @@ public final class NodeDetailMenu extends Menu {
         // Exploration.
         ExplorationService exploration = gui.explorationService();
         var event = exploration.getEvent(node.getId());
-        String exploreLore = event == null ? "No event now"
-                : gui.explorationService().eventName(event.getEventType()) + " [" + event.getState() + "]";
-        set(33, Icon.of(Material.COMPASS).name("Exploration Lv." + node.getExplorationLevel(),
-                        NamedTextColor.LIGHT_PURPLE)
-                .lore(List.of("Bracket " + exploration.bracket(node), exploreLore,
-                        "Click for actions"), NamedTextColor.GRAY).build(),
+        long expNeeded = exploration.expForNextExplorationLevel(node.getExplorationLevel());
+        List<Component> exploreLore = new java.util.ArrayList<>();
+        exploreLore.add(Ui.line("Bracket " + roman(exploration.bracket(node)), NamedTextColor.LIGHT_PURPLE));
+        exploreLore.add(Ui.bar("Lv." + node.getExplorationLevel(),
+                expNeeded <= 0 ? 1.0 : Math.min(1.0, node.getExplorationExp() / (double) expNeeded),
+                NamedTextColor.LIGHT_PURPLE,
+                Ui.num(node.getExplorationExp()) + "/" + Ui.num(expNeeded)));
+        exploreLore.add(Ui.divider());
+        if (event == null) {
+            exploreLore.add(Ui.line("No event right now", NamedTextColor.DARK_GRAY));
+        } else {
+            exploreLore.add(Ui.line("★ " + exploration.eventName(event.getEventType()),
+                    NamedTextColor.GOLD));
+            switch (event.getState()) {
+                case "AVAILABLE" -> {
+                    exploreLore.add(Ui.line("Expires in "
+                            + Ui.time(event.getExpiresAt() - System.currentTimeMillis()),
+                            NamedTextColor.YELLOW));
+                    exploreLore.add(Ui.line("Click: send expedition!", NamedTextColor.GREEN));
+                }
+                case "RUNNING" -> exploreLore.add(Ui.line("Returns in "
+                        + Ui.time(Math.max(0, event.getEndsAt() - System.currentTimeMillis())),
+                        NamedTextColor.AQUA));
+                case "COMPLETED" -> exploreLore.add(Ui.line("Click: claim loot! ["
+                        + event.getGrade() + "]", NamedTextColor.GOLD));
+                default -> { }
+            }
+        }
+        set(33, Icon.of(Material.COMPASS).name("Exploration", NamedTextColor.LIGHT_PURPLE)
+                .loreComponents(exploreLore).build(),
                 e -> handleExploration(node, event));
 
         // Convert type.
@@ -238,16 +292,35 @@ public final class NodeDetailMenu extends Menu {
     }
 
     private ItemStack workerIcon(WorkerRecord worker) {
-        List<String> lore = new ArrayList<>();
-        lore.add("Rarity: " + worker.getRarity());
-        lore.add("Trait: " + worker.getTrait());
-        lore.add("Lv." + worker.getLevel() + " / " + worker.getRarity().levelCap());
-        lore.add("State: " + worker.getState());
-        var s = worker.getStats();
-        lore.add("DIL " + s.diligence() + " LCK " + s.luck() + " STA " + s.stamina() + " SPD " + s.speed());
-        lore.add("Click to eject");
-        return Icon.of(Material.PLAYER_HEAD).name(worker.getName(), worker.getRarity().color())
-                .lore(lore, NamedTextColor.GRAY).build();
+        List<Component> lore = new ArrayList<>(gui.workerService().workerLore(worker));
+        lore.add(Ui.line(stateBadge(worker.getState()), stateColor(worker.getState())));
+        lore.add(Ui.line("Click to eject", NamedTextColor.DARK_GRAY));
+        return Icon.of(Material.PLAYER_HEAD)
+                .name("✦ " + worker.getName(), worker.getRarity().color())
+                .loreComponents(lore).build();
+    }
+
+    private String stateBadge(String state) {
+        return switch (state) {
+            case WorkerRecord.STATE_WORKING -> "● Working";
+            case WorkerRecord.STATE_STOP -> "■ Stopped (buffer full)";
+            case WorkerRecord.STATE_EXPLORING -> "➟ Away exploring";
+            default -> "○ Idle";
+        };
+    }
+
+    private NamedTextColor stateColor(String state) {
+        return switch (state) {
+            case WorkerRecord.STATE_WORKING -> NamedTextColor.GREEN;
+            case WorkerRecord.STATE_STOP -> NamedTextColor.RED;
+            case WorkerRecord.STATE_EXPLORING -> NamedTextColor.AQUA;
+            default -> NamedTextColor.YELLOW;
+        };
+    }
+
+    private String roman(int value) {
+        String[] numerals = {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"};
+        return value >= 1 && value <= 10 ? numerals[value - 1] : String.valueOf(value);
     }
 
     private void giveOrDrop(ItemStack item) {
