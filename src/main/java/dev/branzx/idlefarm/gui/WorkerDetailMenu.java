@@ -1,0 +1,96 @@
+package dev.branzx.idlefarm.gui;
+
+import dev.branzx.idlefarm.worker.WorkerRecord;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Material;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+
+import java.util.UUID;
+
+/** A single worker's card with cosmetic actions (rename / reskin / withdraw). */
+public final class WorkerDetailMenu extends Menu {
+
+    private final GuiManager gui;
+    private final UUID workerUuid;
+
+    public WorkerDetailMenu(Player viewer, GuiManager gui, UUID workerUuid) {
+        super(viewer);
+        this.gui = gui;
+        this.workerUuid = workerUuid;
+    }
+
+    @Override
+    protected int rows() {
+        return 3;
+    }
+
+    @Override
+    protected Component title() {
+        WorkerRecord w = gui.workerStore().get(workerUuid);
+        return Component.text(w == null ? "Worker" : w.getName(), NamedTextColor.DARK_AQUA);
+    }
+
+    @Override
+    protected void build() {
+        WorkerRecord worker = gui.workerStore().get(workerUuid);
+        if (worker == null) {
+            viewer.closeInventory();
+            return;
+        }
+        for (int i = 0; i < rows() * 9; i++) {
+            set(i, Icon.filler());
+        }
+
+        set(4, Icon.head(worker.getSkin())
+                .name("✦ " + worker.getName(), worker.getRarity().color())
+                .loreComponents(gui.workerService().workerLore(worker)).build());
+
+        set(11, Icon.of(Material.NAME_TAG).name("Rename", NamedTextColor.GREEN)
+                .lore("Free — type a new name in chat", NamedTextColor.GRAY).build(),
+                e -> gui.chatPrompt().request(viewer,
+                        "Enter a new name for " + worker.getName(),
+                        input -> {
+                            var result = gui.workerService().rename(worker, input);
+                            viewer.sendMessage(Component.text(result.message(),
+                                    result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+                            open();
+                        },
+                        this::open));
+
+        boolean canSkin = viewer.hasPermission("idlefarm.skin");
+        set(13, Icon.of(canSkin ? Material.PLAYER_HEAD : Material.BARRIER)
+                .name("Change Skin", canSkin ? NamedTextColor.AQUA : NamedTextColor.DARK_GRAY)
+                .lore(canSkin ? "Type a player username in chat"
+                        : "Requires a rank", NamedTextColor.GRAY).build(),
+                canSkin ? e -> gui.chatPrompt().request(viewer,
+                        "Enter a player username for the skin",
+                        input -> {
+                            var result = gui.workerService().setSkin(worker, input.trim());
+                            viewer.sendMessage(Component.text(result.message(),
+                                    result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+                            open();
+                        },
+                        this::open) : null);
+
+        // Withdraw is only meaningful for a worker in the bag.
+        if (worker.isInBag()) {
+            set(15, Icon.of(Material.HOPPER).name("Withdraw as Item", NamedTextColor.GOLD)
+                    .lore("Take out to trade or carry", NamedTextColor.GRAY).build(),
+                    e -> {
+                        ItemStack item = gui.workerService().withdraw(viewer.getUniqueId(), worker);
+                        if (item != null) {
+                            var leftover = viewer.getInventory().addItem(item);
+                            for (ItemStack overflow : leftover.values()) {
+                                viewer.getWorld().dropItemNaturally(viewer.getLocation(), overflow);
+                            }
+                        }
+                        gui.openWorkerBag(viewer);
+                    });
+        }
+
+        set(22, Icon.of(Material.NETHER_STAR).name("Back to Bag", NamedTextColor.GREEN).build(),
+                e -> gui.openWorkerBag(viewer));
+    }
+}

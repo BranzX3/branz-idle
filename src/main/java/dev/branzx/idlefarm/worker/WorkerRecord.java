@@ -16,7 +16,7 @@ public final class WorkerRecord {
     private final Rarity rarity;
     private final Trait trait;
     private volatile WorkerStats stats;
-    private final String name;
+    private volatile String name;
     private volatile String skin;
     private volatile int level;
     private volatile long exp;
@@ -80,6 +80,10 @@ public final class WorkerRecord {
 
     public String getName() {
         return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public int getLevel() {

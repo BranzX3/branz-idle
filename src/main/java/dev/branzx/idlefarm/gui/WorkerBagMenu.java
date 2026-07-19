@@ -51,9 +51,10 @@ public final class WorkerBagMenu extends Menu {
         for (int i = 0; i < PAGE_SIZE && start + i < bag.size(); i++) {
             WorkerRecord worker = bag.get(start + i);
             List<Component> lore = new ArrayList<>(gui.workerService().workerLore(worker));
-            lore.add(Ui.line("Click: withdraw as item (to trade)", NamedTextColor.DARK_GRAY));
+            lore.add(Ui.line("Click: manage (rename / skin / withdraw)", NamedTextColor.DARK_GRAY));
             set(i, Icon.head(worker.getSkin()).name("✦ " + worker.getName(), worker.getRarity().color())
-                    .loreComponents(lore).build(), e -> withdraw(worker.getWorkerUuid()));
+                    .loreComponents(lore).build(),
+                    e -> gui.openWorkerDetail(viewer, worker.getWorkerUuid()));
         }
         if (bag.isEmpty()) {
             set(22, Icon.of(Material.LIGHT_GRAY_STAINED_GLASS_PANE)

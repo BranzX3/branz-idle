@@ -255,11 +255,29 @@ public final class WorkerService {
         return pool.get(ThreadLocalRandom.current().nextInt(pool.size()));
     }
 
-    /** Rank-gated cosmetic: change a worker's skin (item must be re-minted by caller). */
+    /** Change a worker's skin. Returns a refreshed item if it is item-form. */
     public Result setSkin(WorkerRecord worker, String skin) {
+        if (skin == null || skin.isBlank() || skin.length() > 16
+                || !skin.matches("[A-Za-z0-9_]+")) {
+            return Result.fail("Invalid skin name (use a player username).");
+        }
         worker.setSkin(skin);
         workerStore.update(worker);
         return Result.ok(worker.getName() + "'s skin changed to " + skin + ".",
+                worker.isItemForm() ? createItem(worker) : null);
+    }
+
+    /** Rename a worker (free). Returns a refreshed item if it is item-form. */
+    public Result rename(WorkerRecord worker, String name) {
+        String trimmed = name == null ? "" : name.trim();
+        if (trimmed.isBlank() || trimmed.length() > 24) {
+            return Result.fail("Name must be 1–24 characters.");
+        }
+        // Strip section/formatting chars; keep it plain.
+        trimmed = trimmed.replaceAll("[§&]", "");
+        worker.setName(trimmed);
+        workerStore.update(worker);
+        return Result.ok("Worker renamed to " + trimmed + ".",
                 worker.isItemForm() ? createItem(worker) : null);
     }
 

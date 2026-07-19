@@ -156,6 +156,10 @@ public final class GuiManager implements Listener {
         new WorkerBagMenu(player, this, 0).open();
     }
 
+    public void openWorkerDetail(Player player, java.util.UUID workerUuid) {
+        new WorkerDetailMenu(player, this, workerUuid).open();
+    }
+
     public void openLeaderboard(Player player) {
         new LeaderboardMenu(player, this).open();
     }

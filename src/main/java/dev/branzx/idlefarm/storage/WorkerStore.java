@@ -145,24 +145,25 @@ public final class WorkerStore {
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement update = connection.prepareStatement(
-                         "UPDATE idlefarm_workers SET owner_uuid = ?, stats = ?, skin = ?, level = ?, exp = ?, "
-                                 + "assigned_node_id = ?, state = ? WHERE worker_uuid = ?")) {
+                         "UPDATE idlefarm_workers SET owner_uuid = ?, stats = ?, name = ?, skin = ?, level = ?, "
+                                 + "exp = ?, assigned_node_id = ?, state = ? WHERE worker_uuid = ?")) {
                 if (record.getOwnerUuid() == null) {
                     update.setNull(1, java.sql.Types.VARCHAR);
                 } else {
                     update.setString(1, record.getOwnerUuid().toString());
                 }
                 update.setString(2, record.getStats().serialize());
-                update.setString(3, record.getSkin());
-                update.setInt(4, record.getLevel());
-                update.setLong(5, record.getExp());
+                update.setString(3, record.getName());
+                update.setString(4, record.getSkin());
+                update.setInt(5, record.getLevel());
+                update.setLong(6, record.getExp());
                 if (record.getAssignedNodeId() == null) {
-                    update.setNull(6, java.sql.Types.BIGINT);
+                    update.setNull(7, java.sql.Types.BIGINT);
                 } else {
-                    update.setLong(6, record.getAssignedNodeId());
+                    update.setLong(7, record.getAssignedNodeId());
                 }
-                update.setString(7, record.getState());
-                update.setString(8, record.getWorkerUuid().toString());
+                update.setString(8, record.getState());
+                update.setString(9, record.getWorkerUuid().toString());
                 update.executeUpdate();
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to update worker " + record.getWorkerUuid() + ": " + e.getMessage());
