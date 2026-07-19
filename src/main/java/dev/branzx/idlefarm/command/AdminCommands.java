@@ -39,6 +39,7 @@ public final class AdminCommands {
     private dev.branzx.idlefarm.service.AuditService auditService;
     private dev.branzx.idlefarm.gui.GuiManager guiManager;
     private dev.branzx.idlefarm.storage.PlayerDataStore dataStore;
+    private dev.branzx.idlefarm.service.ExplorationService explorationService;
 
     public void setPhase8Services(dev.branzx.idlefarm.service.DropTableService dropTableService,
                                   dev.branzx.idlefarm.service.AuditService auditService,
@@ -48,6 +49,10 @@ public final class AdminCommands {
         this.auditService = auditService;
         this.guiManager = guiManager;
         this.dataStore = dataStore;
+    }
+
+    public void setExplorationService(dev.branzx.idlefarm.service.ExplorationService explorationService) {
+        this.explorationService = explorationService;
     }
 
     public AdminCommands(IdleFarmPlugin plugin, NodeStore nodeStore, WorkerStore workerStore,
@@ -79,6 +84,8 @@ public final class AdminCommands {
             case "npc" -> npc(sender, args);
             case "node" -> nodeInfo(sender);
             case "pool" -> pool(sender, args);
+            case "event" -> event(sender, args);
+            case "explevel" -> explevel(sender, args);
             case "give" -> give(sender, args);
             case "setcap" -> setcap(sender, args);
             case "audit" -> audit(sender, args);
@@ -93,7 +100,9 @@ public final class AdminCommands {
                 /idle admin schem edit <id> | setspawn <slot> | setwork | setwander <r> | setanim <state> <profile> | save | rebuild
                 /idle admin npc refresh | list | state <state|clear>
                 /idle admin node
-                /idle admin pool <type[.bracket-N]>
+                /idle admin pool [type[.bracket-N]]   (no arg = GUI browser)
+                /idle admin event spawn [type] | cancel | list   (stand in a node)
+                /idle admin explevel <level>   (stand in a node)
                 /idle admin give money <player> <amount>
                 /idle admin give item <player> <material> <count>
                 /idle admin setcap <player> <base> [bonus]
@@ -108,14 +117,83 @@ public final class AdminCommands {
             sender.sendMessage(Component.text("In-game only.", NamedTextColor.RED));
             return true;
         }
+        // No path: open the type/bracket browser. Path given: jump straight in.
         if (args.length < 3) {
-            sender.sendMessage(Component.text(
-                    "Usage: /idle admin pool <mining|farming|woodcutting|livestock|hunter>[.bracket-N]",
-                    NamedTextColor.YELLOW));
+            new dev.branzx.idlefarm.gui.PoolBrowserMenu(player, guiManager, dropTableService,
+                    auditService).open();
             return true;
         }
         new dev.branzx.idlefarm.gui.PoolEditorMenu(player, guiManager, dropTableService,
                 auditService, args[2].toLowerCase(Locale.ROOT)).open();
+        return true;
+    }
+
+    // ---- exploration events ----
+
+    private boolean event(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("In-game only.", NamedTextColor.RED));
+            return true;
+        }
+        NodeRecord node = nodeAt(player);
+        if (node == null || !node.getType().isProduction()) {
+            sender.sendMessage(Component.text("Stand in a production node.", NamedTextColor.RED));
+            return true;
+        }
+        String action = args.length >= 3 ? args[2].toLowerCase(Locale.ROOT) : "list";
+        switch (action) {
+            case "spawn" -> {
+                String type = args.length >= 4 ? args[3].toLowerCase(Locale.ROOT) : null;
+                String error = explorationService.adminSpawn(node, type);
+                sender.sendMessage(Component.text(error == null ? "Event spawned at node #" + node.getId()
+                        : error, error == null ? NamedTextColor.GREEN : NamedTextColor.RED));
+                if (error == null) {
+                    auditService.log(player.getUniqueId(), "ADMIN_EVENT", "spawn " + type + " @ " + node.getId());
+                }
+            }
+            case "cancel" -> {
+                explorationService.cancel(node);
+                sender.sendMessage(Component.text("Event on node #" + node.getId() + " cancelled.",
+                        NamedTextColor.GREEN));
+                auditService.log(player.getUniqueId(), "ADMIN_EVENT", "cancel @ " + node.getId());
+            }
+            case "list" -> {
+                var event = explorationService.getEvent(node.getId());
+                sender.sendMessage(Component.text("Node #" + node.getId() + " Exploration Lv."
+                        + node.getExplorationLevel() + " (bracket " + explorationService.bracket(node) + ")",
+                        NamedTextColor.YELLOW));
+                sender.sendMessage(Component.text(event == null ? "  No active event"
+                        : "  " + explorationService.eventName(event.getEventType()) + " ["
+                                + event.getState() + "]", NamedTextColor.WHITE));
+                sender.sendMessage(Component.text("  Types: " + String.join(", ",
+                        explorationService.eventTypes()), NamedTextColor.GRAY));
+            }
+            default -> sender.sendMessage(Component.text("Usage: /idle admin event spawn [type] | cancel | list",
+                    NamedTextColor.YELLOW));
+        }
+        return true;
+    }
+
+    private boolean explevel(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("In-game only.", NamedTextColor.RED));
+            return true;
+        }
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Usage: /idle admin explevel <level>", NamedTextColor.YELLOW));
+            return true;
+        }
+        NodeRecord node = nodeAt(player);
+        if (node == null || !node.getType().isProduction()) {
+            sender.sendMessage(Component.text("Stand in a production node.", NamedTextColor.RED));
+            return true;
+        }
+        int level = Integer.parseInt(args[2]);
+        explorationService.adminSetLevel(node, level);
+        nodeStore.updateProduction(node);
+        sender.sendMessage(Component.text("Node #" + node.getId() + " exploration level = " + level
+                + " (bracket " + explorationService.bracket(node) + ").", NamedTextColor.GREEN));
+        auditService.log(player.getUniqueId(), "ADMIN_EXPLEVEL", node.getId() + " -> " + level);
         return true;
     }
 

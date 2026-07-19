@@ -8,6 +8,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import java.io.File;
 import java.io.IOException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -39,13 +40,10 @@ public final class DropTableService {
         YamlConfiguration seed = new YamlConfiguration();
         ConfigurationSection defaults = plugin.getConfig().getConfigurationSection("production.drop-tables");
         if (defaults != null) {
-            for (String type : defaults.getKeys(false)) {
-                ConfigurationSection typeSection = defaults.getConfigurationSection(type);
-                if (typeSection != null) {
-                    for (String key : typeSection.getKeys(false)) {
-                        Object value = typeSection.get(key);
-                        seed.set(type + "." + key, value);
-                    }
+            // Deep copy (handles flat tables and nested bracket-N sections).
+            for (Map.Entry<String, Object> entry : defaults.getValues(true).entrySet()) {
+                if (!(entry.getValue() instanceof ConfigurationSection)) {
+                    seed.set(entry.getKey(), entry.getValue());
                 }
             }
         }
@@ -55,6 +53,21 @@ public final class DropTableService {
         } catch (IOException e) {
             plugin.getLogger().severe("Failed to seed drops.yml: " + e.getMessage());
         }
+    }
+
+    /** Bracket sub-tables a type defines (empty if it uses a flat table). */
+    public List<String> brackets(NodeType type) {
+        ConfigurationSection section = yaml.getConfigurationSection(type.name().toLowerCase(Locale.ROOT));
+        List<String> result = new java.util.ArrayList<>();
+        if (section != null) {
+            for (String key : section.getKeys(false)) {
+                if (key.startsWith("bracket-")) {
+                    result.add(key);
+                }
+            }
+        }
+        result.sort(null);
+        return result;
     }
 
     /**

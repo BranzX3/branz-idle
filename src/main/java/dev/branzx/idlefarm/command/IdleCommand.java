@@ -706,7 +706,11 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             return base;
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("admin")) {
-            return List.of("reload", "schem", "npc", "node", "pool", "give", "setcap", "audit");
+            return List.of("reload", "schem", "npc", "node", "pool", "event", "explevel",
+                    "give", "setcap", "audit");
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("admin") && args[1].equalsIgnoreCase("event")) {
+            return List.of("spawn", "cancel", "list");
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("admin") && args[1].equalsIgnoreCase("pool")) {
             return List.of("mining", "farming", "woodcutting", "livestock", "hunter");

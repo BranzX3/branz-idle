@@ -244,6 +244,42 @@ public final class ExplorationService {
                 .build());
     }
 
+    // ---- admin controls ----
+
+    /** All configured event ids (for admin pickers). */
+    public List<String> eventTypes() {
+        ConfigurationSection events = plugin.getConfig().getConfigurationSection("exploration.events");
+        return events == null ? List.of() : List.copyOf(events.getKeys(false));
+    }
+
+    /** Force-spawn a specific (or random-eligible) event at a node. Admin. */
+    public String adminSpawn(NodeRecord node, String eventType) {
+        if (eventsByNode.containsKey(node.getId())) {
+            return "This node already has an active event.";
+        }
+        if (eventType == null) {
+            eventType = pickEventType(bracket(node));
+            if (eventType == null) {
+                return "No eligible event type for this node's bracket.";
+            }
+        } else if (!eventTypes().contains(eventType)) {
+            return "Unknown event type: " + eventType;
+        }
+        long now = System.currentTimeMillis();
+        long expiryMinutes = eventConfig(eventType).getLong("expiry-minutes", 30);
+        EventRecord event = new EventRecord(nextEventId.getAndIncrement(), node.getId(), eventType,
+                "AVAILABLE", now, now + expiryMinutes * 60_000L);
+        eventsByNode.put(node.getId(), event);
+        insert(event);
+        return null;
+    }
+
+    /** Force-set a node's exploration level. Admin. Caller persists the node. */
+    public void adminSetLevel(NodeRecord node, int level) {
+        node.setExplorationLevel(Math.max(0, level));
+        node.setExplorationExp(0);
+    }
+
     private String pickEventType(int bracket) {
         ConfigurationSection events = plugin.getConfig().getConfigurationSection("exploration.events");
         if (events == null) {

@@ -139,39 +139,110 @@ production:
   # Worker EXP per credited item (split across crew, scaled by Stamina).
   worker-exp-per-item: 2.0
   # Weighted drop tables per node type.
+  # Drop tables are bracket-gated: a node uses the highest bracket-N table
+  # unlocked by its Exploration Level (bracket = level/bracket-size + 1).
+  # Higher brackets are richer, so leveling a node improves its everyday
+  # output — not just its exploration events. Edit live via
+  # /idle admin pool <type> (bracket picker inside the GUI).
   drop-tables:
     mining:
-      cobblestone: 55
-      coal: 25
-      raw_iron: 14
-      raw_gold: 5
-      diamond: 1
+      bracket-1:
+        cobblestone: 60
+        coal: 30
+        raw_iron: 10
+      bracket-2:
+        cobblestone: 40
+        coal: 28
+        raw_iron: 22
+        raw_gold: 8
+        redstone: 2
+      bracket-3:
+        coal: 30
+        raw_iron: 30
+        raw_gold: 18
+        redstone: 12
+        lapis_lazuli: 7
+        diamond: 3
+      bracket-4:
+        raw_iron: 28
+        raw_gold: 24
+        redstone: 16
+        diamond: 18
+        emerald: 10
+        ancient_debris: 4
     farming:
-      wheat: 40
-      carrot: 25
-      potato: 25
-      beetroot: 8
-      pumpkin: 2
+      bracket-1:
+        wheat: 50
+        carrot: 30
+        potato: 20
+      bracket-2:
+        wheat: 35
+        carrot: 25
+        potato: 25
+        beetroot: 12
+        pumpkin: 3
+      bracket-3:
+        carrot: 25
+        potato: 25
+        beetroot: 20
+        melon_slice: 15
+        pumpkin: 10
+        glow_berries: 5
     woodcutting:
-      oak_log: 40
-      birch_log: 25
-      spruce_log: 20
-      jungle_log: 10
-      dark_oak_log: 5
+      bracket-1:
+        oak_log: 55
+        birch_log: 30
+        spruce_log: 15
+      bracket-2:
+        oak_log: 35
+        birch_log: 25
+        spruce_log: 20
+        jungle_log: 12
+        acacia_log: 8
+      bracket-3:
+        spruce_log: 25
+        jungle_log: 20
+        dark_oak_log: 20
+        cherry_log: 20
+        mangrove_log: 15
     livestock:
-      beef: 25
-      porkchop: 25
-      chicken: 20
-      leather: 15
-      egg: 10
-      wool: 5
+      bracket-1:
+        beef: 35
+        porkchop: 30
+        chicken: 25
+        egg: 10
+      bracket-2:
+        beef: 25
+        porkchop: 25
+        chicken: 20
+        leather: 18
+        egg: 8
+        wool: 4
+      bracket-3:
+        beef: 22
+        leather: 25
+        wool: 18
+        milk_bucket: 15
+        honey_bottle: 12
+        rabbit_foot: 8
     hunter:
-      rotten_flesh: 30
-      bone: 25
-      string: 20
-      gunpowder: 15
-      spider_eye: 8
-      ender_pearl: 2
+      bracket-1:
+        rotten_flesh: 40
+        bone: 35
+        string: 25
+      bracket-2:
+        bone: 30
+        string: 25
+        gunpowder: 20
+        spider_eye: 15
+        arrow: 10
+      bracket-3:
+        gunpowder: 25
+        spider_eye: 20
+        ender_pearl: 18
+        blaze_rod: 15
+        ghast_tear: 12
+        wither_skeleton_skull: 10
 
 # Timed multipliers bought with Money; buying while active extends duration.
 boosters:

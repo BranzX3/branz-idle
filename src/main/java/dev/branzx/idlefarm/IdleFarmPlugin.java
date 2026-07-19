@@ -110,6 +110,7 @@ public final class IdleFarmPlugin extends JavaPlugin {
 
         AdminCommands adminCommands = new AdminCommands(this, nodeStore, workerStore, schematicService, npcManager);
         adminCommands.setPhase8Services(dropTableService, auditService, guiManager, dataStore);
+        adminCommands.setExplorationService(explorationService);
         IdleCommand idleCommand = new IdleCommand(this, dataStore, nodeStore, claimService, trustService,
                 workerService, workerStore, npcManager, warehouseService, guiManager, adminCommands);
         getCommand("idle").setExecutor(idleCommand);
