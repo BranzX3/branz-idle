@@ -89,7 +89,7 @@ public final class AdminCommands {
     private boolean usage(CommandSender sender) {
         sender.sendMessage(Component.text("""
                 /idle admin reload
-                /idle admin schem capture <id> <radius> <height>
+                /idle admin schem capture <id> [baseY] [height]  (captures your whole chunk)
                 /idle admin schem edit <id> | setspawn <slot> | setwork | setwander <r> | setanim <state> <profile> | save | rebuild
                 /idle admin npc refresh | list | state <state|clear>
                 /idle admin node
@@ -265,37 +265,46 @@ public final class AdminCommands {
         }
 
         if (action.equals("capture")) {
-            if (args.length < 5) {
+            if (args.length < 4) {
                 sender.sendMessage(Component.text(
-                        "Usage: /idle admin schem capture <id> <radius> <height> — stand at the building's "
-                                + "center-front; captures a (2r+1)x(2r+1) footprint from one block below "
-                                + "your feet up to <height>.", NamedTextColor.YELLOW));
+                        "Usage: /idle admin schem capture <id> [baseY] [height] — captures the WHOLE chunk "
+                                + "you stand in, from baseY (default: your feet) up <height> blocks "
+                                + "(default 16). Buildings are designed chunk-sized: 1 node = 1 chunk.",
+                        NamedTextColor.YELLOW));
                 return true;
             }
             String id = args[3].toLowerCase(Locale.ROOT);
-            int radius = Integer.parseInt(args[4]);
-            int height = args.length >= 6 ? Integer.parseInt(args[5]) : 5;
+            int baseY = args.length >= 5 ? Integer.parseInt(args[4]) : player.getLocation().getBlockY();
+            int height = args.length >= 6 ? Integer.parseInt(args[5]) : 16;
             SchematicDefinition definition = registry.get(id);
             if (definition == null) {
                 definition = new SchematicDefinition(id);
                 registry.put(definition);
             }
             definition.getBlocks().clear();
-            Location origin = player.getLocation().getBlock().getLocation();
-            for (int dx = -radius; dx <= radius; dx++) {
-                for (int dy = -1; dy <= height; dy++) {
-                    for (int dz = -radius; dz <= radius; dz++) {
-                        var block = player.getWorld().getBlockAt(
-                                origin.getBlockX() + dx, origin.getBlockY() + dy, origin.getBlockZ() + dz);
+            // Origin mirrors the paste origin: chunk center column at base Y.
+            int chunkX = player.getLocation().getBlockX() >> 4;
+            int chunkZ = player.getLocation().getBlockZ() >> 4;
+            int centerX = (chunkX << 4) + 8;
+            int centerZ = (chunkZ << 4) + 8;
+            for (int dx = -8; dx <= 7; dx++) {
+                for (int dy = 0; dy < height; dy++) {
+                    for (int dz = -8; dz <= 7; dz++) {
+                        var block = player.getWorld().getBlockAt(centerX + dx, baseY + dy, centerZ + dz);
                         definition.getBlocks().add(dx + "," + dy + "," + dz + "|"
                                 + block.getBlockData().getAsString());
                     }
                 }
             }
             registry.save(definition);
-            sender.sendMessage(Component.text("Captured " + definition.getBlocks().size()
-                    + " blocks into '" + id + "'. Now set anchors: /idle admin schem edit " + id,
-                    NamedTextColor.GREEN));
+            // Anchor an edit session at the capture origin so setspawn/setwork
+            // can be authored right here in the build chunk.
+            sessions.put(player.getUniqueId(), new EditSession(id,
+                    new Location(player.getWorld(), centerX, baseY, centerZ)));
+            sender.sendMessage(Component.text("Captured chunk " + chunkX + "," + chunkZ + " (baseY=" + baseY
+                    + ", h=" + height + ", " + definition.getBlocks().size() + " blocks) into '" + id
+                    + "'. Edit session started — walk to each bed and /idle admin schem setspawn <slot>, "
+                    + "then setwork/setanim/save.", NamedTextColor.GREEN));
             return true;
         }
 
