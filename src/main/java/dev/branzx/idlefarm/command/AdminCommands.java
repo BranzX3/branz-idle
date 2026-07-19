@@ -287,12 +287,31 @@ public final class AdminCommands {
             int chunkZ = player.getLocation().getBlockZ() >> 4;
             int centerX = (chunkX << 4) + 8;
             int centerZ = (chunkZ << 4) + 8;
+
+            // Scan the whole box first, then keep air only within `padding`
+            // blocks of the structure — pasting won't flatten terrain that is
+            // far from the building, but interiors/doorways still get carved.
+            int padding = plugin.getConfig().getInt("schematics-capture.air-padding", 2);
+            String[][][] data = new String[16][height][16];
+            boolean[][][] solid = new boolean[16][height][16];
             for (int dx = -8; dx <= 7; dx++) {
                 for (int dy = 0; dy < height; dy++) {
                     for (int dz = -8; dz <= 7; dz++) {
                         var block = player.getWorld().getBlockAt(centerX + dx, baseY + dy, centerZ + dz);
-                        definition.getBlocks().add(dx + "," + dy + "," + dz + "|"
-                                + block.getBlockData().getAsString());
+                        data[dx + 8][dy][dz + 8] = block.getBlockData().getAsString();
+                        solid[dx + 8][dy][dz + 8] = !block.getType().isAir();
+                    }
+                }
+            }
+            int kept = 0;
+            for (int x = 0; x < 16; x++) {
+                for (int y = 0; y < height; y++) {
+                    for (int z = 0; z < 16; z++) {
+                        boolean keep = solid[x][y][z] || nearSolid(solid, x, y, z, height, padding);
+                        if (keep) {
+                            definition.getBlocks().add((x - 8) + "," + y + "," + (z - 8) + "|" + data[x][y][z]);
+                            kept++;
+                        }
                     }
                 }
             }
@@ -302,7 +321,7 @@ public final class AdminCommands {
             sessions.put(player.getUniqueId(), new EditSession(id,
                     new Location(player.getWorld(), centerX, baseY, centerZ)));
             sender.sendMessage(Component.text("Captured chunk " + chunkX + "," + chunkZ + " (baseY=" + baseY
-                    + ", h=" + height + ", " + definition.getBlocks().size() + " blocks) into '" + id
+                    + ", h=" + height + ", " + kept + " blocks kept, far-air skipped) into '" + id
                     + "'. Edit session started — walk to each bed and /idle admin schem setspawn <slot>, "
                     + "then setwork/setanim/save.", NamedTextColor.GREEN));
             return true;
@@ -369,6 +388,22 @@ public final class AdminCommands {
             default -> usage(sender);
         }
         return true;
+    }
+
+    /** True if any solid block lies within chebyshev distance {@code r}. */
+    private boolean nearSolid(boolean[][][] solid, int x, int y, int z, int height, int r) {
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dy = -r; dy <= r; dy++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    int nx = x + dx, ny = y + dy, nz = z + dz;
+                    if (nx >= 0 && nx < 16 && ny >= 0 && ny < height && nz >= 0 && nz < 16
+                            && solid[nx][ny][nz]) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private RelPos relFeet(Player player, EditSession session) {

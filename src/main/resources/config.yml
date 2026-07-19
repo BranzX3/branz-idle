@@ -282,6 +282,12 @@ exploration:
         heavy_core: 1
         emerald_block: 24
 
+# Schematic capture: air blocks farther than this many blocks (chebyshev)
+# from any solid block are NOT captured, so pasting a building never
+# flattens terrain away from the structure while interiors still carve.
+schematics-capture:
+  air-padding: 2
+
 npc:
   # How often (ticks) NPC animation behaviors are evaluated.
   animation-interval-ticks: 60
