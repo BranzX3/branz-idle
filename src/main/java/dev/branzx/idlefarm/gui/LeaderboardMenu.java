@@ -48,14 +48,14 @@ public final class LeaderboardMenu extends Menu {
         int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21};
         for (int i = 0; i < top.size() && i < slots.length; i++) {
             PlayerData data = top.get(i);
-            Material medal = switch (i) {
-                case 0 -> Material.GOLD_BLOCK;
-                case 1 -> Material.IRON_BLOCK;
-                case 2 -> Material.COPPER_BLOCK;
-                default -> Material.PLAYER_HEAD;
+            Icon icon = switch (i) {
+                case 0 -> Icon.of(Material.GOLD_BLOCK);
+                case 1 -> Icon.of(Material.IRON_BLOCK);
+                case 2 -> Icon.of(Material.COPPER_BLOCK);
+                default -> Icon.head(data.getName());
             };
             boolean self = data.getUuid().equals(viewer.getUniqueId());
-            set(slots[i], Icon.of(medal)
+            set(slots[i], icon
                     .name("#" + (i + 1) + " " + data.getName(),
                             self ? NamedTextColor.GREEN : NamedTextColor.WHITE)
                     .loreComponents(List.of(Ui.line(Ui.num(data.getBalance()) + " " + currency,

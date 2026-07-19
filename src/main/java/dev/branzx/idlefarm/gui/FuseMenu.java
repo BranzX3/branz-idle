@@ -83,7 +83,7 @@ public final class FuseMenu extends Menu {
         if (picked != null) {
             List<Component> lore = new ArrayList<>(gui.workerService().workerLore(picked));
             lore.add(Ui.line("Click to clear", NamedTextColor.DARK_GRAY));
-            set(slot, Icon.of(Material.PLAYER_HEAD)
+            set(slot, Icon.head(picked.getSkin())
                     .name("✦ " + picked.getName(), picked.getRarity().color())
                     .loreComponents(lore).build(), e -> {
                 if (slot == LEFT) {

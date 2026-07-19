@@ -57,7 +57,7 @@ public final class TrustMenu extends Menu {
             var offline = Bukkit.getOfflinePlayer(entry.getKey());
             String name = offline.getName() == null ? "?" : offline.getName();
             TrustLevel level = entry.getValue();
-            set(slot, Icon.of(Material.PLAYER_HEAD).name(name, NamedTextColor.GREEN)
+            set(slot, Icon.head(name).name(name, NamedTextColor.GREEN)
                     .lore(List.of("Level: " + level, "Click: cycle level",
                             "Shift-click: remove"), NamedTextColor.GRAY).build(),
                     e -> {
@@ -84,7 +84,7 @@ public final class TrustMenu extends Menu {
             if (addSlot >= 45) {
                 break;
             }
-            set(addSlot, Icon.of(Material.PLAYER_HEAD).name("+ " + online.getName(), NamedTextColor.YELLOW)
+            set(addSlot, Icon.head(online.getName()).name("+ " + online.getName(), NamedTextColor.YELLOW)
                     .lore("Click: grant Visitor", NamedTextColor.GRAY).build(),
                     e -> {
                         gui.trustService().setTrust(viewer.getUniqueId(), online.getUniqueId(),

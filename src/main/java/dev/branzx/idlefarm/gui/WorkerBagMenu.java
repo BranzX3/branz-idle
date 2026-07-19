@@ -52,7 +52,7 @@ public final class WorkerBagMenu extends Menu {
             WorkerRecord worker = bag.get(start + i);
             List<Component> lore = new ArrayList<>(gui.workerService().workerLore(worker));
             lore.add(Ui.line("Click: withdraw as item (to trade)", NamedTextColor.DARK_GRAY));
-            set(i, Icon.of(Material.PLAYER_HEAD).name("✦ " + worker.getName(), worker.getRarity().color())
+            set(i, Icon.head(worker.getSkin()).name("✦ " + worker.getName(), worker.getRarity().color())
                     .loreComponents(lore).build(), e -> withdraw(worker.getWorkerUuid()));
         }
         if (bag.isEmpty()) {

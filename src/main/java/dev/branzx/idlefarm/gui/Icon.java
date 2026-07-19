@@ -23,6 +23,17 @@ public final class Icon {
         return new Icon(material);
     }
 
+    /** A PLAYER_HEAD textured with the given player-name skin. */
+    public static Icon head(String skinName) {
+        Icon icon = new Icon(Material.PLAYER_HEAD);
+        if (icon.item.getItemMeta() instanceof org.bukkit.inventory.meta.SkullMeta skull) {
+            skull.setOwningPlayer(org.bukkit.Bukkit.getOfflinePlayer(
+                    skinName == null || skinName.isBlank() ? "Steve" : skinName));
+            icon.item.setItemMeta(skull);
+        }
+        return icon;
+    }
+
     public Icon name(String text, NamedTextColor color) {
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Component.text(text, color).decoration(TextDecoration.ITALIC, false));

@@ -305,7 +305,7 @@ public final class NodeDetailMenu extends Menu {
         List<Component> lore = new ArrayList<>(gui.workerService().workerLore(worker));
         lore.add(Ui.line(stateBadge(worker.getState()), stateColor(worker.getState())));
         lore.add(Ui.line("Click to eject", NamedTextColor.DARK_GRAY));
-        return Icon.of(Material.PLAYER_HEAD)
+        return Icon.head(worker.getSkin())
                 .name("✦ " + worker.getName(), worker.getRarity().color())
                 .loreComponents(lore).build();
     }
