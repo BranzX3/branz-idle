@@ -60,8 +60,15 @@ public final class WarehouseMenu extends Menu {
                             Ui.line("Stored ×" + Ui.num(entry.getValue()), NamedTextColor.GOLD),
                             Ui.divider(),
                             Ui.line("Click: withdraw 1 stack", NamedTextColor.GRAY),
-                            Ui.line("Shift-click: withdraw all", NamedTextColor.GRAY))).build(),
-                    e -> withdraw(entry.getKey(), material, e.isShiftClick()));
+                            Ui.line("Shift-click: withdraw all", NamedTextColor.GRAY),
+                            Ui.line("Middle click: type exact amount", NamedTextColor.AQUA))).build(),
+                    e -> {
+                        if (e.getClick() == org.bukkit.event.inventory.ClickType.MIDDLE) {
+                            promptExact(entry.getKey(), material);
+                        } else {
+                            withdraw(entry.getKey(), material, e.isShiftClick());
+                        }
+                    });
         }
 
         for (int i = 45; i < 54; i++) {
@@ -84,10 +91,31 @@ public final class WarehouseMenu extends Menu {
         }
     }
 
+    private void promptExact(String key, Material material) {
+        int have = gui.warehouseService().getContents(owner).getOrDefault(key.toUpperCase(Locale.ROOT), 0);
+        gui.chatPrompt().requestNumber(viewer,
+                "How many " + prettify(key) + " to withdraw? (have " + have + ")",
+                value -> {
+                    withdrawExact(key, material, (int) Math.floor(value));
+                    open();
+                },
+                this::open);
+    }
+
+    private void withdrawExact(String key, Material material, int amount) {
+        int removed = gui.warehouseService().withdraw(owner, key, amount);
+        deliver(key, material, removed);
+    }
+
     private void withdraw(String key, Material material, boolean all) {
         int have = gui.warehouseService().getContents(owner).getOrDefault(key.toUpperCase(Locale.ROOT), 0);
         int want = all ? have : Math.min(material.getMaxStackSize(), have);
         int removed = gui.warehouseService().withdraw(owner, key, want);
+        deliver(key, material, removed);
+        redraw();
+    }
+
+    private void deliver(String key, Material material, int removed) {
         if (removed > 0) {
             int give = removed;
             while (give > 0) {
@@ -100,7 +128,6 @@ public final class WarehouseMenu extends Menu {
                 give -= stack;
             }
         }
-        redraw();
     }
 
     private void expand() {

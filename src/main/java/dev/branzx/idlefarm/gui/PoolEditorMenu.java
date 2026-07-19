@@ -67,6 +67,7 @@ public final class PoolEditorMenu extends Menu {
                     NamedTextColor.GOLD));
             lore.add(Ui.divider());
             lore.add(Ui.line("L/R click: -1/+1  (shift ±10)", NamedTextColor.GRAY));
+            lore.add(Ui.line("Middle click: type exact weight", NamedTextColor.AQUA));
             lore.add(Ui.line("Drop key (Q): remove", NamedTextColor.RED));
             String materialKey = entry.getKey();
             set(slot, Icon.of(material).name(Ui.pretty(materialKey), NamedTextColor.WHITE)
@@ -95,6 +96,19 @@ public final class PoolEditorMenu extends Menu {
             drops.setWeight(path, material, 0);
             audit.log(viewer.getUniqueId(), "POOL_EDIT", path + " remove " + material);
             redraw();
+            return;
+        }
+        // Middle click: type an exact weight in chat.
+        if (click == ClickType.MIDDLE) {
+            gui.chatPrompt().requestNumber(viewer,
+                    "Enter exact weight for " + Ui.pretty(material) + " (current " + Ui.num(current) + ")",
+                    value -> {
+                        drops.setWeight(path, material, value);
+                        audit.log(viewer.getUniqueId(), "POOL_EDIT",
+                                path + " " + material + " =" + value + " (typed)");
+                        open(); // reopen the editor
+                    },
+                    this::open);
             return;
         }
         double delta = switch (click) {

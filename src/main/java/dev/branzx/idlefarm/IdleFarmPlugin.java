@@ -98,6 +98,7 @@ public final class IdleFarmPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new ProtectionListener(nodeStore, trustService), this);
         getServer().getPluginManager().registerEvents(npcManager, this);
         getServer().getPluginManager().registerEvents(guiManager, this);
+        getServer().getPluginManager().registerEvents(guiManager.chatPrompt(), this);
 
         // Citizens is a hard dependency, so its API is ready by now.
         npcManager.init();

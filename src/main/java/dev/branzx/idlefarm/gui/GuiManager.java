@@ -37,6 +37,7 @@ public final class GuiManager implements Listener {
     private final TrustService trustService;
     private final ExplorationService explorationService;
     private final WorkerNpcManager npcManager;
+    private final ChatPrompt chatPrompt;
     private dev.branzx.idlefarm.service.BoosterService boosterService;
     private dev.branzx.idlefarm.service.PerkService perkService;
     private dev.branzx.idlefarm.service.StreakService streakService;
@@ -56,6 +57,7 @@ public final class GuiManager implements Listener {
         this.trustService = trustService;
         this.explorationService = explorationService;
         this.npcManager = npcManager;
+        this.chatPrompt = new ChatPrompt(plugin);
     }
 
     public void setPhase7Services(dev.branzx.idlefarm.service.BoosterService boosterService,
@@ -82,6 +84,10 @@ public final class GuiManager implements Listener {
 
     public IdleFarmPlugin plugin() {
         return plugin;
+    }
+
+    public ChatPrompt chatPrompt() {
+        return chatPrompt;
     }
 
     public NodeStore nodeStore() {
