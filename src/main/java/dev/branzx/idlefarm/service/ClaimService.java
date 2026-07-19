@@ -33,6 +33,9 @@ public final class ClaimService {
     private final PlayerDataStore playerDataStore;
     private final SchematicService schematicService;
     private final WorkerNpcManager npcManager;
+    private ExplorationService explorationService;
+    private WorkerService workerService;
+    private dev.branzx.idlefarm.storage.WorkerStore workerStore;
 
     public ClaimService(IdleFarmPlugin plugin, NodeStore nodeStore, PlayerDataStore playerDataStore,
                         SchematicService schematicService, WorkerNpcManager npcManager) {
@@ -41,6 +44,13 @@ public final class ClaimService {
         this.playerDataStore = playerDataStore;
         this.schematicService = schematicService;
         this.npcManager = npcManager;
+    }
+
+    public void setLateServices(ExplorationService explorationService, WorkerService workerService,
+                                dev.branzx.idlefarm.storage.WorkerStore workerStore) {
+        this.explorationService = explorationService;
+        this.workerService = workerService;
+        this.workerStore = workerStore;
     }
 
     public boolean isClaimableWorld(World world) {
@@ -145,13 +155,19 @@ public final class ClaimService {
             return Result.fail("Unclaiming this chunk would split your territory.");
         }
 
+        // Spec §6b: buffer must be collected first — no dupe/loss edge cases.
+        if (record.getType().isProduction() && record.storageTotal() > 0) {
+            return Result.fail("Collect this node's buffer before unclaiming.");
+        }
+
         double refund = claimCost(record.getType())
                 * plugin.getConfig().getDouble("claims.unclaim-refund-ratio", 0.5);
 
         if (record.getType().isProduction()) {
-            if (plugin.getExplorationService() != null) {
-                plugin.getExplorationService().cancel(record); // in-progress event: no loot
+            if (explorationService != null) {
+                explorationService.cancel(record); // in-progress event: no loot
             }
+            ejectAllWorkers(record); // workers return to roster, never destroyed
             npcManager.despawnNode(record.getId());
             schematicService.restoreTerrain(record, world);
         }
@@ -160,7 +176,74 @@ public final class ClaimService {
         if (data != null) {
             data.addBalance(refund);
         }
-        return Result.ok("Node unclaimed (+" + refund + " refund).");
+        return Result.ok("Node unclaimed (+" + refund + " refund). Worker contracts returned.");
+    }
+
+    /**
+     * Ejected worker items are handed to the online owner (or dropped at the
+     * node) — unclaim/convert must never destroy player-owned workers.
+     */
+    private void ejectAllWorkers(NodeRecord record) {
+        if (workerStore == null || workerService == null) {
+            return;
+        }
+        var owner = org.bukkit.Bukkit.getPlayer(record.getOwnerUuid());
+        for (var worker : workerStore.getAssigned(record.getId())) {
+            Long previous = worker.getAssignedNodeId();
+            worker.setAssignedNodeId(null);
+            worker.setState(dev.branzx.idlefarm.worker.WorkerRecord.STATE_ITEM);
+            workerStore.reindexAssignment(worker, previous);
+            var item = workerService.createItem(worker);
+            if (owner != null && owner.isOnline()) {
+                var leftover = owner.getInventory().addItem(item);
+                for (var overflow : leftover.values()) {
+                    owner.getWorld().dropItemNaturally(owner.getLocation(), overflow);
+                }
+            } else {
+                World world = org.bukkit.Bukkit.getWorld(record.getChunk().world());
+                if (world != null) {
+                    world.dropItemNaturally(schematicService.origin(record, world), item);
+                }
+            }
+        }
+    }
+
+    /** Convert a production node's type in place (spec §8b). */
+    public Result convert(UUID owner, World world, ChunkKey chunk, NodeType newType) {
+        NodeRecord record = nodeStore.getByChunk(chunk);
+        if (record == null || !record.getOwnerUuid().equals(owner)) {
+            return Result.fail("You do not own this chunk.");
+        }
+        if (!record.getType().isProduction() || !newType.isProduction()) {
+            return Result.fail("Only production nodes can be converted.");
+        }
+        if (record.getType() == newType) {
+            return Result.fail("This node is already " + newType + ".");
+        }
+        if (record.storageTotal() > 0) {
+            return Result.fail("Collect this node's buffer before converting.");
+        }
+        double cost = plugin.getConfig().getDouble("claims.convert-cost", 750.0);
+        PlayerData data = playerDataStore.getOnline(owner);
+        if (data == null || data.getBalance() < cost) {
+            return Result.fail("Not enough money (need " + cost + ").");
+        }
+        data.addBalance(-cost);
+
+        if (explorationService != null) {
+            explorationService.cancel(record);
+        }
+        ejectAllWorkers(record);
+        record.setType(newType);
+        // Tier kept; exploration level halved (configurable) — §8b.
+        double keep = plugin.getConfig().getDouble("claims.convert-exploration-keep", 0.5);
+        record.setExplorationLevel((int) Math.floor(record.getExplorationLevel() * keep));
+        record.setExplorationExp(0);
+        nodeStore.updateProduction(record);
+        schematicService.rebuild(record, world);
+        npcManager.refreshNode(record, world);
+        return Result.ok("Node converted to " + newType + " (-" + cost
+                + "). Worker contracts returned — reassign them.");
     }
 
     private boolean isAdjacentToOwn(UUID owner, ChunkKey chunk) {

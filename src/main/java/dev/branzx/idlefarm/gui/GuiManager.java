@@ -37,6 +37,9 @@ public final class GuiManager implements Listener {
     private final TrustService trustService;
     private final ExplorationService explorationService;
     private final WorkerNpcManager npcManager;
+    private dev.branzx.idlefarm.service.BoosterService boosterService;
+    private dev.branzx.idlefarm.service.PerkService perkService;
+    private dev.branzx.idlefarm.service.StreakService streakService;
 
     public GuiManager(IdleFarmPlugin plugin, NodeStore nodeStore, WorkerStore workerStore,
                       PlayerDataStore dataStore, WorkerService workerService,
@@ -55,7 +58,27 @@ public final class GuiManager implements Listener {
         this.npcManager = npcManager;
     }
 
+    public void setPhase7Services(dev.branzx.idlefarm.service.BoosterService boosterService,
+                                  dev.branzx.idlefarm.service.PerkService perkService,
+                                  dev.branzx.idlefarm.service.StreakService streakService) {
+        this.boosterService = boosterService;
+        this.perkService = perkService;
+        this.streakService = streakService;
+    }
+
     // ---- accessors for menus ----
+
+    public dev.branzx.idlefarm.service.BoosterService boosterService() {
+        return boosterService;
+    }
+
+    public dev.branzx.idlefarm.service.PerkService perkService() {
+        return perkService;
+    }
+
+    public dev.branzx.idlefarm.service.StreakService streakService() {
+        return streakService;
+    }
 
     public IdleFarmPlugin plugin() {
         return plugin;
@@ -117,6 +140,14 @@ public final class GuiManager implements Listener {
 
     public void openWorkers(Player player) {
         new WorkersMenu(player, this).open();
+    }
+
+    public void openTerritoryMap(Player player) {
+        new TerritoryMapMenu(player, this).open();
+    }
+
+    public void openShop(Player player) {
+        new ShopMenu(player, this).open();
     }
 
     // ---- listener ----

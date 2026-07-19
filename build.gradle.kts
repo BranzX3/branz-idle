@@ -1,4 +1,7 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import java.net.URI
+import java.io.InputStream
+import java.io.FileOutputStream
 
 plugins {
     id("java")
@@ -21,14 +24,9 @@ repositories {
     }
 }
 
-val runServerPlugins by configurations.creating
-
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.2.build.+")
     compileOnly("net.citizensnpcs:citizens-main:2.0.43-SNAPSHOT") {
-        exclude(group = "*", module = "*")
-    }
-    runServerPlugins("net.citizensnpcs:citizens-main:2.0.43-SNAPSHOT") {
         exclude(group = "*", module = "*")
     }
 
@@ -63,13 +61,33 @@ tasks.processResources {
     }
 }
 
-val copyServerPlugins by tasks.registering(Copy::class) {
-    from(runServerPlugins)
-    into(layout.projectDirectory.dir("run/plugins"))
+val downloadCitizens = tasks.register("downloadCitizens") {
+    val url = URI("https://ci.citizensnpcs.co/job/Citizens2/4220/artifact/dist/target/Citizens-2.0.43-b4220.jar").toURL()
+    val destination = layout.projectDirectory.file("run/plugins/Citizens.jar").asFile
+    outputs.file(destination)
+    doLast {
+        // Clean up old main jar if present to avoid conflicts
+        val pluginsDir = layout.projectDirectory.dir("run/plugins").asFile
+        pluginsDir.listFiles()?.forEach { file ->
+            if (file.name.startsWith("citizens-main-") && file.name.endsWith(".jar")) {
+                file.delete()
+            }
+        }
+        if (!destination.exists()) {
+            destination.parentFile.mkdirs()
+            println("Downloading Citizens from $url...")
+            url.openStream().use { input ->
+                FileOutputStream(destination).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            println("Downloaded Citizens to ${destination.absolutePath}")
+        }
+    }
 }
 
 tasks.runServer {
     minecraftVersion("26.2")
     jvmArgs("-Dcom.mojang.eula.agree=true")
-    dependsOn(copyServerPlugins)
+    dependsOn(downloadCitizens)
 }

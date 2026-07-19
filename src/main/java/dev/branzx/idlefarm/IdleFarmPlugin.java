@@ -6,8 +6,11 @@ import dev.branzx.idlefarm.gui.GuiManager;
 import dev.branzx.idlefarm.schematic.SchematicRegistry;
 import dev.branzx.idlefarm.listener.PlayerConnectionListener;
 import dev.branzx.idlefarm.listener.ProtectionListener;
+import dev.branzx.idlefarm.service.BoosterService;
 import dev.branzx.idlefarm.service.ClaimService;
 import dev.branzx.idlefarm.service.ExplorationService;
+import dev.branzx.idlefarm.service.PerkService;
+import dev.branzx.idlefarm.service.StreakService;
 import dev.branzx.idlefarm.service.ProductionEngine;
 import dev.branzx.idlefarm.service.SchematicService;
 import dev.branzx.idlefarm.service.TrustService;
@@ -66,11 +69,22 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.explorationService = new ExplorationService(this, database, nodeStore, workerStore);
         this.explorationService.loadAllSync();
         this.explorationService.start();
+        this.claimService.setLateServices(explorationService, workerService, workerStore);
+
+        BoosterService boosterService = new BoosterService(this, database, dataStore);
+        boosterService.loadAllSync();
+        PerkService perkService = new PerkService(this, database, dataStore);
+        perkService.loadAllSync();
+        StreakService streakService = new StreakService(this, database, dataStore);
+        streakService.loadAllSync();
 
         this.guiManager = new GuiManager(this, nodeStore, workerStore, dataStore, workerService,
                 warehouseService, claimService, trustService, explorationService, npcManager);
+        this.guiManager.setPhase7Services(boosterService, perkService, streakService);
 
-        getServer().getPluginManager().registerEvents(new PlayerConnectionListener(this, dataStore), this);
+        PlayerConnectionListener connectionListener = new PlayerConnectionListener(this, dataStore);
+        connectionListener.setStreakService(streakService);
+        getServer().getPluginManager().registerEvents(connectionListener, this);
         getServer().getPluginManager().registerEvents(new ProtectionListener(nodeStore, trustService), this);
         getServer().getPluginManager().registerEvents(npcManager, this);
         getServer().getPluginManager().registerEvents(guiManager, this);
@@ -86,11 +100,14 @@ public final class IdleFarmPlugin extends JavaPlugin {
 
         long intervalTicks = getConfig().getLong("payout-interval-seconds", 60) * 20L;
         this.payoutTask = new PayoutTask(this, dataStore);
+        this.payoutTask.setBoosterService(boosterService);
         this.payoutTask.runTaskTimer(this, intervalTicks, intervalTicks);
 
         long productionTicks = getConfig().getLong("production.tick-seconds", 60) * 20L;
         this.productionEngine = new ProductionEngine(this, nodeStore, workerStore, workerService);
         this.productionEngine.setExplorationService(explorationService);
+        this.productionEngine.setBoosterService(boosterService);
+        this.productionEngine.setPerkServices(perkService, warehouseService);
         // First run settles any downtime accrued while the server was off.
         this.productionEngine.runTaskTimer(this, 100L, productionTicks);
     }

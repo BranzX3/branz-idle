@@ -1,0 +1,32 @@
+{
+  "stats": {
+    "minecraft:mined": {
+      "minecraft:player_head": 1
+    },
+    "minecraft:picked_up": {
+      "minecraft:player_head": 1,
+      "minecraft:arrow": 4,
+      "minecraft:bone": 2
+    },
+    "minecraft:custom": {
+      "minecraft:time_since_rest": 52575,
+      "minecraft:walk_one_cm": 5948,
+      "minecraft:leave_game": 3,
+      "minecraft:damage_taken": 10,
+      "minecraft:play_time": 52575,
+      "minecraft:jump": 477,
+      "minecraft:time_since_death": 52575,
+      "minecraft:sprint_one_cm": 20589,
+      "minecraft:fall_one_cm": 750,
+      "minecraft:total_world_time": 52575,
+      "minecraft:fly_one_cm": 469133,
+      "minecraft:crouch_one_cm": 1594,
+      "minecraft:sneak_time": 2146
+    },
+    "minecraft:used": {
+      "minecraft:player_head": 2,
+      "minecraft:oak_slab": 1
+    }
+  },
+  "DataVersion": 4903
+}

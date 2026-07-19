@@ -156,6 +156,29 @@ public final class Database {
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS idlefarm_perks (
+                owner_uuid VARCHAR(36) NOT NULL,
+                perk VARCHAR(32) NOT NULL,
+                PRIMARY KEY (owner_uuid, perk)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_boosters (
+                owner_uuid VARCHAR(36) NOT NULL,
+                booster_type VARCHAR(32) NOT NULL,
+                multiplier DOUBLE NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                PRIMARY KEY (owner_uuid, booster_type)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_streaks (
+                owner_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                current_streak INT NOT NULL DEFAULT 0,
+                last_login_day VARCHAR(10) NOT NULL
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS idlefarm_exploration_events (
                 id BIGINT NOT NULL PRIMARY KEY,
                 node_id BIGINT NOT NULL,
@@ -253,6 +276,29 @@ public final class Database {
             CREATE TABLE IF NOT EXISTS idlefarm_snapshots (
                 node_id INTEGER NOT NULL PRIMARY KEY,
                 blocks_json TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_perks (
+                owner_uuid TEXT NOT NULL,
+                perk TEXT NOT NULL,
+                PRIMARY KEY (owner_uuid, perk)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_boosters (
+                owner_uuid TEXT NOT NULL,
+                booster_type TEXT NOT NULL,
+                multiplier REAL NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                PRIMARY KEY (owner_uuid, booster_type)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_streaks (
+                owner_uuid TEXT NOT NULL PRIMARY KEY,
+                current_streak INTEGER NOT NULL DEFAULT 0,
+                last_login_day TEXT NOT NULL
             )
             """,
             """

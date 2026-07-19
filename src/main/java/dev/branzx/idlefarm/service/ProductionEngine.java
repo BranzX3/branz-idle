@@ -30,9 +30,21 @@ public final class ProductionEngine extends BukkitRunnable {
     private final WorkerStore workerStore;
     private final WorkerService workerService;
     private ExplorationService explorationService;
+    private BoosterService boosterService;
+    private PerkService perkService;
+    private WarehouseService warehouseService;
 
     public void setExplorationService(ExplorationService explorationService) {
         this.explorationService = explorationService;
+    }
+
+    public void setBoosterService(BoosterService boosterService) {
+        this.boosterService = boosterService;
+    }
+
+    public void setPerkServices(PerkService perkService, WarehouseService warehouseService) {
+        this.perkService = perkService;
+        this.warehouseService = warehouseService;
     }
 
     public ProductionEngine(IdleFarmPlugin plugin, NodeStore nodeStore,
@@ -65,7 +77,9 @@ public final class ProductionEngine extends BukkitRunnable {
             return;
         }
 
-        double ratePerHour = baseRate(node) * crewPower(crew);
+        double boost = boosterService == null ? 1.0
+                : boosterService.multiplier(node.getOwnerUuid(), BoosterService.PRODUCTION);
+        double ratePerHour = baseRate(node) * crewPower(crew) * boost;
         if (ratePerHour <= 0) {
             node.setLastTickAt(now);
             return;
@@ -87,6 +101,23 @@ public final class ProductionEngine extends BukkitRunnable {
             if (explorationService != null) {
                 double perItem = plugin.getConfig().getDouble("exploration.passive-exp-per-item", 1.0);
                 explorationService.grantExplorationExp(node, (long) Math.ceil(credited * perItem));
+            }
+            dirty = true;
+        }
+
+        // Auto-collect perk: buffer flushes straight to the Warehouse.
+        if (perkService != null && warehouseService != null && node.storageTotal() > 0
+                && perkService.has(node.getOwnerUuid(), PerkService.AUTO_COLLECT)) {
+            for (var entry : List.copyOf(node.getStorage().entrySet())) {
+                int stored = warehouseService.deposit(node.getOwnerUuid(), entry.getKey(), entry.getValue());
+                if (stored >= entry.getValue()) {
+                    node.getStorage().remove(entry.getKey());
+                } else {
+                    if (stored > 0) {
+                        node.getStorage().put(entry.getKey(), entry.getValue() - stored);
+                    }
+                    break; // warehouse full
+                }
             }
             dirty = true;
         }

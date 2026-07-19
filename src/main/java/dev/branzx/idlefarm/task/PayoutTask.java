@@ -1,6 +1,7 @@
 package dev.branzx.idlefarm.task;
 
 import dev.branzx.idlefarm.IdleFarmPlugin;
+import dev.branzx.idlefarm.service.BoosterService;
 import dev.branzx.idlefarm.storage.PlayerData;
 import dev.branzx.idlefarm.storage.PlayerDataStore;
 import net.kyori.adventure.text.Component;
@@ -12,10 +13,15 @@ public final class PayoutTask extends BukkitRunnable {
 
     private final IdleFarmPlugin plugin;
     private final PlayerDataStore dataStore;
+    private BoosterService boosterService;
 
     public PayoutTask(IdleFarmPlugin plugin, PlayerDataStore dataStore) {
         this.plugin = plugin;
         this.dataStore = dataStore;
+    }
+
+    public void setBoosterService(BoosterService boosterService) {
+        this.boosterService = boosterService;
     }
 
     @Override
@@ -32,7 +38,9 @@ public final class PayoutTask extends BukkitRunnable {
                 continue;
             }
 
-            double payout = money * multiplier;
+            double boost = boosterService == null ? 1.0
+                    : boosterService.multiplier(player.getUniqueId(), BoosterService.MONEY);
+            double payout = money * multiplier * boost;
             data.addBalance(payout);
             data.incrementOnlineMinutes(Math.max(1, intervalSeconds / 60));
             player.giveExp(exp);

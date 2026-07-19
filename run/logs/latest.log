@@ -1,0 +1,143 @@
+[03:19:12] [ServerMain/INFO]: [bootstrap] Running Java 25 (OpenJDK 64-Bit Server VM 25.0.3+9-LTS; Eclipse Adoptium Temurin-25.0.3+9) on Windows 11 10.0 (amd64)
+[03:19:12] [ServerMain/INFO]: [bootstrap] Loading Paper 26.2-62-main@75c0b48 (2026-07-17T17:14:52Z) for Minecraft 26.2
+[03:19:12] [ServerMain/INFO]: [PluginInitializerManager] Initializing plugins...
+[03:19:13] [ServerMain/INFO]: [PluginInitializerManager] Initialized 2 plugins
+[03:19:13] [ServerMain/INFO]: [PluginInitializerManager] Bukkit plugins (2):
+ - Citizens (2.0.43-SNAPSHOT (build 4220)), IdleFarm (1.0.0)
+[03:19:16] [ServerMain/WARN]: You have used the Paper command line EULA agreement flag.
+[03:19:16] [ServerMain/WARN]: By using this setting you are indicating your agreement to Mojang's EULA (https://aka.ms/MinecraftEULA).
+[03:19:16] [ServerMain/WARN]: If you do not agree to the above EULA please stop your server and remove this flag immediately.
+[03:19:16] [ServerMain/INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, profilesHost=https://api.mojang.com, name=PROD]
+[03:19:18] [ServerMain/INFO]: Loaded 1585 recipes
+[03:19:18] [ServerMain/INFO]: Loaded 1688 advancements
+[03:19:18] [ServerMain/INFO]: [ca.spottedleaf.dataconverter.minecraft.datatypes.MCTypeRegistry] Initialising converters for DataConverter...
+[03:19:18] [ServerMain/INFO]: [ca.spottedleaf.dataconverter.minecraft.datatypes.MCTypeRegistry] Finished initialising converters for DataConverter in 245.6ms
+[03:19:18] [Server thread/INFO]: Starting minecraft server version 26.2
+[03:19:18] [Server thread/INFO]: Loading properties
+[03:19:18] [Server thread/INFO]: This server is running Paper version 26.2-62-main@75c0b48 (2026-07-17T17:14:52Z) (Implementing API version 26.2.build.62-beta)
+[03:19:18] [Server thread/INFO]: [spark] This server bundles the spark profiler. For more information please visit https://docs.papermc.io/paper/profiling
+[03:19:18] [Server thread/INFO]: Server Ping Player Sample Count: 12
+[03:19:18] [Server thread/INFO]: Using 4 threads for Netty based IO
+[03:19:18] [Server thread/INFO]: [MoonriseCommon] Paper is using 3 worker threads, 1 I/O threads
+[03:19:19] [Server thread/INFO]: Default game type: SURVIVAL
+[03:19:19] [Server thread/INFO]: Generating keypair
+[03:19:19] [Server thread/INFO]: Starting Minecraft server on *:25565
+[03:19:19] [Server thread/INFO]: Paper: Using Java compression from Velocity.
+[03:19:19] [Server thread/INFO]: Paper: Using Java cipher from Velocity.
+[03:19:19] [Server thread/INFO]: [SpigotLibraryLoader] [Citizens] Loading 4 libraries... please wait
+[03:19:19] [Server thread/INFO]: [SpigotLibraryLoader] [Citizens] Loaded library C:\Users\User\Documents\GitHub\branz-idle\run\libraries\ch\ethz\globis\phtree\phtree\2.8.2\phtree-2.8.2.jar
+[03:19:19] [Server thread/INFO]: [SpigotLibraryLoader] [Citizens] Loaded library C:\Users\User\Documents\GitHub\branz-idle\run\libraries\org\joml\joml\1.10.9\joml-1.10.9.jar
+[03:19:19] [Server thread/INFO]: [SpigotLibraryLoader] [Citizens] Loaded library C:\Users\User\Documents\GitHub\branz-idle\run\libraries\it\unimi\dsi\fastutil\8.5.16\fastutil-8.5.16.jar
+[03:19:19] [Server thread/INFO]: [SpigotLibraryLoader] [Citizens] Loaded library C:\Users\User\Documents\GitHub\branz-idle\run\libraries\team\unnamed\mocha\3.0.0\mocha-3.0.0.jar
+[03:19:19] [Server thread/INFO]: [SpigotLibraryLoader] [Citizens] Loaded library C:\Users\User\Documents\GitHub\branz-idle\run\libraries\org\javassist\javassist\3.30.2-GA\javassist-3.30.2-GA.jar
+[03:19:19] [Server thread/INFO]: [SpigotLibraryLoader] [Citizens] Loaded library C:\Users\User\Documents\GitHub\branz-idle\run\libraries\org\jetbrains\annotations\24.0.1\annotations-24.0.1.jar
+[03:19:19] [Server thread/INFO]: [Citizens] Loading server plugin Citizens v2.0.43-SNAPSHOT (build 4220)
+[03:19:19] [Server thread/INFO]: [IdleFarm] Loading server plugin IdleFarm v1.0.0
+[03:19:19] [Server thread/INFO]: Server permissions file permissions.yml is empty, ignoring it
+[03:19:19] [Server thread/INFO]: Preparing level "world"
+[03:19:19] [Server thread/INFO]: Loading 0 persistent chunks for level 'minecraft:overworld'...
+[03:19:19] [Server thread/INFO]: Preparing spawn area: 100%
+[03:19:19] [Server thread/INFO]: Prepared spawn area in 2 ms
+[03:19:19] [Server thread/INFO]: Loading 0 persistent chunks for level 'minecraft:the_nether'...
+[03:19:19] [Server thread/INFO]: Prepared spawn area in 1 ms
+[03:19:19] [Server thread/INFO]: Loading 0 persistent chunks for level 'minecraft:the_end'...
+[03:19:19] [Server thread/INFO]: Prepared spawn area in 2 ms
+[03:19:19] [Server thread/INFO]: Done preparing level "world" (0.337s)
+[03:19:19] [Server thread/INFO]: [Citizens] Enabling Citizens v2.0.43-SNAPSHOT (build 4220)
+[03:19:20] [Server thread/INFO]: [Citizens] Loaded 2 templates.
+[03:19:20] [Server thread/INFO]: [IdleFarm] Enabling IdleFarm v1.0.0
+[03:19:20] [Server thread/INFO]: [dev.branzx.idlefarm.libs.hikari.HikariDataSource] IdleFarm-Pool - Starting...
+[03:19:20] [Server thread/INFO]: [dev.branzx.idlefarm.libs.hikari.pool.HikariPool] IdleFarm-Pool - Added connection org.sqlite.jdbc4.JDBC4Connection@4bc2cbee
+[03:19:20] [Server thread/INFO]: [dev.branzx.idlefarm.libs.hikari.HikariDataSource] IdleFarm-Pool - Start completed.
+[03:19:20] [Server thread/INFO]: [IdleFarm] Storage: SQLite (idlefarm.db)
+[03:19:20] [Server thread/INFO]: [IdleFarm] Loaded 0 nodes and trust entries for 0 owners.
+[03:19:20] [Server thread/INFO]: [IdleFarm] Loaded 1 schematic definitions.
+[03:19:20] [Server thread/INFO]: [IdleFarm] Loaded 0 workers.
+[03:19:20] [Server thread/INFO]: [spark] Starting background profiler...
+[03:19:20] [Server thread/INFO]: [spark] The async-profiler engine is not supported for your os/arch (windows11/amd64), so the built-in Java engine will be used instead.
+[03:19:20] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:overworld
+[03:19:20] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:the_nether
+[03:19:20] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:the_end
+[03:19:20] [Server thread/INFO]: ThreadedAnvilChunkStorage (world): All chunks are saved
+[03:19:20] [Server thread/INFO]: ThreadedAnvilChunkStorage (DIM-1): All chunks are saved
+[03:19:20] [Server thread/INFO]: ThreadedAnvilChunkStorage (DIM1): All chunks are saved
+[03:19:20] [Server thread/INFO]: ThreadedAnvilChunkStorage: All dimensions are saved
+[03:19:20] [Server thread/INFO]: Running delayed init tasks
+[03:19:20] [Server thread/INFO]: [Citizens] Loaded 0 NPCs.
+[03:19:20] [Server thread/INFO]: Done (9.639s)! For help, type "help"
+[03:19:36] [User Authenticator #0/INFO]: UUID of player Branz_ is 26fc58bf-07b1-435c-a9bb-fb3689aea5a2
+[03:19:40] [Server thread/INFO]: Branz_ joined the game
+[03:19:40] [Server thread/INFO]: Branz_[/171.97.116.162:49991] logged in with entity id 4 at ([minecraft:overworld]-617.5, 70.0, -22.5)
+[03:19:45] [Server thread/INFO]: Branz_ issued server command: /plugins
+[03:19:59] [Server thread/INFO]: Branz_ issued server command: /gamemode creative
+[03:19:59] [Server thread/INFO]: [Branz_: Set own game mode to Creative Mode]
+[03:20:07] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:20:53] [Server thread/INFO]: Branz_ issued server command: /idlefarm:idle
+[03:21:01] [Server thread/INFO]: Branz_ issued server command: /idle claim
+[03:21:06] [Server thread/INFO]: Branz_ issued server command: /idle claim residential
+[03:21:15] [Server thread/INFO]: Branz_ issued server command: /idle balanc
+[03:21:16] [Server thread/INFO]: Branz_ issued server command: /idle balance
+[03:21:20] [Server thread/INFO]: Branz_ issued server command: /idle balance
+[03:21:21] [Server thread/INFO]: Branz_ issued server command: /idle balance
+[03:21:22] [Server thread/INFO]: Branz_ issued server command: /idle balance
+[03:21:23] [Server thread/INFO]: Branz_ issued server command: /idle balance
+[03:21:47] [Server thread/INFO]: Branz_ issued server command: /idle warehouse
+[03:21:50] [Server thread/INFO]: Branz_ issued server command: /idle claim
+[03:22:02] [Server thread/INFO]: Branz_ issued server command: /idle balance
+[03:22:18] [Server thread/INFO]: Branz_ issued server command: /idle balance add
+[03:22:25] [Server thread/INFO]: Branz_ issued server command: /idle admin
+[03:27:00] [Server thread/INFO]: Branz_ issued server command: /idle balance
+[03:27:02] [Server thread/INFO]: Branz_ lost connection: Disconnected
+[03:27:02] [Server thread/INFO]: Branz_ left the game
+[03:27:19] [User Authenticator #1/INFO]: UUID of player Branz_ is 26fc58bf-07b1-435c-a9bb-fb3689aea5a2
+[03:27:19] [Server thread/INFO]: Branz_ joined the game
+[03:27:19] [Server thread/INFO]: Branz_[/171.97.116.162:56296] logged in with entity id 1685 at ([minecraft:overworld]-618.3798818440533, 80.00503707869076, -28.181188294458575)
+[03:27:22] [Server thread/INFO]: Branz_ issued server command: /idle balance
+[03:27:35] [Server thread/INFO]: Branz_ issued server command: /idle admin reload
+[03:27:35] [Server thread/INFO]: [IdleFarm] Loaded 1 schematic definitions.
+[03:27:41] [Server thread/INFO]: Branz_ issued server command: /idle balance
+[03:27:50] [Server thread/INFO]: Branz_ lost connection: Disconnected
+[03:27:50] [Server thread/INFO]: Branz_ left the game
+[03:27:54] [Craft Scheduler Thread - 6 - IdleFarm/ERROR]: [IdleFarm] Failed to save player data for 26fc58bf-07b1-435c-a9bb-fb3689aea5a2: [SQLITE_BUSY] The database file is locked (database is locked)
+[03:28:25] [User Authenticator #2/INFO]: UUID of player Branz_ is 26fc58bf-07b1-435c-a9bb-fb3689aea5a2
+[03:28:25] [Server thread/INFO]: Branz_ joined the game
+[03:28:25] [Server thread/INFO]: Branz_[/171.97.116.162:56244] logged in with entity id 1875 at ([minecraft:overworld]-617.5874502200894, 80.00503707869076, -26.08449226185402)
+[03:28:27] [Server thread/INFO]: Branz_ issued server command: /idle balance
+[03:28:36] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:28:55] [Server thread/INFO]: Branz_ issued server command: /gamemode survival'
+[03:28:57] [Server thread/INFO]: Branz_ issued server command: /gamemode survival
+[03:28:57] [Server thread/INFO]: [Branz_: Set own game mode to Survival Mode]
+[03:29:06] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:29:11] [Server thread/INFO]: Branz_ issued server command: /gamemode creative
+[03:29:11] [Server thread/INFO]: [Branz_: Set own game mode to Creative Mode]
+[03:29:17] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:29:49] [Server thread/INFO]: Branz_ issued server command: /idle claim
+[03:29:51] [Server thread/INFO]: Branz_ issued server command: /idle claim residential
+[03:30:05] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:30:25] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:30:38] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:30:46] [Server thread/INFO]: Branz_ issued server command: /idle claim mining
+[03:30:55] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:31:23] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:32:47] [Server thread/INFO]: Branz_ issued server command: /idle admin schem edit
+[03:33:02] [Server thread/INFO]: Branz_ issued server command: /idle explore
+[03:33:06] [Server thread/INFO]: Branz_ issued server command: /idle explore
+[03:33:13] [Server thread/INFO]: Branz_ issued server command: /idle explore start
+[03:33:24] [Server thread/INFO]: Branz_ issued server command: /idle explore
+[03:33:45] [Server thread/INFO]: Branz_ issued server command: /idle collect
+[03:33:51] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:34:09] [Server thread/INFO]: Branz_ issued server command: /idle admin npc list
+[03:34:49] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:35:12] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:36:55] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:37:29] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:38:02] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:38:36] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:38:59] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:39:21] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:40:39] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:48:02] [Server thread/INFO]: Branz_ issued server command: /idle
+[03:48:18] [Server thread/INFO]: Branz_ has made the advancement [Stone Age]
+[03:48:22] [Server thread/INFO]: Branz_ issued server command: /idle
+[04:04:26] [Server thread/INFO]: Branz_ lost connection: Disconnected
+[04:04:26] [Server thread/INFO]: Branz_ left the game

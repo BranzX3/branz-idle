@@ -90,6 +90,9 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "collect" -> collect(sender);
             case "explore" -> explore(sender, args);
             case "warehouse" -> warehouse(sender);
+            case "map" -> map(sender);
+            case "shop" -> shop(sender);
+            case "convert" -> convert(sender, args);
             case "admin" -> admin(sender, args);
             default -> usage(sender);
         };
@@ -469,6 +472,49 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean map(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can view the map.", NamedTextColor.RED));
+            return true;
+        }
+        guiManager.openTerritoryMap(player);
+        return true;
+    }
+
+    private boolean shop(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can shop.", NamedTextColor.RED));
+            return true;
+        }
+        guiManager.openShop(player);
+        return true;
+    }
+
+    private boolean convert(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can convert nodes.", NamedTextColor.RED));
+            return true;
+        }
+        if (args.length < 2) {
+            sender.sendMessage(Component.text(
+                    "Usage: /idle convert <mining|farming|woodcutting|livestock|hunter>",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        NodeType type = NodeType.fromString(args[1]);
+        if (type == null) {
+            sender.sendMessage(Component.text("Unknown node type: " + args[1], NamedTextColor.RED));
+            return true;
+        }
+        ChunkKey chunk = new ChunkKey(player.getWorld().getName(),
+                player.getLocation().getBlockX() >> 4,
+                player.getLocation().getBlockZ() >> 4);
+        ClaimService.Result result = claimService.convert(player.getUniqueId(), player.getWorld(), chunk, type);
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
     private boolean explore(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(Component.text("Only players can explore.", NamedTextColor.RED));
@@ -578,7 +624,8 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             return List.of("balance", "top", "claim", "unclaim", "nodes", "trust", "untrust",
-                    "hire", "fuse", "assign", "eject", "skin", "collect", "explore", "warehouse", "admin");
+                    "hire", "fuse", "assign", "eject", "skin", "collect", "explore", "warehouse",
+                    "map", "shop", "convert", "admin");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("claim")) {
             return List.of("residential", "mining", "farming", "woodcutting", "livestock", "hunter");

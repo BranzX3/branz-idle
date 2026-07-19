@@ -1,0 +1,258 @@
+# IdleFarm configuration
+
+# Storage backend: "sqlite" (zero-setup, single file in the plugin folder)
+# or "mysql" (use the mysql section below).
+storage:
+  type: sqlite
+
+mysql:
+  host: localhost
+  port: 3306
+  database: idlefarm
+  username: root
+  password: "password"
+  useSSL: false
+  pool-size: 10
+
+# How often (in seconds) rewards are paid out to online players.
+payout-interval-seconds: 60
+
+# Rewards granted per payout interval to every online player,
+# regardless of whether they are AFK or actively playing.
+rewards:
+  money: 10.0
+  exp: 5
+
+# Currency display name used in messages/scoreboard.
+currency-name: "Coins"
+
+# Multiplier applied to rewards for players standing in an AFK-designated
+# region/world. Set to 1.0 to disable bonus.
+afk-bonus-multiplier: 1.0
+
+# Minimum minutes online required before a player shows up on /idle top.
+top-min-minutes: 1
+
+claims:
+  # Worlds where claiming is allowed. Empty list = any Overworld
+  # (NORMAL environment) world.
+  worlds: []
+  # Money cost per claim.
+  residential-cost: 500.0
+  production-cost: 1000.0
+  # Fraction of the claim cost refunded on unclaim (tier spend never refunds).
+  unclaim-refund-ratio: 0.5
+  # Baseline production-node cap for players without a node_cap row.
+  base-node-cap: 4
+
+workers:
+  hire-cost: 250.0
+  # Percent chance per rarity; should sum to 100.
+  gacha-odds:
+    common: 55.0
+    uncommon: 27.0
+    rare: 12.0
+    epic: 5.0
+    legendary: 1.0
+  # Base-stat roll range per rarity.
+  stat-ranges:
+    common: {min: 1, max: 10}
+    uncommon: {min: 5, max: 18}
+    rare: {min: 10, max: 28}
+    epic: {min: 18, max: 40}
+    legendary: {min: 28, max: 55}
+  # Same-rarity workers consumed per fuse (result: next rarity).
+  fuse-count: 3
+  # EXP needed for next level = base × current level.
+  exp-per-level-base: 100
+  # Stat points granted per level, randomly allocated.
+  points-per-level: 3
+  # Chance each point lands on the Trait's favored stat (rest uniform).
+  trait-favored-chance: 0.5
+  # Player usernames whose skins are rolled for new workers. NPC skins and
+  # the contract head texture both resolve from these names.
+  skin-pool:
+    - Notch
+    - jeb_
+    - Dinnerbone
+    - Grumm
+    - dream
+    - Technoblade
+    - CaptainSparklez
+    - DanTDM
+    - Ph1LzA
+    - TommyInnit
+
+# Map node types to schematic definition ids (files in schematics/).
+# Unlisted types use default_hut.
+schematics:
+  mining: default_hut
+  farming: default_hut
+  woodcutting: default_hut
+  livestock: default_hut
+  hunter: default_hut
+
+production:
+  # How often (seconds) production accrual is evaluated. Accrual itself is
+  # timestamp math, so this only affects update granularity, not totals.
+  tick-seconds: 60
+  # Buffer capacity = this × node tier. Full buffer stops production.
+  buffer-capacity-per-tier: 64
+  # Items per hour per node type, before worker power multipliers.
+  base-items-per-hour:
+    mining: 40
+    farming: 48
+    woodcutting: 44
+    livestock: 36
+    hunter: 30
+  # Worker power: rarity multiplier × (1 + level × level-power-per-level),
+  # then × (1 + diligence/100) per worker.
+  rarity-power:
+    common: 1.0
+    uncommon: 1.3
+    rare: 1.7
+    epic: 2.2
+    legendary: 3.0
+  level-power-per-level: 0.02
+  # Worker EXP per credited item (split across crew, scaled by Stamina).
+  worker-exp-per-item: 2.0
+  # Weighted drop tables per node type.
+  drop-tables:
+    mining:
+      cobblestone: 55
+      coal: 25
+      raw_iron: 14
+      raw_gold: 5
+      diamond: 1
+    farming:
+      wheat: 40
+      carrot: 25
+      potato: 25
+      beetroot: 8
+      pumpkin: 2
+    woodcutting:
+      oak_log: 40
+      birch_log: 25
+      spruce_log: 20
+      jungle_log: 10
+      dark_oak_log: 5
+    livestock:
+      beef: 25
+      porkchop: 25
+      chicken: 20
+      leather: 15
+      egg: 10
+      wool: 5
+    hunter:
+      rotten_flesh: 30
+      bone: 25
+      string: 20
+      gunpowder: 15
+      spider_eye: 8
+      ender_pearl: 2
+
+warehouse:
+  # Starting warehouse capacity (total item count).
+  base-capacity: 2000
+  # Capacity added per expansion purchase.
+  expand-step: 1000
+  # Money cost per expansion.
+  expand-cost: 5000.0
+
+nodes:
+  # Tier upgrade cost = base × factor^(currentTier-1). Exponential per spec.
+  tier-base-cost: 1000.0
+  tier-cost-factor: 1.8
+
+exploration:
+  # How often (seconds) event lifecycle is evaluated (spawn/expiry/completion).
+  check-interval-seconds: 30
+  # Chance per check that an event spawns at an event-less node whose owner
+  # is online.
+  spawn-chance-per-check: 0.05
+  # Levels per bracket: bracket = level/size + 1.
+  bracket-size: 10
+  level-cap: 100
+  # Exploration EXP needed for next level = base × (level + 1).
+  exp-per-level-base: 500
+  # Passive exploration EXP per produced item.
+  passive-exp-per-item: 1.0
+  # Lump exploration EXP for completing an event.
+  event-exp-bonus: 2000
+  # Outcome grade odds (percent) shifted by team Luck.
+  grade-odds:
+    jackpot-base: 5
+    jackpot-per-luck: 0.1
+    great-base: 20
+    great-per-luck: 0.2
+  grade-multiplier:
+    great: 1.8
+    jackpot: 3.0
+  # Event catalog. min-bracket gates availability; loot uses weighted rolls.
+  events:
+    abandoned_shaft:
+      name: "Abandoned Shaft"
+      min-bracket: 1
+      duration-minutes: 20
+      expiry-minutes: 30
+      loot-count-base: 8
+      loot:
+        iron_ingot: 40
+        gold_ingot: 25
+        lapis_lazuli: 20
+        redstone: 10
+        diamond: 5
+    lost_caravan:
+      name: "Lost Caravan"
+      min-bracket: 1
+      duration-minutes: 15
+      expiry-minutes: 25
+      loot-count-base: 10
+      loot:
+        bread: 35
+        leather: 25
+        paper: 20
+        emerald: 15
+        saddle: 5
+    deep_ruins:
+      name: "Deep Ruins"
+      min-bracket: 2
+      duration-minutes: 35
+      expiry-minutes: 30
+      loot-count-base: 10
+      loot:
+        emerald: 30
+        diamond: 25
+        amethyst_shard: 20
+        experience_bottle: 15
+        golden_apple: 8
+        enchanted_golden_apple: 2
+    ancient_vault:
+      name: "Ancient Vault"
+      min-bracket: 4
+      duration-minutes: 60
+      expiry-minutes: 20
+      loot-count-base: 12
+      loot:
+        diamond: 35
+        netherite_scrap: 15
+        golden_apple: 20
+        enchanted_golden_apple: 5
+        heavy_core: 1
+        emerald_block: 24
+
+npc:
+  # How often (ticks) NPC animation behaviors are evaluated.
+  animation-interval-ticks: 60
+  # Behavior sets referenced by schematic definitions (profiles.<state>).
+  # Available behaviors: wander, walk_worksite, return_spawn, depart,
+  # hold_tool, clear_tool, swing, look_close, sneak, stand.
+  # depart = walk off toward a work anchor and despawn ("gone out to work");
+  # the NPC walks back home when the state changes. return_spawn = walk back
+  # to the worker's own spawn anchor (bed point) and stay.
+  animation-profiles:
+    default_working: [hold_tool, depart]
+    default_idle: [return_spawn, look_close, clear_tool]
+    default_stop: [return_spawn, sneak, clear_tool]
+    # EXPLORING workers walk off and stay gone for the whole run.
+    default_exploring: [depart]

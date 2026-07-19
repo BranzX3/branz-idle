@@ -116,24 +116,26 @@ public final class NodeStore {
         return List.copyOf(byChunk.values());
     }
 
-    /** Persist production-mutable fields (state, buffer, tick anchor, tier). */
+    /** Persist production-mutable fields (state, buffer, tick anchor, tier, type). */
     public void updateProduction(NodeRecord record) {
         String storageJson = record.serializeStorage();
         String state = record.getState();
         long lastTick = record.getLastTickAt();
         int tier = record.getTier();
+        String nodeType = record.getType().name();
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement update = connection.prepareStatement(
                          "UPDATE idlefarm_nodes SET state = ?, storage_json = ?, last_tick_at = ?, tier = ?, "
-                                 + "exploration_level = ?, exploration_exp = ? WHERE id = ?")) {
+                                 + "exploration_level = ?, exploration_exp = ?, node_type = ? WHERE id = ?")) {
                 update.setString(1, state);
                 update.setString(2, storageJson);
                 update.setTimestamp(3, new java.sql.Timestamp(lastTick));
                 update.setInt(4, tier);
                 update.setInt(5, record.getExplorationLevel());
                 update.setLong(6, record.getExplorationExp());
-                update.setLong(7, record.getId());
+                update.setString(7, nodeType);
+                update.setLong(8, record.getId());
                 update.executeUpdate();
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to update node " + record.getId() + ": " + e.getMessage());

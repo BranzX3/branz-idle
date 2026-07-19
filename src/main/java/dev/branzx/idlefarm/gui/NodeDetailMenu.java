@@ -115,6 +115,39 @@ public final class NodeDetailMenu extends Menu {
                         "Click for actions"), NamedTextColor.GRAY).build(),
                 e -> handleExploration(node, event));
 
+        // Convert type.
+        double convertCost = gui.plugin().getConfig().getDouble("claims.convert-cost", 750.0);
+        set(37, Icon.of(Material.CRAFTING_TABLE).name("Convert Type", NamedTextColor.YELLOW)
+                .lore(List.of("Cost: " + formatAmount(convertCost),
+                        "Keeps tier; exploration level halved",
+                        "Workers return as contracts",
+                        "Buffer must be empty"), NamedTextColor.GRAY).build(),
+                e -> new ConvertTypeMenu(viewer, gui, node).open());
+
+        // Unclaim (confirm-gated).
+        double refund = gui.claimService().claimCost(node.getType())
+                * gui.plugin().getConfig().getDouble("claims.unclaim-refund-ratio", 0.5);
+        set(43, Icon.of(Material.TNT).name("Unclaim", NamedTextColor.RED)
+                .lore(List.of("Refund: " + formatAmount(refund),
+                        "Exploration level is LOST"), NamedTextColor.GRAY).build(),
+                e -> new ConfirmMenu(viewer, "Unclaim " + node.getType() + "?",
+                        List.of("Refund: " + formatAmount(refund),
+                                "Exploration level is LOST",
+                                "Workers return as contracts",
+                                "Buffer must be empty"),
+                        () -> {
+                            var result = gui.claimService().unclaim(viewer.getUniqueId(),
+                                    viewer.getWorld(), node.getChunk());
+                            viewer.sendMessage(Component.text(result.message(),
+                                    result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+                            if (result.success()) {
+                                gui.openNodes(viewer);
+                            } else {
+                                new NodeDetailMenu(viewer, gui, nodeId).open();
+                            }
+                        },
+                        () -> new NodeDetailMenu(viewer, gui, nodeId).open()).open());
+
         set(40, Icon.of(Material.NETHER_STAR).name("Back", NamedTextColor.GREEN).build(),
                 e -> gui.openNodes(viewer));
     }
