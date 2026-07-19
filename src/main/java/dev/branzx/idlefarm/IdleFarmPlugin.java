@@ -11,6 +11,7 @@ import dev.branzx.idlefarm.service.BoosterService;
 import dev.branzx.idlefarm.service.ClaimService;
 import dev.branzx.idlefarm.service.DropTableService;
 import dev.branzx.idlefarm.service.ExplorationService;
+import dev.branzx.idlefarm.service.GlobalExpeditionService;
 import dev.branzx.idlefarm.service.PerkService;
 import dev.branzx.idlefarm.service.StreakService;
 import dev.branzx.idlefarm.service.ProductionEngine;
@@ -84,6 +85,11 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.guiManager = new GuiManager(this, nodeStore, workerStore, dataStore, workerService,
                 warehouseService, claimService, trustService, explorationService, npcManager);
         this.guiManager.setPhase7Services(boosterService, perkService, streakService);
+
+        GlobalExpeditionService expeditionService = new GlobalExpeditionService(this, database, workerStore, dataStore);
+        expeditionService.loadAllSync();
+        expeditionService.start();
+        this.guiManager.setExpeditionService(expeditionService);
 
         PlayerConnectionListener connectionListener = new PlayerConnectionListener(this, dataStore);
         connectionListener.setStreakService(streakService);

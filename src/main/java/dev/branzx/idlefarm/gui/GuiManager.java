@@ -150,6 +150,20 @@ public final class GuiManager implements Listener {
         new ShopMenu(player, this).open();
     }
 
+    private dev.branzx.idlefarm.service.GlobalExpeditionService expeditionService;
+
+    public void setExpeditionService(dev.branzx.idlefarm.service.GlobalExpeditionService expeditionService) {
+        this.expeditionService = expeditionService;
+    }
+
+    public dev.branzx.idlefarm.service.GlobalExpeditionService expeditionService() {
+        return expeditionService;
+    }
+
+    public void openExpedition(Player player) {
+        new ExpeditionMenu(player, this, expeditionService).open();
+    }
+
     // ---- listener ----
 
     @EventHandler

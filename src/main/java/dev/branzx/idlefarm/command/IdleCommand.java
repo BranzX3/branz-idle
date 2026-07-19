@@ -93,6 +93,8 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "map" -> map(sender);
             case "shop" -> shop(sender);
             case "convert" -> convert(sender, args);
+            case "expedition" -> expedition(sender);
+            case "visit" -> visit(sender, args);
             case "admin" -> admin(sender, args);
             default -> usage(sender);
         };
@@ -490,6 +492,66 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean expedition(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can join the expedition.", NamedTextColor.RED));
+            return true;
+        }
+        guiManager.openExpedition(player);
+        return true;
+    }
+
+    private boolean visit(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can visit.", NamedTextColor.RED));
+            return true;
+        }
+        if (args.length < 2) {
+            sender.sendMessage(Component.text("Usage: /idle visit <player|toggle>", NamedTextColor.YELLOW));
+            return true;
+        }
+        var perks = guiManager.perkService();
+        if (args[1].equalsIgnoreCase("toggle")) {
+            boolean nowClosed = !perks.has(player.getUniqueId(),
+                    dev.branzx.idlefarm.service.PerkService.NO_VISITS);
+            perks.setFlag(player.getUniqueId(),
+                    dev.branzx.idlefarm.service.PerkService.NO_VISITS, nowClosed);
+            sender.sendMessage(Component.text(nowClosed
+                    ? "Your territory is now CLOSED to visitors."
+                    : "Your territory is now OPEN to visitors.", NamedTextColor.GREEN));
+            return true;
+        }
+        OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
+        if (!target.hasPlayedBefore() && !target.isOnline()) {
+            sender.sendMessage(Component.text("Unknown player: " + args[1], NamedTextColor.RED));
+            return true;
+        }
+        if (perks.has(target.getUniqueId(), dev.branzx.idlefarm.service.PerkService.NO_VISITS)) {
+            sender.sendMessage(Component.text(args[1] + "'s territory is closed to visitors.",
+                    NamedTextColor.RED));
+            return true;
+        }
+        NodeRecord home = nodeStore.getByOwner(target.getUniqueId()).stream()
+                .filter(n -> n.getType() == NodeType.RESIDENTIAL)
+                .findFirst().orElse(null);
+        if (home == null) {
+            sender.sendMessage(Component.text(args[1] + " has no territory to visit.", NamedTextColor.RED));
+            return true;
+        }
+        var world = Bukkit.getWorld(home.getChunk().world());
+        if (world == null) {
+            sender.sendMessage(Component.text("Their world is not loaded.", NamedTextColor.RED));
+            return true;
+        }
+        int x = (home.getChunk().x() << 4) + 8;
+        int z = (home.getChunk().z() << 4) + 8;
+        int y = world.getHighestBlockYAt(x, z) + 1;
+        player.teleport(new org.bukkit.Location(world, x + 0.5, y, z + 0.5));
+        sender.sendMessage(Component.text("Visiting " + args[1] + "'s territory. Look, don't touch!",
+                NamedTextColor.GREEN));
+        return true;
+    }
+
     private boolean convert(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(Component.text("Only players can convert nodes.", NamedTextColor.RED));
@@ -625,7 +687,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return List.of("balance", "top", "claim", "unclaim", "nodes", "trust", "untrust",
                     "hire", "fuse", "assign", "eject", "skin", "collect", "explore", "warehouse",
-                    "map", "shop", "convert", "admin");
+                    "map", "shop", "convert", "expedition", "visit", "admin");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("claim")) {
             return List.of("residential", "mining", "farming", "woodcutting", "livestock", "hunter");

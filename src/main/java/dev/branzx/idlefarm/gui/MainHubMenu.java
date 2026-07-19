@@ -85,6 +85,16 @@ public final class MainHubMenu extends Menu {
                 .lore("Multipliers & QoL unlocks", NamedTextColor.GRAY).build(),
                 e -> gui.openShop(viewer));
 
+        if (gui.expeditionService() != null) {
+            long mine = gui.expeditionService().contributionOf(viewer.getUniqueId());
+            set(19, Icon.of(Material.CAMPFIRE).name("Global Expedition", NamedTextColor.GOLD)
+                    .loreComponents(List.of(
+                            Ui.line("Week " + gui.expeditionService().activeWeek(), NamedTextColor.GRAY),
+                            Ui.line("Your contribution: " + Ui.num(mine), NamedTextColor.GOLD),
+                            Ui.line("Weekly rewards for top ranks!", NamedTextColor.YELLOW)))
+                    .build(), e -> gui.openExpedition(viewer));
+        }
+
         // Row 2: quick actions + profile.
         if (gui.perkService() != null
                 && gui.perkService().has(viewer.getUniqueId(), PerkService.REMOTE_COLLECT)) {

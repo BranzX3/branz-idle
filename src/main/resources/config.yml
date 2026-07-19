@@ -180,6 +180,13 @@ perks:
   auto_collect-cost: 50000.0
   remote_collect-cost: 20000.0
 
+# Weekly server-wide expedition. Committing a node's idle workers locks
+# them (EXPLORING) for the duration and adds their stat total to your
+# weekly contribution. Top ranks get Money at week rollover.
+expedition:
+  commit-duration-minutes: 60
+  rewards: [5000.0, 3000.0, 1500.0]
+
 # Daily login streak: bonus = base-money × min(streak days, cap).
 streak:
   base-money: 100.0

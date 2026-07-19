@@ -26,6 +26,8 @@ public final class PerkService {
 
     public static final String AUTO_COLLECT = "auto_collect";
     public static final String REMOTE_COLLECT = "remote_collect";
+    /** Flag (not purchasable): owner has closed their territory to visitors. */
+    public static final String NO_VISITS = "no_visits";
 
     private final IdleFarmPlugin plugin;
     private final Database database;
@@ -59,6 +61,32 @@ public final class PerkService {
 
     public double cost(String perk) {
         return plugin.getConfig().getDouble("perks." + perk.toLowerCase(Locale.ROOT) + "-cost", 50000);
+    }
+
+    /** Free flag set/unset (visit toggle etc.) — no cost involved. */
+    public void setFlag(UUID owner, String perk, boolean enabled) {
+        if (enabled) {
+            perks.computeIfAbsent(owner, k -> ConcurrentHashMap.newKeySet()).add(perk);
+        } else {
+            Set<String> owned = perks.get(owner);
+            if (owned != null) {
+                owned.remove(perk);
+            }
+        }
+        database.submitWrite(() -> {
+            try (Connection connection = database.getConnection();
+                 PreparedStatement statement = enabled
+                         ? connection.prepareStatement(
+                                 "REPLACE INTO idlefarm_perks (owner_uuid, perk) VALUES (?, ?)")
+                         : connection.prepareStatement(
+                                 "DELETE FROM idlefarm_perks WHERE owner_uuid = ? AND perk = ?")) {
+                statement.setString(1, owner.toString());
+                statement.setString(2, perk);
+                statement.executeUpdate();
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to persist perk flag: " + e.getMessage());
+            }
+        });
     }
 
     /** Buys the perk with Money; returns an error message or null on success. */

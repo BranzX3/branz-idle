@@ -171,6 +171,20 @@ public final class Database {
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS idlefarm_expedition (
+                week VARCHAR(10) NOT NULL,
+                owner_uuid VARCHAR(36) NOT NULL,
+                contribution BIGINT NOT NULL DEFAULT 0,
+                PRIMARY KEY (week, owner_uuid)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_expedition_locks (
+                worker_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                ends_at TIMESTAMP NOT NULL
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS idlefarm_boosters (
                 owner_uuid VARCHAR(36) NOT NULL,
                 booster_type VARCHAR(32) NOT NULL,
@@ -299,6 +313,20 @@ public final class Database {
                 rarity TEXT NOT NULL,
                 fails INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (owner_uuid, rarity)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_expedition (
+                week TEXT NOT NULL,
+                owner_uuid TEXT NOT NULL,
+                contribution INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (week, owner_uuid)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_expedition_locks (
+                worker_uuid TEXT NOT NULL PRIMARY KEY,
+                ends_at TIMESTAMP NOT NULL
             )
             """,
             """
