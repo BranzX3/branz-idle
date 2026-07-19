@@ -150,6 +150,14 @@ public final class GuiManager implements Listener {
         new WorkerBagMenu(player, this, 0).open();
     }
 
+    public void openLeaderboard(Player player) {
+        new LeaderboardMenu(player, this).open();
+    }
+
+    public void openTrust(Player player) {
+        new TrustMenu(player, this).open();
+    }
+
     public void openTerritoryMap(Player player) {
         new TerritoryMapMenu(player, this).open();
     }

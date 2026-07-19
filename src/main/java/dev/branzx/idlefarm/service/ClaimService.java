@@ -96,6 +96,16 @@ public final class ClaimService {
                 .anyMatch(n -> n.getType() == NodeType.RESIDENTIAL);
     }
 
+    public long countResidential(UUID owner) {
+        return nodeStore.getByOwner(owner).stream()
+                .filter(n -> n.getType() == NodeType.RESIDENTIAL)
+                .count();
+    }
+
+    public int residentialCap(UUID owner) {
+        return plugin.getConfig().getInt("claims.residential-cap", 3);
+    }
+
     /**
      * Full claim validation + persistence. Must be called on the main thread:
      * validation and in-memory mutation are synchronous and authoritative,
@@ -109,7 +119,13 @@ public final class ClaimService {
         boolean ownerHasResidential = hasResidential(owner);
 
         if (type == NodeType.RESIDENTIAL) {
-            // Extra residential plots must still connect to the territory.
+            long residential = countResidential(owner);
+            int cap = residentialCap(owner);
+            if (residential >= cap) {
+                return Result.fail("Residential plot cap reached (" + residential + "/" + cap + ").");
+            }
+            // Extra residential plots must still connect to the territory;
+            // the very first plot may be claimed anywhere.
             if (ownerHasResidential && !isAdjacentToOwn(owner, chunk)) {
                 return Result.fail("Additional plots must touch your existing territory.");
             }

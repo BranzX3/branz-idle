@@ -22,7 +22,7 @@ public final class MainHubMenu extends Menu {
 
     @Override
     protected int rows() {
-        return 4;
+        return 5;
     }
 
     @Override
@@ -95,10 +95,18 @@ public final class MainHubMenu extends Menu {
                     .build(), e -> gui.openExpedition(viewer));
         }
 
-        // Row 2: quick actions + profile.
+        set(21, Icon.of(Material.OAK_HANGING_SIGN).name("Trust", NamedTextColor.GREEN)
+                .lore("Let friends into your territory", NamedTextColor.GRAY).build(),
+                e -> gui.openTrust(viewer));
+
+        set(22, Icon.of(Material.GOLD_INGOT).name("Leaderboard", NamedTextColor.GOLD)
+                .lore("Richest players on the server", NamedTextColor.GRAY).build(),
+                e -> gui.openLeaderboard(viewer));
+
+        // Collect-all convenience (perk-gated).
         if (gui.perkService() != null
                 && gui.perkService().has(viewer.getUniqueId(), PerkService.REMOTE_COLLECT)) {
-            set(21, Icon.of(Material.HOPPER_MINECART).name("Collect All", NamedTextColor.GOLD)
+            set(23, Icon.of(Material.HOPPER_MINECART).name("Collect All", NamedTextColor.GOLD)
                     .lore("All node buffers → Warehouse", NamedTextColor.GRAY).build(),
                     e -> collectAll(owned));
         }
@@ -121,10 +129,10 @@ public final class MainHubMenu extends Menu {
                 profileLore.add(Ui.line("▲ Production boost " + Ui.time(prodMs), NamedTextColor.LIGHT_PURPLE));
             }
         }
-        set(23, Icon.of(Material.SUNFLOWER).name("Profile", NamedTextColor.YELLOW)
+        set(25, Icon.of(Material.SUNFLOWER).name("Profile", NamedTextColor.YELLOW)
                 .loreComponents(profileLore).build());
 
-        set(31, Icon.of(Material.BARRIER).name("Close", NamedTextColor.RED).build(),
+        set(40, Icon.of(Material.BARRIER).name("Close", NamedTextColor.RED).build(),
                 e -> viewer.closeInventory());
     }
 

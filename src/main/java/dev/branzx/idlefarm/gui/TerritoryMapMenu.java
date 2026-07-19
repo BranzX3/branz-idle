@@ -55,14 +55,20 @@ public final class TerritoryMapMenu extends Menu {
                 NodeRecord node = gui.nodeStore().getByChunk(key);
 
                 if (node == null) {
-                    boolean adjacent = adjacentToOwn(key);
-                    set(slot, Icon.of(adjacent ? Material.LIME_STAINED_GLASS_PANE
+                    // First-ever claim can go anywhere; after that, only chunks
+                    // touching the player's territory are claimable.
+                    boolean firstClaim = !gui.claimService().hasResidential(viewer.getUniqueId());
+                    boolean claimable = firstClaim ? isCenter : adjacentToOwn(key);
+                    String hint = firstClaim
+                            ? (isCenter ? "Click to claim your first plot!" : "Stand here & refresh to claim")
+                            : (claimable ? "Click to claim" : "Not adjacent to your land");
+                    set(slot, Icon.of(claimable ? Material.LIME_STAINED_GLASS_PANE
                                     : Material.GRAY_STAINED_GLASS_PANE)
                             .name((isCenter ? "» " : "") + "Chunk " + chunkX + "," + chunkZ,
-                                    adjacent ? NamedTextColor.GREEN : NamedTextColor.GRAY)
-                            .lore(adjacent ? "Click to claim" : "Unclaimed", NamedTextColor.DARK_GRAY)
+                                    claimable ? NamedTextColor.GREEN : NamedTextColor.GRAY)
+                            .lore(hint, NamedTextColor.DARK_GRAY)
                             .build(),
-                            adjacent ? e -> new ClaimTypeMenu(viewer, gui, key).open() : null);
+                            claimable ? e -> new ClaimTypeMenu(viewer, gui, key).open() : null);
                 } else if (node.getOwnerUuid().equals(viewer.getUniqueId())) {
                     set(slot, ownIcon(node, isCenter), e -> {
                         if (e.isShiftClick()) {

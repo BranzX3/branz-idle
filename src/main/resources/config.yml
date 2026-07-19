@@ -44,6 +44,9 @@ claims:
   unclaim-refund-ratio: 0.5
   # Baseline production-node cap for players without a node_cap row.
   base-node-cap: 4
+  # Max Residential plots a player may claim (building land; the first can
+  # be claimed anywhere, extras must touch existing territory).
+  residential-cap: 3
   # Convert a production node's type in place: cost + how much of the
   # exploration level survives (0.5 = halved, per spec).
   convert-cost: 750.0

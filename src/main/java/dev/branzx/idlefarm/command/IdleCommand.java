@@ -102,9 +102,11 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean usage(CommandSender sender) {
-        sender.sendMessage(Component.text(
-                "Usage: /idle [balance|top|claim <type>|unclaim|nodes|trust <player> <level>|untrust <player>|admin]",
+        sender.sendMessage(Component.text("» Type /idle to open the menu — everything is in there.",
                 NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("  Extra: /idle visit <player>, /idle skin <name>"
+                + (sender.hasPermission("idlefarm.admin") ? ", /idle admin" : ""),
+                NamedTextColor.GRAY));
         return true;
     }
 
@@ -695,18 +697,13 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return List.of("balance", "top", "claim", "unclaim", "nodes", "trust", "untrust",
-                    "hire", "bag", "fuse", "assign", "eject", "skin", "collect", "explore", "warehouse",
-                    "map", "shop", "convert", "expedition", "visit", "admin");
-        }
-        if (args.length == 2 && args[0].equalsIgnoreCase("claim")) {
-            return List.of("residential", "mining", "farming", "woodcutting", "livestock", "hunter");
-        }
-        if (args.length == 3 && args[0].equalsIgnoreCase("trust")) {
-            return List.of("visitor", "helper", "manager");
-        }
-        if (args.length == 2 && args[0].equalsIgnoreCase("explore")) {
-            return List.of("info", "start", "claim");
+            // Everything lives in the /idle GUI; only surface the few commands
+            // that need typed arguments (plus admin for staff).
+            List<String> base = new java.util.ArrayList<>(List.of("visit", "skin"));
+            if (sender.hasPermission("idlefarm.admin")) {
+                base.add("admin");
+            }
+            return base;
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("admin")) {
             return List.of("reload", "schem", "npc", "node", "pool", "give", "setcap", "audit");

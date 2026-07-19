@@ -36,21 +36,32 @@ public final class ClaimTypeMenu extends Menu {
         for (int i = 0; i < rows() * 9; i++) {
             set(i, Icon.filler());
         }
-        option(10, NodeType.RESIDENTIAL, Material.OAK_DOOR);
-        option(11, NodeType.MINING, Material.IRON_PICKAXE);
-        option(12, NodeType.FARMING, Material.WHEAT);
-        option(14, NodeType.WOODCUTTING, Material.OAK_LOG);
-        option(15, NodeType.LIVESTOCK, Material.BEEF);
-        option(16, NodeType.HUNTER, Material.IRON_SWORD);
+        boolean needsResidential = !gui.claimService().hasResidential(viewer.getUniqueId());
+        // Production nodes require an existing Residential; guide the first
+        // claim to Residential only.
+        option(10, NodeType.RESIDENTIAL, Material.OAK_DOOR, true);
+        option(11, NodeType.MINING, Material.IRON_PICKAXE, !needsResidential);
+        option(12, NodeType.FARMING, Material.WHEAT, !needsResidential);
+        option(14, NodeType.WOODCUTTING, Material.OAK_LOG, !needsResidential);
+        option(15, NodeType.LIVESTOCK, Material.BEEF, !needsResidential);
+        option(16, NodeType.HUNTER, Material.IRON_SWORD, !needsResidential);
         set(22, Icon.of(Material.BARRIER).name("Back", NamedTextColor.RED).build(),
                 e -> new TerritoryMapMenu(viewer, gui).open());
     }
 
-    private void option(int slot, NodeType type, Material material) {
+    private void option(int slot, NodeType type, Material material, boolean enabled) {
         double cost = gui.claimService().claimCost(type);
+        if (!enabled) {
+            set(slot, Icon.of(Material.GRAY_STAINED_GLASS_PANE)
+                    .name(type.name() + " (locked)", NamedTextColor.DARK_GRAY)
+                    .lore("Claim a Residential plot first", NamedTextColor.DARK_GRAY).build());
+            return;
+        }
         List<String> lore = type.isProduction()
-                ? List.of("Cost: " + cost, "Counts against node cap")
-                : List.of("Cost: " + cost, "Building plot, no cap cost");
+                ? List.of("Cost: " + Ui.num(cost), "Counts against node cap")
+                : List.of("Cost: " + Ui.num(cost), "Building plot, no cap cost",
+                        "Residential: " + gui.claimService().countResidential(viewer.getUniqueId())
+                                + "/" + gui.claimService().residentialCap(viewer.getUniqueId()));
         set(slot, Icon.of(material).name(type.name(), NamedTextColor.GREEN)
                 .lore(lore, NamedTextColor.GRAY).build(), e -> {
             var result = gui.claimService().claim(viewer.getUniqueId(), viewer.getWorld(), chunk, type);
