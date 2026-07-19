@@ -5,19 +5,18 @@ import dev.branzx.idlefarm.worker.Rarity;
 import dev.branzx.idlefarm.worker.WorkerRecord;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
- * Interactive fuse station: the player drops two worker contracts into the
- * two input slots. The center panel live-computes the success chance, pity,
- * and result rarity; the Fuse button rolls once both slots hold valid,
- * same-rarity workers. Any unused items are returned on close.
+ * Click-driven fuse station (no item movement, so no placeholder/loss bugs).
+ * Two "select" slots open a {@link WorkerPickerMenu}; picked workers stay as
+ * items in the inventory and are only consumed when the Fuse button rolls.
+ * Slot B is filtered to slot A's rarity.
  */
 public final class FuseMenu extends Menu {
 
@@ -27,6 +26,8 @@ public final class FuseMenu extends Menu {
     private static final int FUSE_BTN = 31;
 
     private final GuiManager gui;
+    private UUID pickedA;
+    private UUID pickedB;
 
     public FuseMenu(Player viewer, GuiManager gui) {
         super(viewer);
@@ -40,98 +41,109 @@ public final class FuseMenu extends Menu {
 
     @Override
     protected Component title() {
-        return Component.text("Fuse Workers", NamedTextColor.LIGHT_PURPLE);
+        return Component.text("Fuse Station", NamedTextColor.LIGHT_PURPLE);
     }
 
     @Override
     protected void build() {
-        // Frame everything except the two input slots.
         for (int i = 0; i < rows() * 9; i++) {
-            if (i != LEFT && i != RIGHT) {
-                set(i, Icon.filler());
-            }
+            set(i, Icon.filler());
         }
-        markInputSlot(LEFT);
-        markInputSlot(RIGHT);
-        set(LEFT, placeholder("Worker A"));
-        set(RIGHT, placeholder("Worker B"));
-        refreshInfo();
-        set(40, Icon.of(Material.BARRIER).name("Close", NamedTextColor.RED)
-                .lore("Unused workers are returned", NamedTextColor.GRAY).build(),
+        WorkerRecord a = resolve(pickedA);
+        WorkerRecord b = resolve(pickedB);
+        // Drop stale picks (item left inventory / got assigned elsewhere).
+        if (pickedA != null && a == null) {
+            pickedA = null;
+        }
+        if (pickedB != null && b == null) {
+            pickedB = null;
+        }
+
+        drawSlot(LEFT, a, "Worker A", null, chosen -> {
+            pickedA = chosen.workerUuid();
+            // Changing A may invalidate B's rarity match.
+            if (pickedB != null) {
+                WorkerRecord bb = resolve(pickedB);
+                if (bb == null || bb.getRarity() != chosen.record().getRarity()) {
+                    pickedB = null;
+                }
+            }
+        });
+        Rarity filterB = a == null ? null : a.getRarity();
+        drawSlot(RIGHT, b, "Worker B", filterB, chosen -> pickedB = chosen.workerUuid());
+
+        refreshInfo(a, b);
+
+        set(40, Icon.of(Material.BARRIER).name("Close", NamedTextColor.RED).build(),
                 e -> viewer.closeInventory());
     }
 
-    private ItemStack placeholder(String label) {
-        return Icon.of(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
-                .name(label, NamedTextColor.GRAY)
-                .lore("Drop a worker contract here", NamedTextColor.DARK_GRAY).build();
-    }
-
-    private boolean isPlaceholder(ItemStack item) {
-        return item == null || item.getType() == Material.LIGHT_GRAY_STAINED_GLASS_PANE
-                || item.getType() == Material.AIR;
-    }
-
-    @Override
-    public void onInputChanged() {
-        // Recompute after the click/drag settles this tick.
-        Bukkit.getScheduler().runTask(gui.plugin(), this::refreshInfo);
-    }
-
-    private void refreshInfo() {
-        WorkerRecord a = gui.workerService().fromItem(itemAt(LEFT));
-        WorkerRecord b = gui.workerService().fromItem(itemAt(RIGHT));
-
-        // Restore placeholders if a slot was emptied.
-        if (isPlaceholder(itemAt(LEFT))) {
-            setRaw(LEFT, placeholder("Worker A"));
+    private void drawSlot(int slot, WorkerRecord picked, String label, Rarity filter,
+                          java.util.function.Consumer<WorkerPickerMenu.Choice> onPick) {
+        if (picked != null) {
+            List<Component> lore = new ArrayList<>(gui.workerService().workerLore(picked));
+            lore.add(Ui.line("Click to clear", NamedTextColor.DARK_GRAY));
+            set(slot, Icon.of(Material.PLAYER_HEAD)
+                    .name("✦ " + picked.getName(), picked.getRarity().color())
+                    .loreComponents(lore).build(), e -> {
+                if (slot == LEFT) {
+                    pickedA = null;
+                    pickedB = null; // clearing A drops B's rarity lock
+                } else {
+                    pickedB = null;
+                }
+                redraw();
+            });
+        } else {
+            set(slot, Icon.of(Material.ITEM_FRAME).name("Select " + label, NamedTextColor.AQUA)
+                    .lore(filter == null ? "Click to choose a worker"
+                            : "Click to choose a " + filter + " worker", NamedTextColor.GRAY).build(),
+                    e -> new WorkerPickerMenu(viewer, gui, filter,
+                            slot == RIGHT ? pickedA : null,
+                            "Choose " + label,
+                            chosen -> {
+                                onPick.accept(chosen);
+                                open(); // back to the fuse station with the pick applied
+                            },
+                            this::open).open());
         }
-        if (isPlaceholder(itemAt(RIGHT))) {
-            setRaw(RIGHT, placeholder("Worker B"));
-        }
+    }
 
+    private void refreshInfo(WorkerRecord a, WorkerRecord b) {
         List<Component> lore = new ArrayList<>();
         String error = validate(a, b);
         if (error != null) {
             lore.add(Ui.line(error, NamedTextColor.GRAY));
-            set(INFO, Icon.of(Material.GRAY_DYE).name("Place two workers", NamedTextColor.GRAY)
+            set(INFO, Icon.of(Material.GRAY_DYE).name("Select two workers", NamedTextColor.GRAY)
                     .loreComponents(lore).build());
             set(FUSE_BTN, Icon.of(Material.RED_STAINED_GLASS_PANE)
                     .name("Fuse (not ready)", NamedTextColor.RED).build());
             return;
         }
-
         Rarity rarity = a.getRarity();
         Rarity next = rarity.next();
         double chance = gui.workerService().fuseChance(viewer.getUniqueId(), rarity);
         int pity = gui.workerService().pityCount(viewer.getUniqueId(), rarity);
 
-        lore.add(Ui.stars(rarity).append(Ui.line("  " + rarity + " → " + next, next.color())));
+        lore.add(Ui.stars(rarity).append(Ui.line("  " + rarity + " -> " + next, next.color())));
         lore.add(Ui.divider());
         lore.add(Ui.bar("Success", chance, NamedTextColor.GREEN, Math.round(chance * 100) + "%"));
         lore.add(Ui.line("Pity stacks: " + pity, NamedTextColor.AQUA));
         lore.add(Ui.line("Each fail: +" + Math.round(gui.plugin().getConfig()
                 .getDouble("workers.fuse.pity-per-fail", 0.1) * 100) + "% next time", NamedTextColor.GRAY));
         lore.add(Ui.divider());
-        lore.add(Ui.line("A: " + a.getName() + " (" + a.getRarity() + ")", NamedTextColor.WHITE));
-        lore.add(Ui.line("B: " + b.getName() + " (" + b.getRarity() + ")", NamedTextColor.WHITE));
-        lore.add(Ui.divider());
         lore.add(Ui.line("Fail consumes BOTH workers", NamedTextColor.RED));
         set(INFO, Icon.of(Material.SMITHING_TABLE).name("Fuse Preview", NamedTextColor.LIGHT_PURPLE)
                 .loreComponents(lore).build());
         set(FUSE_BTN, Icon.of(Material.LIME_STAINED_GLASS_PANE)
-                .name("★ FUSE — " + Math.round(chance * 100) + "% ★", NamedTextColor.GREEN)
+                .name("* FUSE — " + Math.round(chance * 100) + "% *", NamedTextColor.GREEN)
                 .lore("Click to roll!", NamedTextColor.GRAY).build(),
                 e -> doFuse(a, b));
     }
 
-    /** Null when both slots hold valid same-rarity item-form workers. */
     private String validate(WorkerRecord a, WorkerRecord b) {
         if (a == null || b == null) {
-            return "Drop two worker contracts in the slots.";
-        }
-        if (a.getWorkerUuid().equals(b.getWorkerUuid())) {
-            return "Two different workers are required.";
+            return "Select two worker contracts.";
         }
         if (a.getRarity() != b.getRarity()) {
             return "Both workers must share the same rarity.";
@@ -139,41 +151,57 @@ public final class FuseMenu extends Menu {
         if (a.getRarity().next() == null) {
             return "Legendary workers cannot be fused.";
         }
-        if (!WorkerRecord.STATE_ITEM.equals(a.getState())
-                || !WorkerRecord.STATE_ITEM.equals(b.getState())) {
-            return "A worker is still assigned — eject it first.";
-        }
         return null;
     }
 
     private void doFuse(WorkerRecord a, WorkerRecord b) {
+        // Re-consume both by UUID at action time (inventory is the source of truth).
+        if (!WorkerPickerMenu.consumeFromInventory(viewer, gui, a.getWorkerUuid())
+                || !WorkerPickerMenu.consumeFromInventory(viewer, gui, b.getWorkerUuid())) {
+            viewer.sendMessage(Component.text("A selected worker is no longer in your inventory.",
+                    NamedTextColor.RED));
+            pickedA = null;
+            pickedB = null;
+            redraw();
+            return;
+        }
         WorkerService.Result result = gui.workerService().fuse(viewer.getUniqueId(), List.of(a, b));
-        // Both inputs are consumed by the service regardless of outcome.
-        setRaw(LEFT, null);
-        setRaw(RIGHT, null);
         if (result.success() && result.item() != null) {
             giveOrDrop(result.item());
         }
         viewer.sendMessage(Component.text(result.message(),
                 result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-        refreshInfo();
+        pickedA = null;
+        pickedB = null;
+        redraw();
     }
 
-    @Override
-    public void onClose() {
-        // Return whatever real worker items are still sitting in the slots.
-        for (int slot : new int[] {LEFT, RIGHT}) {
-            ItemStack item = itemAt(slot);
-            if (!isPlaceholder(item) && gui.workerService().fromItem(item) != null) {
-                giveOrDrop(item);
-            }
-            setRaw(slot, null);
+    private WorkerRecord resolve(UUID uuid) {
+        if (uuid == null) {
+            return null;
         }
+        WorkerRecord record = gui.workerStore().get(uuid);
+        // Must still be an item-form worker actually held by the player.
+        if (record == null || !WorkerRecord.STATE_ITEM.equals(record.getState())
+                || !hasInInventory(uuid)) {
+            return null;
+        }
+        return record;
     }
 
-    private void giveOrDrop(ItemStack item) {
+    private boolean hasInInventory(UUID uuid) {
+        for (var item : viewer.getInventory().getContents()) {
+            WorkerRecord record = gui.workerService().fromItem(item);
+            if (record != null && record.getWorkerUuid().equals(uuid)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void giveOrDrop(org.bukkit.inventory.ItemStack item) {
         var leftover = viewer.getInventory().addItem(item);
-        for (ItemStack overflow : leftover.values()) {
+        for (var overflow : leftover.values()) {
             viewer.getWorld().dropItemNaturally(viewer.getLocation(), overflow);
         }
     }

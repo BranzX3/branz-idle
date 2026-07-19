@@ -92,10 +92,10 @@ public final class NodeDetailMenu extends Menu {
                     redraw();
                 });
             } else {
-                set(guiSlot, Icon.of(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
-                        .name("Empty Slot " + (slot + 1), NamedTextColor.GRAY)
-                        .lore("Click with a worker contract to assign", NamedTextColor.DARK_GRAY).build(),
-                        e -> assignHeld(node));
+                set(guiSlot, Icon.of(Material.ITEM_FRAME)
+                        .name("Empty Slot " + (slot + 1), NamedTextColor.AQUA)
+                        .lore("Click to choose a worker", NamedTextColor.GRAY).build(),
+                        e -> openAssignPicker(node));
             }
         }
 
@@ -206,22 +206,36 @@ public final class NodeDetailMenu extends Menu {
                 e -> gui.openNodes(viewer));
     }
 
-    private void assignHeld(NodeRecord node) {
-        ItemStack held = viewer.getInventory().getItemInMainHand();
-        WorkerRecord worker = gui.workerService().fromItem(held);
-        if (worker == null) {
-            viewer.sendMessage(Component.text("Hold a worker contract in your main hand to assign.",
-                    NamedTextColor.RED));
-            return;
-        }
-        var result = gui.workerService().assign(viewer.getUniqueId(), worker, node);
-        if (result.success()) {
-            held.setAmount(held.getAmount() - 1);
-            gui.npcManager().refreshNode(node, viewer.getWorld());
-        }
-        viewer.sendMessage(Component.text(result.message(),
-                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-        redraw();
+    private void openAssignPicker(NodeRecord node) {
+        new WorkerPickerMenu(viewer, gui, null, null, "Assign a Worker",
+                choice -> {
+                    // Re-fetch the live record and consume the item by UUID.
+                    WorkerRecord worker = gui.workerStore().get(choice.workerUuid());
+                    if (worker == null || !WorkerRecord.STATE_ITEM.equals(worker.getState())) {
+                        viewer.sendMessage(Component.text("That worker is no longer available.",
+                                NamedTextColor.RED));
+                        new NodeDetailMenu(viewer, gui, nodeId).open();
+                        return;
+                    }
+                    // Consume the item first; assign() never fails after its
+                    // own checks, but if it did we'd refund below.
+                    if (!WorkerPickerMenu.consumeFromInventory(viewer, gui, choice.workerUuid())) {
+                        viewer.sendMessage(Component.text("That worker is no longer in your inventory.",
+                                NamedTextColor.RED));
+                        new NodeDetailMenu(viewer, gui, nodeId).open();
+                        return;
+                    }
+                    var result = gui.workerService().assign(viewer.getUniqueId(), worker, node);
+                    if (result.success()) {
+                        gui.npcManager().refreshNode(node, viewer.getWorld());
+                    } else {
+                        giveOrDrop(gui.workerService().createItem(worker)); // refund
+                    }
+                    viewer.sendMessage(Component.text(result.message(),
+                            result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+                    new NodeDetailMenu(viewer, gui, nodeId).open();
+                },
+                () -> new NodeDetailMenu(viewer, gui, nodeId).open()).open();
     }
 
     private void handleExploration(NodeRecord node, ExplorationService.EventRecord event) {

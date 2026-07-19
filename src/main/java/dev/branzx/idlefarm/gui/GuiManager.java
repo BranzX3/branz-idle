@@ -175,28 +175,15 @@ public final class GuiManager implements Listener {
         if (!(event.getInventory().getHolder() instanceof Menu menu)) {
             return;
         }
+        // All menus are click-driven; item movement is never allowed. This
+        // is the robust pattern (no placeholder-swap or item-loss bugs).
         boolean topClick = event.getRawSlot() < menu.getInventory().getSize();
         if (topClick) {
-            // Free input slots (e.g. fuse inputs): allow the placement, then
-            // let the menu react on the next tick to recompute its display.
-            if (menu.isInputSlot(event.getRawSlot())) {
-                menu.onInputChanged();
-                return; // not cancelled — the item moves normally
-            }
-            boolean handled = menu.click(event);
-            event.setCancelled(true);
-            if (handled) {
-                return;
-            }
-        } else {
-            // Shift-clicking from the player inventory could dump items into a
-            // locked menu; only allow it when the menu has input slots to catch it.
-            if (event.isShiftClick() && !menu.hasInputSlots()) {
-                event.setCancelled(true);
-            } else if (event.isShiftClick()) {
-                menu.onInputChanged();
-            }
+            menu.click(event);
         }
+        // Cancel everything: top-slot handlers already did their work, and a
+        // shift-click from the player inventory must not dump items into the menu.
+        event.setCancelled(true);
     }
 
     @EventHandler
@@ -204,20 +191,11 @@ public final class GuiManager implements Listener {
         if (!(event.getInventory().getHolder() instanceof Menu menu)) {
             return;
         }
-        // Cancel drags that touch any non-input slot in the menu area.
         for (int raw : event.getRawSlots()) {
-            if (raw < menu.getInventory().getSize() && !menu.isInputSlot(raw)) {
+            if (raw < menu.getInventory().getSize()) {
                 event.setCancelled(true);
                 return;
             }
-        }
-        menu.onInputChanged();
-    }
-
-    @EventHandler
-    public void onClose(org.bukkit.event.inventory.InventoryCloseEvent event) {
-        if (event.getInventory().getHolder() instanceof Menu menu) {
-            menu.onClose();
         }
     }
 }
