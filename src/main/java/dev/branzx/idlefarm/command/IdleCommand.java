@@ -286,11 +286,10 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(Component.text("Hold a worker contract to choose the fuse rarity.", NamedTextColor.RED));
             return true;
         }
-        int needed = workerService.fuseCount();
         List<WorkerRecord> materials = new java.util.ArrayList<>();
         List<Integer> slots = new java.util.ArrayList<>();
         ItemStack[] contents = player.getInventory().getContents();
-        for (int slot = 0; slot < contents.length && materials.size() < needed; slot++) {
+        for (int slot = 0; slot < contents.length && materials.size() < 2; slot++) {
             WorkerRecord record = workerService.fromItem(contents[slot]);
             if (record != null && record.getRarity() == held.getRarity()
                     && WorkerRecord.STATE_ITEM.equals(record.getState())) {
@@ -298,16 +297,17 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
                 slots.add(slot);
             }
         }
-        if (materials.size() < needed) {
-            sender.sendMessage(Component.text("Need " + needed + " " + held.getRarity()
+        if (materials.size() < 2) {
+            sender.sendMessage(Component.text("Need 2 " + held.getRarity()
                     + " workers in your inventory (found " + materials.size() + ").", NamedTextColor.RED));
             return true;
         }
-        WorkerService.Result result = workerService.fuse(materials);
-        if (result.success()) {
-            for (int slot : slots) {
-                player.getInventory().setItem(slot, null);
-            }
+        WorkerService.Result result = workerService.fuse(player.getUniqueId(), materials);
+        // Both materials are consumed whether the fuse succeeds or fails.
+        for (int slot : slots) {
+            player.getInventory().setItem(slot, null);
+        }
+        if (result.success() && result.item() != null) {
             giveOrDrop(player, result.item());
         }
         sender.sendMessage(Component.text(result.message(),

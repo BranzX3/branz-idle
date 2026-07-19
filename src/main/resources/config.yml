@@ -65,8 +65,17 @@ workers:
     rare: {min: 10, max: 28}
     epic: {min: 18, max: 40}
     legendary: {min: 28, max: 55}
-  # Same-rarity workers consumed per fuse (result: next rarity).
-  fuse-count: 3
+  # Fuse: combine 2 same-rarity workers (any level) and roll to upgrade to
+  # the next rarity. Failure consumes both and adds a pity stack that raises
+  # the next attempt's chance until it reaches a guaranteed 100%.
+  fuse:
+    base-chance:
+      common: 0.6
+      uncommon: 0.4
+      rare: 0.25
+      epic: 0.12
+    # Added to success chance per accumulated fail (0.1 = +10% each).
+    pity-per-fail: 0.1
   # EXP needed for next level = base × current level.
   exp-per-level-base: 100
   # Stat points granted per level, randomly allocated.

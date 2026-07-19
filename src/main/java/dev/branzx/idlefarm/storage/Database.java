@@ -163,6 +163,14 @@ public final class Database {
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS idlefarm_fuse_pity (
+                owner_uuid VARCHAR(36) NOT NULL,
+                rarity VARCHAR(16) NOT NULL,
+                fails INT NOT NULL DEFAULT 0,
+                PRIMARY KEY (owner_uuid, rarity)
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS idlefarm_boosters (
                 owner_uuid VARCHAR(36) NOT NULL,
                 booster_type VARCHAR(32) NOT NULL,
@@ -283,6 +291,14 @@ public final class Database {
                 owner_uuid TEXT NOT NULL,
                 perk TEXT NOT NULL,
                 PRIMARY KEY (owner_uuid, perk)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_fuse_pity (
+                owner_uuid TEXT NOT NULL,
+                rarity TEXT NOT NULL,
+                fails INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (owner_uuid, rarity)
             )
             """,
             """

@@ -51,13 +51,37 @@ public final class WorkerService {
     private final IdleFarmPlugin plugin;
     private final WorkerStore workerStore;
     private final PlayerDataStore playerDataStore;
+    private final dev.branzx.idlefarm.storage.Database database;
     private final NamespacedKey workerKey;
+    // owner -> rarity -> accumulated fail count (pity)
+    private final java.util.Map<UUID, java.util.Map<Rarity, Integer>> pity =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
-    public WorkerService(IdleFarmPlugin plugin, WorkerStore workerStore, PlayerDataStore playerDataStore) {
+    public WorkerService(IdleFarmPlugin plugin, WorkerStore workerStore, PlayerDataStore playerDataStore,
+                         dev.branzx.idlefarm.storage.Database database) {
         this.plugin = plugin;
         this.workerStore = workerStore;
         this.playerDataStore = playerDataStore;
+        this.database = database;
         this.workerKey = new NamespacedKey(plugin, "worker_uuid");
+    }
+
+    public void loadPitySync() {
+        try (var connection = database.getConnection();
+             var select = connection.prepareStatement(
+                     "SELECT owner_uuid, rarity, fails FROM idlefarm_fuse_pity");
+             var rs = select.executeQuery()) {
+            while (rs.next()) {
+                Rarity rarity = Rarity.fromString(rs.getString("rarity"));
+                if (rarity != null) {
+                    pity.computeIfAbsent(UUID.fromString(rs.getString("owner_uuid")),
+                            k -> new java.util.concurrent.ConcurrentHashMap<>())
+                            .put(rarity, rs.getInt("fails"));
+                }
+            }
+        } catch (java.sql.SQLException e) {
+            plugin.getLogger().severe("Failed to load fuse pity: " + e.getMessage());
+        }
     }
 
     // ---- hire (gacha) ----
@@ -204,24 +228,53 @@ public final class WorkerService {
         return workerStore.get(UUID.fromString(uuid));
     }
 
-    // ---- fuse ----
+    // ---- fuse (2-worker gacha with per-rarity pity) ----
 
+    /** Two same-rarity workers of any level. */
     public int fuseCount() {
-        return plugin.getConfig().getInt("workers.fuse-count", 3);
+        return 2;
+    }
+
+    public int pityCount(UUID owner, Rarity rarity) {
+        var byRarity = pity.get(owner);
+        return byRarity == null ? 0 : byRarity.getOrDefault(rarity, 0);
     }
 
     /**
-     * Consumes the given same-rarity workers and mints one of the next rarity.
-     * Caller must have already removed the item tokens from the inventory.
+     * Effective success chance (0..1) including accumulated pity. Reaches a
+     * guaranteed 1.0 at the configured hard-pity fail count.
      */
-    public Result fuse(List<WorkerRecord> materials) {
-        if (materials.size() != fuseCount()) {
-            return Result.fail("Fuse requires exactly " + fuseCount() + " workers.");
+    public double fuseChance(UUID owner, Rarity rarity) {
+        double base = plugin.getConfig().getDouble(
+                "workers.fuse.base-chance." + rarity.name().toLowerCase(Locale.ROOT), defaultChance(rarity));
+        double perFail = plugin.getConfig().getDouble("workers.fuse.pity-per-fail", 0.1);
+        return Math.min(1.0, base + pityCount(owner, rarity) * perFail);
+    }
+
+    private double defaultChance(Rarity rarity) {
+        return switch (rarity) {
+            case COMMON -> 0.6;
+            case UNCOMMON -> 0.4;
+            case RARE -> 0.25;
+            case EPIC -> 0.12;
+            case LEGENDARY -> 0.0; // cannot fuse past legendary
+        };
+    }
+
+    /**
+     * Fuses exactly two same-rarity workers. Rolls {@link #fuseChance}:
+     * success mints the next rarity and resets pity; failure consumes both
+     * and increments pity so the next attempt is likelier. Both materials
+     * are always consumed. Caller removes the item tokens from inventory.
+     */
+    public Result fuse(UUID owner, List<WorkerRecord> materials) {
+        if (materials.size() != 2) {
+            return Result.fail("Fuse combines exactly 2 workers of the same rarity.");
         }
         Rarity rarity = materials.get(0).getRarity();
         for (WorkerRecord material : materials) {
             if (material.getRarity() != rarity) {
-                return Result.fail("All fuse materials must share the same rarity.");
+                return Result.fail("Both workers must share the same rarity.");
             }
             if (!material.isItemForm() || !WorkerRecord.STATE_ITEM.equals(material.getState())) {
                 return Result.fail(material.getName() + " is assigned to a node — eject it first.");
@@ -231,11 +284,42 @@ public final class WorkerService {
         if (next == null) {
             return Result.fail("Legendary workers cannot be fused further.");
         }
+
+        double chance = fuseChance(owner, rarity);
+        boolean success = ThreadLocalRandom.current().nextDouble() < chance;
+
         for (WorkerRecord material : materials) {
             workerStore.delete(material);
         }
-        WorkerRecord fused = mint(next);
-        return Result.ok("Fused into " + fused.getName() + " (" + next + ")!", createItem(fused));
+
+        if (success) {
+            setPity(owner, rarity, 0);
+            WorkerRecord fused = mint(next);
+            return Result.ok("SUCCESS! Fused into " + fused.getName() + " (" + next + ")!",
+                    createItem(fused));
+        } else {
+            int fails = pityCount(owner, rarity) + 1;
+            setPity(owner, rarity, fails);
+            double nextChance = fuseChance(owner, rarity);
+            return Result.fail("Fuse failed — both workers lost. Pity +1 (next "
+                    + rarity + " fuse: " + Math.round(nextChance * 100) + "% success).");
+        }
+    }
+
+    private void setPity(UUID owner, Rarity rarity, int fails) {
+        pity.computeIfAbsent(owner, k -> new java.util.concurrent.ConcurrentHashMap<>()).put(rarity, fails);
+        database.submitWrite(() -> {
+            try (var connection = database.getConnection();
+                 var upsert = connection.prepareStatement(
+                         "REPLACE INTO idlefarm_fuse_pity (owner_uuid, rarity, fails) VALUES (?, ?, ?)")) {
+                upsert.setString(1, owner.toString());
+                upsert.setString(2, rarity.name());
+                upsert.setInt(3, fails);
+                upsert.executeUpdate();
+            } catch (java.sql.SQLException e) {
+                plugin.getLogger().severe("Failed to persist fuse pity: " + e.getMessage());
+            }
+        });
     }
 
     // ---- growth ----
