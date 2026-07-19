@@ -63,6 +63,15 @@ public final class AdminCommands {
         if (args.length < 2) {
             return usage(sender);
         }
+        try {
+            return handleInner(sender, args);
+        } catch (NumberFormatException e) {
+            sender.sendMessage(Component.text("Invalid number: " + e.getMessage(), NamedTextColor.RED));
+            return true;
+        }
+    }
+
+    private boolean handleInner(CommandSender sender, String[] args) {
         String sub = args[1].toLowerCase(Locale.ROOT);
         return switch (sub) {
             case "reload" -> reload(sender);

@@ -61,7 +61,7 @@ public final class ShopMenu extends Menu {
                 .loreComponents(List.of(
                         Ui.line("×" + boosters.boostMultiplier(type) + " for "
                                 + boosters.durationMinutes(type) + "m", NamedTextColor.AQUA),
-                        Ui.line("⛁ " + Ui.num(boosters.cost(type)), NamedTextColor.GOLD),
+                        Ui.line("◆ " + Ui.num(boosters.cost(type)), NamedTextColor.GOLD),
                         Ui.divider(),
                         status)).build(),
                 e -> {

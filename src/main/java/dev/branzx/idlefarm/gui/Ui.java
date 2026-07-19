@@ -18,9 +18,9 @@ public final class Ui {
         return Component.text(text, color).decoration(TextDecoration.ITALIC, false);
     }
 
-    /** Thin separator used to frame lore sections. */
+    /** Thin separator used to frame lore sections (box-drawing, in MC font). */
     public static Component divider() {
-        return line("⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯", NamedTextColor.DARK_GRAY);
+        return line("────────────────", NamedTextColor.DARK_GRAY);
     }
 
     /** "█████░░░░░" bar, colored fill + gray remainder, with label suffix. */

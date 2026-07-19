@@ -242,7 +242,7 @@ public final class WorkerService {
         lore.add(Ui.stat("⛏", "Diligence", stats.diligence(), 60, NamedTextColor.GOLD));
         lore.add(Ui.stat("☘", "Luck", stats.luck(), 60, NamedTextColor.GREEN));
         lore.add(Ui.stat("❤", "Stamina", stats.stamina(), 60, NamedTextColor.RED));
-        lore.add(Ui.stat("➟", "Speed", stats.speed(), 60, NamedTextColor.AQUA));
+        lore.add(Ui.stat("»", "Speed", stats.speed(), 60, NamedTextColor.AQUA));
         lore.add(Ui.divider());
         if (capped) {
             lore.add(Ui.line("Lv." + record.getLevel() + "  MAX", NamedTextColor.GOLD));

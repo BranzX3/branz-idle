@@ -107,10 +107,10 @@ public final class MainHubMenu extends Menu {
         int streak = gui.streakService() == null ? 0
                 : gui.streakService().currentStreak(viewer.getUniqueId());
         List<net.kyori.adventure.text.Component> profileLore = new ArrayList<>();
-        profileLore.add(Ui.line("⛁ " + Ui.num(balance) + " " + currency, NamedTextColor.GOLD));
-        profileLore.add(Ui.line("⌚ " + Ui.time((data == null ? 0 : data.getTotalOnlineMinutes()) * 60_000L)
+        profileLore.add(Ui.line("◆ " + Ui.num(balance) + " " + currency, NamedTextColor.GOLD));
+        profileLore.add(Ui.line("☀ " + Ui.time((data == null ? 0 : data.getTotalOnlineMinutes()) * 60_000L)
                 + " online", NamedTextColor.AQUA));
-        profileLore.add(Ui.line("🔥 Streak " + streak + " day(s)", NamedTextColor.RED));
+        profileLore.add(Ui.line("⚡ Streak " + streak + " day(s)", NamedTextColor.RED));
         if (gui.boosterService() != null) {
             long moneyMs = gui.boosterService().remainingMillis(viewer.getUniqueId(), "money");
             long prodMs = gui.boosterService().remainingMillis(viewer.getUniqueId(), "production");

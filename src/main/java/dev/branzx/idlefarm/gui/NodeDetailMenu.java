@@ -304,7 +304,7 @@ public final class NodeDetailMenu extends Menu {
         return switch (state) {
             case WorkerRecord.STATE_WORKING -> "● Working";
             case WorkerRecord.STATE_STOP -> "■ Stopped (buffer full)";
-            case WorkerRecord.STATE_EXPLORING -> "➟ Away exploring";
+            case WorkerRecord.STATE_EXPLORING -> "» Away exploring";
             default -> "○ Idle";
         };
     }
