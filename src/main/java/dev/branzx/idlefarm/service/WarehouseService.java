@@ -2,12 +2,14 @@ package dev.branzx.idlefarm.service;
 
 import dev.branzx.idlefarm.IdleFarmPlugin;
 import dev.branzx.idlefarm.storage.Database;
+import dev.branzx.idlefarm.node.NodeRecord;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -99,6 +101,59 @@ public final class WarehouseService {
             persist(owner);
         }
         return true;
+    }
+
+    /**
+     * Atomically moves as much of a node buffer as fits. The cache changes on
+     * the main thread and the two durable rows are committed in one ordered DB
+     * transaction, preventing restart-time loss or duplication.
+     */
+    public int collectNode(NodeRecord node) {
+        UUID owner = node.getOwnerUuid();
+        Map<String, Integer> warehouse = getContents(owner);
+        int moved = 0;
+        synchronized (node) {
+            int space = freeSpace(owner);
+            for (Map.Entry<String, Integer> entry : List.copyOf(node.getStorage().entrySet())) {
+                if (space <= 0) break;
+                int amount = Math.min(space, entry.getValue());
+                if (amount <= 0) continue;
+                String key = entry.getKey().toUpperCase(java.util.Locale.ROOT);
+                warehouse.merge(key, amount, Integer::sum);
+                moved += amount;
+                space -= amount;
+                if (amount == entry.getValue()) node.getStorage().remove(entry.getKey());
+                else node.getStorage().put(entry.getKey(), entry.getValue() - amount);
+            }
+            if (moved > 0) node.setState("ACTIVE");
+        }
+        if (moved <= 0) return 0;
+        String warehouseJson = serialize(warehouse);
+        String nodeJson = node.serializeStorage();
+        int capacity = getCapacity(owner);
+        database.submitWrite(() -> {
+            try (Connection connection = database.getConnection()) {
+                connection.setAutoCommit(false);
+                try (PreparedStatement upsert = connection.prepareStatement(
+                        "REPLACE INTO idlefarm_warehouse (owner_uuid, capacity, content_json) VALUES (?, ?, ?)")) {
+                    upsert.setString(1, owner.toString());
+                    upsert.setInt(2, capacity);
+                    upsert.setString(3, warehouseJson);
+                    upsert.executeUpdate();
+                }
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE idlefarm_nodes SET storage_json = ?, state = ? WHERE id = ?")) {
+                    update.setString(1, nodeJson);
+                    update.setString(2, node.getState());
+                    update.setLong(3, node.getId());
+                    update.executeUpdate();
+                }
+                connection.commit();
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Atomic node collection failed: " + e.getMessage());
+            }
+        });
+        return moved;
     }
 
     /** Removes up to {@code amount}; returns the number actually removed. */

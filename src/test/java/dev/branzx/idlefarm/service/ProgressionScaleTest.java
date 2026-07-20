@@ -46,6 +46,24 @@ class ProgressionScaleTest {
         assertEquals(1_280, scale.bufferCapacity(node));
     }
 
+    @Test
+    void frontierRequiresEveryDurableSinkGate() {
+        IdleFarmPlugin plugin = mock(IdleFarmPlugin.class);
+        FileConfiguration config = mock(FileConfiguration.class);
+        when(plugin.getConfig()).thenReturn(config);
+        when(config.getBoolean("frontier.enabled", false)).thenReturn(true);
+        when(config.getInt("frontier.level-cap", 200)).thenReturn(200);
+        when(config.getInt("exploration.level-cap", 100)).thenReturn(100);
+        when(config.getBoolean("frontier.sink-gates.profession", false)).thenReturn(true);
+        when(config.getBoolean("frontier.sink-gates.equipment", false)).thenReturn(true);
+        when(config.getBoolean("frontier.sink-gates.repair", false)).thenReturn(true);
+        when(config.getBoolean("frontier.sink-gates.project", false)).thenReturn(false);
+        assertEquals(100, new ProgressionScale(plugin).levelCap());
+
+        when(config.getBoolean("frontier.sink-gates.project", false)).thenReturn(true);
+        assertEquals(200, new ProgressionScale(plugin).levelCap());
+    }
+
     private ProgressionScale scaleWithDesignDefaults() {
         IdleFarmPlugin plugin = mock(IdleFarmPlugin.class);
         FileConfiguration config = mock(FileConfiguration.class);

@@ -41,6 +41,10 @@ public final class GuiManager implements Listener {
     private dev.branzx.idlefarm.service.BoosterService boosterService;
     private dev.branzx.idlefarm.service.PerkService perkService;
     private dev.branzx.idlefarm.service.StreakService streakService;
+    private dev.branzx.idlefarm.service.GameDesignService gameDesignService;
+    private dev.branzx.idlefarm.service.CreditService creditService;
+    private dev.branzx.idlefarm.service.DropTableService dropTableService;
+    private dev.branzx.idlefarm.service.TradeService tradeService;
 
     public GuiManager(IdleFarmPlugin plugin, NodeStore nodeStore, WorkerStore workerStore,
                       PlayerDataStore dataStore, WorkerService workerService,
@@ -66,6 +70,34 @@ public final class GuiManager implements Listener {
         this.boosterService = boosterService;
         this.perkService = perkService;
         this.streakService = streakService;
+    }
+
+    public void setGameDesignServices(dev.branzx.idlefarm.service.GameDesignService gameDesignService,
+                                      dev.branzx.idlefarm.service.CreditService creditService,
+                                      dev.branzx.idlefarm.service.DropTableService dropTableService) {
+        this.gameDesignService = gameDesignService;
+        this.creditService = creditService;
+        this.dropTableService = dropTableService;
+    }
+
+    public dev.branzx.idlefarm.service.GameDesignService gameDesignService() {
+        return gameDesignService;
+    }
+
+    public dev.branzx.idlefarm.service.CreditService creditService() {
+        return creditService;
+    }
+
+    public dev.branzx.idlefarm.service.DropTableService dropTableService() {
+        return dropTableService;
+    }
+
+    public void setTradeService(dev.branzx.idlefarm.service.TradeService tradeService) {
+        this.tradeService = tradeService;
+    }
+
+    public dev.branzx.idlefarm.service.TradeService tradeService() {
+        return tradeService;
     }
 
     // ---- accessors for menus ----
@@ -188,6 +220,14 @@ public final class GuiManager implements Listener {
 
     public void openExpedition(Player player) {
         new ExpeditionMenu(player, this, expeditionService).open();
+    }
+
+    public void openProgress(Player player) {
+        new ProgressMenu(player, this).open();
+    }
+
+    public void openTrade(Player player) {
+        new TradeMenu(player, this).open();
     }
 
     // ---- listener ----

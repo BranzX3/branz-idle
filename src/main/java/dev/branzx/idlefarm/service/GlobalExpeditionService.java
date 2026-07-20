@@ -177,10 +177,29 @@ public final class GlobalExpeditionService {
         }
         long endsAt = System.currentTimeMillis() + commitDurationMinutes() * 60_000L;
         long gained = 0;
+        java.util.Set<String> roles = new java.util.HashSet<>();
         for (WorkerRecord worker : idle) {
             var stats = worker.getStats();
             gained += stats.diligence() + stats.luck() + stats.stamina() + stats.speed()
                     + (long) worker.getLevel() * 2;
+            int max = Math.max(Math.max(stats.diligence(), stats.luck()),
+                    Math.max(stats.stamina(), stats.speed()));
+            roles.add(max == stats.diligence() ? "producer" : max == stats.luck() ? "scout"
+                    : max == stats.stamina() ? "researcher" : "runner");
+        }
+        if (roles.size() >= 3) {
+            gained = Math.round(gained * 1.10);
+        }
+        long existing = contributionOf(owner);
+        long cap = plugin.getConfig().getLong("expedition.weekly-contribution-cap", 10_000);
+        // Diminishing returns preserve participation without making repeated
+        // 24/7 commits the only viable strategy.
+        double diminishing = 1.0 / (1.0 + existing / Math.max(1.0, cap / 2.0));
+        gained = Math.min(Math.max(0, cap - existing), Math.max(1, Math.round(gained * diminishing)));
+        if (gained <= 0) {
+            return "Weekly contribution cap reached.";
+        }
+        for (WorkerRecord worker : idle) {
             workerLocks.put(worker.getWorkerUuid(), endsAt);
             persistLock(worker.getWorkerUuid(), endsAt);
         }
@@ -239,6 +258,15 @@ public final class GlobalExpeditionService {
             rewards = List.of(5000.0, 3000.0, 1500.0);
         }
         StringBuilder announce = new StringBuilder("Global Expedition " + week + " results: ");
+        long participationThreshold =
+                plugin.getConfig().getLong("expedition.participation-threshold", 250);
+        double participationReward =
+                plugin.getConfig().getDouble("expedition.participation-reward", 500);
+        for (Score score : ranking) {
+            if (score.contribution() >= participationThreshold) {
+                payout(score.owner(), participationReward);
+            }
+        }
         for (int i = 0; i < ranking.size() && i < rewards.size(); i++) {
             Score score = ranking.get(i);
             double reward = rewards.get(i);

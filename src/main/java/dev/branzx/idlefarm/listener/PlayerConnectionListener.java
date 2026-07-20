@@ -15,6 +15,7 @@ public final class PlayerConnectionListener implements Listener {
     private final IdleFarmPlugin plugin;
     private final PlayerDataStore dataStore;
     private StreakService streakService;
+    private dev.branzx.idlefarm.service.GameDesignService gameDesignService;
 
     public PlayerConnectionListener(IdleFarmPlugin plugin, PlayerDataStore dataStore) {
         this.plugin = plugin;
@@ -25,6 +26,10 @@ public final class PlayerConnectionListener implements Listener {
         this.streakService = streakService;
     }
 
+    public void setGameDesignService(dev.branzx.idlefarm.service.GameDesignService gameDesignService) {
+        this.gameDesignService = gameDesignService;
+    }
+
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent event) {
         var player = event.getPlayer();
@@ -32,6 +37,9 @@ public final class PlayerConnectionListener implements Listener {
             @Override
             public void run() {
                 dataStore.loadOrCreateSync(player.getUniqueId(), player.getName());
+                if (gameDesignService != null) {
+                    gameDesignService.onLogin(player.getUniqueId());
+                }
                 // Streak bonus needs the balance loaded; hop back to main thread.
                 if (streakService != null) {
                     new BukkitRunnable() {

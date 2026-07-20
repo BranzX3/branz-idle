@@ -1,0 +1,41 @@
+place_to_begin:
+  category: JOURNEY
+  scope: ACCOUNT
+  name: "A Place to Begin"
+  description: "Claim the first Residential Node"
+  chronicle-points: 2
+
+first_camp:
+  category: JOURNEY
+  scope: NODE
+  name: "First Camp"
+  description: "Construct the first Production Node"
+  chronicle-points: 3
+
+first_shift:
+  category: JOURNEY
+  scope: WORKER
+  name: "First Shift"
+  description: "Assign a worker"
+  chronicle-points: 2
+
+supplies_arrive:
+  category: JOURNEY
+  scope: ACCOUNT
+  name: "Supplies Arrive"
+  description: "Collect the first node buffer"
+  chronicle-points: 2
+
+beyond_fence:
+  category: JOURNEY
+  scope: NODE
+  name: "Beyond the Fence"
+  description: "Complete and claim the first expedition"
+  chronicle-points: 4
+
+node_master_100:
+  category: MASTERY
+  scope: NODE
+  name: "Vanilla Master"
+  description: "Raise any node to Exploration Lv.100"
+  chronicle-points: 10

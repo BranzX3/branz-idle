@@ -37,6 +37,7 @@ public final class ClaimService {
     private WorkerService workerService;
     private dev.branzx.idlefarm.storage.WorkerStore workerStore;
     private GlobalExpeditionService globalExpeditionService;
+    private GameDesignService gameDesignService;
 
     public ClaimService(IdleFarmPlugin plugin, NodeStore nodeStore, PlayerDataStore playerDataStore,
                         SchematicService schematicService, WorkerNpcManager npcManager) {
@@ -62,6 +63,10 @@ public final class ClaimService {
 
     public void setGlobalExpeditionService(GlobalExpeditionService globalExpeditionService) {
         this.globalExpeditionService = globalExpeditionService;
+    }
+
+    public void setGameDesignService(GameDesignService gameDesignService) {
+        this.gameDesignService = gameDesignService;
     }
 
     private NodeAnchorStore anchorStore;
@@ -144,6 +149,11 @@ public final class ClaimService {
             if (!ownerHasResidential) {
                 return Result.fail("Claim a Residential node first (/idle claim residential).");
             }
+            if (gameDesignService != null && gameDesignService.firstProductionIsFree(owner)
+                    && type != NodeType.MINING && type != NodeType.FARMING
+                    && type != NodeType.WOODCUTTING) {
+                return Result.fail("Your free Starter Node can be Mining, Farming, or Woodcutting.");
+            }
             if (!isAdjacentToOwn(owner, chunk)) {
                 return Result.fail("Production nodes must touch your existing territory.");
             }
@@ -154,7 +164,11 @@ public final class ClaimService {
             }
         }
 
-        double cost = claimCost(type);
+        boolean tutorialFree = gameDesignService != null
+                && (type == NodeType.RESIDENTIAL
+                ? gameDesignService.firstResidentialIsFree(owner)
+                : gameDesignService.firstProductionIsFree(owner));
+        double cost = tutorialFree ? 0 : claimCost(type);
         PlayerData data = playerDataStore.getOnline(owner);
         if (data == null) {
             return Result.fail("Your data is still loading, try again in a moment.");
@@ -170,10 +184,14 @@ public final class ClaimService {
             schematicService.buildHousing(record, world);
             npcManager.spawnForNode(record, world);
         }
+        boolean firstProduction = gameDesignService != null && gameDesignService.onNodeClaimed(record);
+        if (firstProduction && workerService != null) {
+            workerService.grantStarter(owner);
+        }
         audit(owner, "CLAIM", type + " @ " + chunk.world() + " " + chunk.x() + "," + chunk.z()
-                + " cost=" + cost);
+                + " cost=" + cost + " tutorialFree=" + tutorialFree);
         return Result.ok(type + " node claimed at chunk " + chunk.x() + "," + chunk.z()
-                + " (-" + cost + ").");
+                + (tutorialFree ? " (tutorial claim: FREE)." : " (-" + cost + ")."));
     }
 
     public Result unclaim(UUID owner, World world, ChunkKey chunk) {
@@ -227,6 +245,26 @@ public final class ClaimService {
         audit(owner, "UNCLAIM", record.getType() + " @ " + chunk.world() + " " + chunk.x() + ","
                 + chunk.z() + " refund=" + refund);
         return Result.ok("Node unclaimed (+" + refund + " refund). Worker contracts returned.");
+    }
+
+    /** Moderation seizure: no refund, reason and audit id are mandatory. */
+    public Result forceUnclaim(UUID actor, World world, ChunkKey chunk, String reason, String auditId) {
+        NodeRecord record = nodeStore.getByChunk(chunk);
+        if (record == null) return Result.fail("No claimed node at that chunk.");
+        if (reason == null || reason.isBlank() || auditId == null || auditId.isBlank()) {
+            return Result.fail("A moderation reason and audit id are required.");
+        }
+        if (record.getType().isProduction()) {
+            if (explorationService != null) explorationService.cancel(record);
+            ejectAllWorkers(record);
+            if (anchorStore != null) anchorStore.clearNode(record.getId());
+            npcManager.despawnNode(record.getId());
+            schematicService.restoreTerrain(record, world);
+        }
+        nodeStore.delete(record);
+        audit(actor, "ADMIN_FORCE_UNCLAIM", "id=" + auditId + " node=" + record.getId()
+                + " owner=" + record.getOwnerUuid() + " reason=" + reason + " refund=0");
+        return Result.ok("Force-unclaimed node #" + record.getId() + " with no refund. Audit " + auditId);
     }
 
     /**

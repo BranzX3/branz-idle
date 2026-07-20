@@ -12,6 +12,9 @@ import dev.branzx.idlefarm.service.ClaimService;
 import dev.branzx.idlefarm.service.DropTableService;
 import dev.branzx.idlefarm.service.ExplorationService;
 import dev.branzx.idlefarm.service.GlobalExpeditionService;
+import dev.branzx.idlefarm.service.GameDesignService;
+import dev.branzx.idlefarm.service.CreditService;
+import dev.branzx.idlefarm.service.TradeService;
 import dev.branzx.idlefarm.service.PerkService;
 import dev.branzx.idlefarm.service.StreakService;
 import dev.branzx.idlefarm.service.ProductionEngine;
@@ -43,6 +46,8 @@ public final class IdleFarmPlugin extends JavaPlugin {
     private WarehouseService warehouseService;
     private GuiManager guiManager;
     private PayoutTask payoutTask;
+    private TradeService tradeService;
+    private GlobalExpeditionService globalExpeditionService;
 
     @Override
     public void onEnable() {
@@ -51,6 +56,7 @@ public final class IdleFarmPlugin extends JavaPlugin {
 
         this.database = new Database(this);
         this.database.init();
+        AuditService auditService = new AuditService(this, database);
 
         this.dataStore = new PlayerDataStore(this, database);
         this.nodeStore = new NodeStore(this, database);
@@ -94,19 +100,40 @@ public final class IdleFarmPlugin extends JavaPlugin {
         StreakService streakService = new StreakService(this, database, dataStore);
         streakService.loadAllSync();
 
+        GameDesignService gameDesignService =
+                new GameDesignService(this, database, nodeStore, dataStore, auditService);
+        gameDesignService.loadAllSync();
+        gameDesignService.setRuntimeServices(warehouseService, explorationService);
+        CreditService creditService =
+                new CreditService(this, database, dataStore, auditService, gameDesignService);
+        creditService.loadAllSync();
+        this.tradeService =
+                new TradeService(this, database, auditService, workerService, gameDesignService);
+        getServer().getPluginManager().registerEvents(tradeService, this);
+        DropTableService dropTableService = new DropTableService(this);
+        dropTableService.load();
+        this.claimService.setGameDesignService(gameDesignService);
+        this.workerService.setGameDesignService(gameDesignService);
+        this.explorationService.setGameDesignService(gameDesignService);
+        getServer().getPluginManager().registerEvents(
+                new dev.branzx.idlefarm.listener.WorkerSafetyListener(workerService, gameDesignService), this);
+
         this.guiManager = new GuiManager(this, nodeStore, workerStore, dataStore, workerService,
                 warehouseService, claimService, trustService, explorationService, npcManager);
         this.guiManager.setPhase7Services(boosterService, perkService, streakService);
+        this.guiManager.setGameDesignServices(gameDesignService, creditService, dropTableService);
+        this.guiManager.setTradeService(tradeService);
 
-        GlobalExpeditionService expeditionService = new GlobalExpeditionService(this, database, workerStore, dataStore);
-        expeditionService.loadAllSync();
-        expeditionService.start();
-        this.guiManager.setExpeditionService(expeditionService);
-        this.workerService.setGlobalExpeditionService(expeditionService);
-        this.claimService.setGlobalExpeditionService(expeditionService);
+        this.globalExpeditionService = new GlobalExpeditionService(this, database, workerStore, dataStore);
+        globalExpeditionService.loadAllSync();
+        globalExpeditionService.start();
+        this.guiManager.setExpeditionService(globalExpeditionService);
+        this.workerService.setGlobalExpeditionService(globalExpeditionService);
+        this.claimService.setGlobalExpeditionService(globalExpeditionService);
 
         PlayerConnectionListener connectionListener = new PlayerConnectionListener(this, dataStore);
         connectionListener.setStreakService(streakService);
+        connectionListener.setGameDesignService(gameDesignService);
         getServer().getPluginManager().registerEvents(connectionListener, this);
         getServer().getPluginManager().registerEvents(new ProtectionListener(nodeStore, trustService), this);
         getServer().getPluginManager().registerEvents(npcManager, this);
@@ -116,23 +143,24 @@ public final class IdleFarmPlugin extends JavaPlugin {
         // Citizens is a hard dependency, so its API is ready by now.
         npcManager.init();
 
-        AuditService auditService = new AuditService(this, database);
-        DropTableService dropTableService = new DropTableService(this);
-        dropTableService.load();
         this.claimService.setAuditService(auditService);
         this.workerService.setAuditService(auditService);
 
         AdminCommands adminCommands = new AdminCommands(this, nodeStore, workerStore, schematicService, npcManager);
         adminCommands.setPhase8Services(dropTableService, auditService, guiManager, dataStore);
         adminCommands.setExplorationService(explorationService);
+        adminCommands.setCreditService(creditService);
+        adminCommands.setClaimService(claimService);
         IdleCommand idleCommand = new IdleCommand(this, dataStore, nodeStore, claimService, trustService,
                 workerService, workerStore, npcManager, warehouseService, guiManager, adminCommands);
+        idleCommand.setTradeService(tradeService);
         getCommand("idle").setExecutor(idleCommand);
         getCommand("idle").setTabCompleter(idleCommand);
 
         long intervalTicks = getConfig().getLong("payout-interval-seconds", 60) * 20L;
         this.payoutTask = new PayoutTask(this, dataStore);
         this.payoutTask.setBoosterService(boosterService);
+        this.payoutTask.setCreditService(creditService);
         this.payoutTask.runTaskTimer(this, intervalTicks, intervalTicks);
 
         long productionTicks = getConfig().getLong("production.tick-seconds", 60) * 20L;
@@ -141,7 +169,8 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.productionEngine.setBoosterService(boosterService);
         this.productionEngine.setPerkServices(perkService, warehouseService);
         this.productionEngine.setDropTableService(dropTableService);
-        this.productionEngine.setGlobalExpeditionService(expeditionService);
+        this.productionEngine.setGlobalExpeditionService(globalExpeditionService);
+        this.productionEngine.setGameDesignService(gameDesignService);
         // First run settles any downtime accrued while the server was off.
         this.productionEngine.runTaskTimer(this, 100L, productionTicks);
 
@@ -184,8 +213,14 @@ public final class IdleFarmPlugin extends JavaPlugin {
         if (explorationService != null) {
             explorationService.stop();
         }
+        if (globalExpeditionService != null) {
+            globalExpeditionService.stop();
+        }
         if (npcManager != null) {
             npcManager.shutdown();
+        }
+        if (tradeService != null) {
+            tradeService.shutdown();
         }
         if (dataStore != null) {
             dataStore.saveAllOnlineSync();

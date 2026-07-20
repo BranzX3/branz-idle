@@ -8,6 +8,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.UUID;
+import java.util.List;
 
 /** A single worker's card with cosmetic actions (rename / reskin / withdraw). */
 public final class WorkerDetailMenu extends Menu {
@@ -74,8 +75,53 @@ public final class WorkerDetailMenu extends Menu {
                         },
                         this::open) : null);
 
-        // Withdraw is only meaningful for a worker in the bag.
-        if (worker.isInBag()) {
+        boolean locked = gui.gameDesignService() != null
+                && gui.gameDesignService().isWorkerLocked(worker.getWorkerUuid());
+        boolean starter = gui.gameDesignService() != null
+                && gui.gameDesignService().isStarterWorker(worker.getWorkerUuid());
+        set(17, Icon.of(locked ? Material.REDSTONE_TORCH : Material.LEVER)
+                .name(locked ? "Favorite / Locked" : "Lock Worker",
+                        locked ? NamedTextColor.RED : NamedTextColor.YELLOW)
+                .lore("Locked workers cannot fuse, trade, or withdraw", NamedTextColor.GRAY).build(),
+                starter ? null : e -> {
+                    boolean next = gui.gameDesignService()
+                            .toggleWorkerLock(viewer.getUniqueId(), worker.getWorkerUuid());
+                    viewer.sendMessage(Component.text(next ? "Worker locked." : "Worker unlocked.",
+                            next ? NamedTextColor.GREEN : NamedTextColor.YELLOW));
+                    redraw();
+                });
+
+        if (gui.gameDesignService() != null) {
+            String currentCharm = gui.gameDesignService()
+                    .workerCharm(viewer.getUniqueId(), worker.getWorkerUuid());
+            List<String> charms = List.of("SURVEY_COMPASS", "HEAVY_GLOVES",
+                    "LUCKY_TOKEN", "TRAIL_BOOTS", "NONE");
+            set(20, Icon.of(Material.HEART_OF_THE_SEA).name("Charm: " + Ui.pretty(currentCharm),
+                            NamedTextColor.LIGHT_PURPLE)
+                    .lore("Left/right/shift click selects situational Charm", NamedTextColor.GRAY).build(),
+                    e -> {
+                        int index = (charms.indexOf(currentCharm) + 1) % charms.size();
+                        var result = gui.gameDesignService().equipCharm(
+                                viewer.getUniqueId(), worker, charms.get(index));
+                        viewer.sendMessage(Component.text(result.message(),
+                                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+                        redraw();
+                    });
+            long notes = gui.gameDesignService().trainingNotes(viewer.getUniqueId());
+            set(21, Icon.of(Material.EXPERIENCE_BOTTLE)
+                    .name("Training Notes: " + notes, NamedTextColor.GREEN)
+                    .lore("Click: apply all returned Fuse EXP", NamedTextColor.GRAY).build(),
+                    e -> {
+                        var result = gui.workerService()
+                                .applyTrainingNotes(viewer.getUniqueId(), worker, notes);
+                        viewer.sendMessage(Component.text(result.message(),
+                                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+                        redraw();
+                    });
+        }
+
+        // Withdraw is only meaningful for a tradeable, unlocked bag worker.
+        if (worker.isInBag() && !locked && !starter) {
             set(15, Icon.of(Material.HOPPER).name("Withdraw as Item", NamedTextColor.GOLD)
                     .lore("Take out to trade or carry", NamedTextColor.GRAY).build(),
                     e -> {

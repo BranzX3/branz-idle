@@ -50,10 +50,11 @@ public final class WarehouseMenu extends Menu {
         for (int i = 0; i < PAGE_SIZE && start + i < entries.size(); i++) {
             Map.Entry<String, Integer> entry = entries.get(start + i);
             Material material = Material.matchMaterial(entry.getKey());
-            if (material == null) {
-                continue;
-            }
-            set(i, Icon.of(material)
+            boolean custom = material == null && gui.dropTableService() != null
+                    && gui.dropTableService().isCustomMaterial(entry.getKey());
+            if (material == null && !custom) continue;
+            Material iconMaterial = custom ? Material.PRISMARINE_SHARD : material;
+            set(i, Icon.of(iconMaterial)
                     .name(prettify(entry.getKey()), NamedTextColor.WHITE)
                     .amount(Math.min(64, entry.getValue()))
                     .loreComponents(List.of(
@@ -109,7 +110,7 @@ public final class WarehouseMenu extends Menu {
 
     private void withdraw(String key, Material material, boolean all) {
         int have = gui.warehouseService().getContents(owner).getOrDefault(key.toUpperCase(Locale.ROOT), 0);
-        int want = all ? have : Math.min(material.getMaxStackSize(), have);
+        int want = all ? have : Math.min(material == null ? 64 : material.getMaxStackSize(), have);
         int removed = gui.warehouseService().withdraw(owner, key, want);
         deliver(key, material, removed);
         redraw();
@@ -119,8 +120,12 @@ public final class WarehouseMenu extends Menu {
         if (removed > 0) {
             int give = removed;
             while (give > 0) {
-                int stack = Math.min(material.getMaxStackSize(), give);
-                var leftover = viewer.getInventory().addItem(new ItemStack(material, stack));
+                int maxStack = material == null ? 64 : material.getMaxStackSize();
+                int stack = Math.min(maxStack, give);
+                ItemStack delivered = material == null
+                        ? gui.dropTableService().customItem(key, stack)
+                        : new ItemStack(material, stack);
+                var leftover = viewer.getInventory().addItem(delivered);
                 for (ItemStack overflow : leftover.values()) {
                     // Inventory full: return the overflow to the warehouse.
                     gui.warehouseService().deposit(owner, key, overflow.getAmount());

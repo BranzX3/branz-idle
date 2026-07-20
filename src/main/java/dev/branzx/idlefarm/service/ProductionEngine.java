@@ -35,6 +35,7 @@ public final class ProductionEngine extends BukkitRunnable {
     private PerkService perkService;
     private WarehouseService warehouseService;
     private GlobalExpeditionService globalExpeditionService;
+    private GameDesignService gameDesignService;
 
     public void setExplorationService(ExplorationService explorationService) {
         this.explorationService = explorationService;
@@ -51,6 +52,10 @@ public final class ProductionEngine extends BukkitRunnable {
 
     public void setGlobalExpeditionService(GlobalExpeditionService globalExpeditionService) {
         this.globalExpeditionService = globalExpeditionService;
+    }
+
+    public void setGameDesignService(GameDesignService gameDesignService) {
+        this.gameDesignService = gameDesignService;
     }
 
     private DropTableService dropTableService;
@@ -98,7 +103,9 @@ public final class ProductionEngine extends BukkitRunnable {
 
         double boost = boosterService == null ? 1.0
                 : boosterService.multiplier(node.getOwnerUuid(), BoosterService.PRODUCTION);
-        double ratePerHour = baseRate(node) * crewPower(crew) * boost;
+        double buildMultiplier = gameDesignService == null ? 1.0
+                : gameDesignService.productionMultiplier(node);
+        double ratePerHour = baseRate(node) * crewPower(crew) * boost * buildMultiplier;
         if (ratePerHour <= 0) {
             if (explorationService != null) {
                 explorationService.advancePassiveResearch(node, crew, now,
@@ -117,7 +124,10 @@ public final class ProductionEngine extends BukkitRunnable {
 
         boolean dirty = false;
         if (credited > 0) {
-            rollItems(node, credited);
+            java.util.Map<String, Integer> producedItems = rollItems(node, credited);
+            if (gameDesignService != null) {
+                gameDesignService.onItemsProduced(node, producedItems);
+            }
             // Advance only by the time actually converted into items.
             node.setLastTickAt(node.getLastTickAt() + (long) (credited / ratePerHour * 3_600_000.0));
             grantCrewExp(crew, credited);
@@ -134,16 +144,9 @@ public final class ProductionEngine extends BukkitRunnable {
         // Auto-collect perk: buffer flushes straight to the Warehouse.
         if (perkService != null && warehouseService != null && node.storageTotal() > 0
                 && perkService.has(node.getOwnerUuid(), PerkService.AUTO_COLLECT)) {
-            for (var entry : List.copyOf(node.getStorage().entrySet())) {
-                int stored = warehouseService.deposit(node.getOwnerUuid(), entry.getKey(), entry.getValue());
-                if (stored >= entry.getValue()) {
-                    node.getStorage().remove(entry.getKey());
-                } else {
-                    if (stored > 0) {
-                        node.getStorage().put(entry.getKey(), entry.getValue() - stored);
-                    }
-                    break; // warehouse full
-                }
+            int autoCollected = warehouseService.collectNode(node);
+            if (autoCollected > 0 && gameDesignService != null) {
+                gameDesignService.onBufferCollected(node, autoCollected);
             }
             dirty = true;
         }
@@ -172,32 +175,62 @@ public final class ProductionEngine extends BukkitRunnable {
             double rarityPower = plugin.getConfig().getDouble(
                     "production.rarity-power." + worker.getRarity().name().toLowerCase(Locale.ROOT), 1.0);
             double basePower = rarityPower * (1 + worker.getLevel() * levelBonus);
+            if (gameDesignService != null
+                    && "HEAVY_GLOVES".equals(gameDesignService.workerCharm(worker.getWorkerUuid()))) {
+                basePower *= 1.10;
+            }
             power += basePower * (1 + worker.getStats().diligence() / 100.0);
         }
         return power;
     }
 
     public int bufferCapacity(NodeRecord node) {
-        return scale.bufferCapacity(node);
+        double multiplier = gameDesignService == null ? 1.0 : gameDesignService.bufferMultiplier(node);
+        return (int) Math.min(Integer.MAX_VALUE, Math.round(scale.bufferCapacity(node) * multiplier));
     }
 
-    private void rollItems(NodeRecord node, int count) {
+    private java.util.Map<String, Integer> rollItems(NodeRecord node, int count) {
         int bracket = explorationService == null ? 1 : explorationService.bracket(node);
-        java.util.Map<String, Double> table = dropTableService != null
-                ? dropTableService.table(node.getType(), bracket)
+        java.util.Map<String, Double> baseTable = dropTableService != null
+                ? dropTableService.table(node.getType(), bracket, node.getExplorationLevel())
                 : java.util.Map.of("cobblestone", 1.0);
+        java.util.Map<String, Double> table = new java.util.LinkedHashMap<>();
+        baseTable.forEach((material, weight) -> table.put(material,
+                weight * (gameDesignService == null ? 1.0
+                        : gameDesignService.resourceWeightMultiplier(node, material))));
         double totalWeight = table.values().stream().mapToDouble(Double::doubleValue).sum();
+        java.util.Map<String, Integer> produced = new java.util.LinkedHashMap<>();
         for (int i = 0; i < count; i++) {
-            double roll = ThreadLocalRandom.current().nextDouble() * totalWeight;
-            double cumulative = 0;
-            for (var entry : table.entrySet()) {
-                cumulative += entry.getValue();
-                if (roll < cumulative) {
-                    node.getStorage().merge(entry.getKey().toUpperCase(Locale.ROOT), 1, Integer::sum);
-                    break;
+            String selected = null;
+            for (int attempt = 0; attempt < 8 && selected == null; attempt++) {
+                double roll = ThreadLocalRandom.current().nextDouble() * totalWeight;
+                double cumulative = 0;
+                for (var entry : table.entrySet()) {
+                    cumulative += entry.getValue();
+                    if (roll < cumulative) {
+                        String candidate = entry.getKey().toUpperCase(Locale.ROOT);
+                        if (gameDesignService == null || gameDesignService.allowResource(
+                                node.getOwnerUuid(), candidate, node.getExplorationLevel())) {
+                            selected = candidate;
+                        }
+                        break;
+                    }
                 }
             }
+            if (selected == null) {
+                // A capped result is rerolled into a safe common output, never
+                // silently deleted.
+                selected = table.keySet().stream()
+                        .map(key -> key.toUpperCase(Locale.ROOT))
+                        .filter(key -> !java.util.Set.of("DIAMOND", "EMERALD", "NAUTILUS_SHELL",
+                                "GHAST_TEAR", "ANCIENT_DEBRIS", "NETHERITE_SCRAP",
+                                "WITHER_SKELETON_SKULL").contains(key))
+                        .findFirst().orElse("COBBLESTONE");
+            }
+            node.getStorage().merge(selected, 1, Integer::sum);
+            produced.merge(selected, 1, Integer::sum);
         }
+        return produced;
     }
 
     private void grantCrewExp(List<WorkerRecord> crew, int credited) {

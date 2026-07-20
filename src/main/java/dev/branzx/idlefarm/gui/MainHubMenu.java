@@ -95,6 +95,22 @@ public final class MainHubMenu extends Menu {
                     .build(), e -> gui.openExpedition(viewer));
         }
 
+        if (gui.gameDesignService() != null) {
+            Long focusedId = gui.gameDesignService().focusedNode(viewer.getUniqueId());
+            NodeRecord focused = focusedId == null ? null : owned.stream()
+                    .filter(node -> node.getId() == focusedId).findFirst().orElse(null);
+            List<net.kyori.adventure.text.Component> lore = new ArrayList<>();
+            if (focused == null) {
+                lore.add(Ui.line("Recommended: select a Focused Node", NamedTextColor.YELLOW));
+            } else {
+                lore.add(Ui.line("Focused " + focused.getType() + " Lv."
+                        + focused.getExplorationLevel(), NamedTextColor.AQUA));
+                lore.add(Ui.line("Daily commissions, Journal & Projects", NamedTextColor.GRAY));
+            }
+            set(20, Icon.of(Material.WRITABLE_BOOK).name("Pioneer Chronicle", NamedTextColor.AQUA)
+                    .loreComponents(lore).build(), e -> gui.openProgress(viewer));
+        }
+
         set(21, Icon.of(Material.OAK_HANGING_SIGN).name("Trust", NamedTextColor.GREEN)
                 .lore("Let friends into your territory", NamedTextColor.GRAY).build(),
                 e -> gui.openTrust(viewer));
@@ -142,21 +158,13 @@ public final class MainHubMenu extends Menu {
             if (!node.getType().isProduction() || node.getStorage().isEmpty()) {
                 continue;
             }
-            for (var entry : List.copyOf(node.getStorage().entrySet())) {
-                int stored = gui.warehouseService().deposit(viewer.getUniqueId(),
-                        entry.getKey(), entry.getValue());
-                moved += stored;
-                if (stored >= entry.getValue()) {
-                    node.getStorage().remove(entry.getKey());
-                } else {
-                    if (stored > 0) {
-                        node.getStorage().put(entry.getKey(), entry.getValue() - stored);
-                    }
-                    break;
-                }
-            }
+            int nodeMoved = gui.warehouseService().collectNode(node);
+            moved += nodeMoved;
             node.setState("ACTIVE");
             gui.nodeStore().updateProduction(node);
+            if (gui.gameDesignService() != null) {
+                gui.gameDesignService().onBufferCollected(node, nodeMoved);
+            }
         }
         viewer.sendMessage(Component.text("Collected " + moved + " items to Warehouse.",
                 NamedTextColor.GREEN));

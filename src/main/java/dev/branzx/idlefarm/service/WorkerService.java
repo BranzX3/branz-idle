@@ -75,6 +75,7 @@ public final class WorkerService {
     private AuditService auditService;
     private NodeAnchorStore anchorStore;
     private GlobalExpeditionService globalExpeditionService;
+    private GameDesignService gameDesignService;
 
     public void setAuditService(AuditService auditService) {
         this.auditService = auditService;
@@ -86,6 +87,10 @@ public final class WorkerService {
 
     public void setGlobalExpeditionService(GlobalExpeditionService globalExpeditionService) {
         this.globalExpeditionService = globalExpeditionService;
+    }
+
+    public void setGameDesignService(GameDesignService gameDesignService) {
+        this.gameDesignService = gameDesignService;
     }
 
     private void audit(UUID actor, String action, String detail) {
@@ -181,6 +186,20 @@ public final class WorkerService {
         return record;
     }
 
+    /** Grants the one account-bound, fixed-stat onboarding worker. */
+    public Result grantStarter(UUID owner) {
+        if (gameDesignService == null) {
+            return Result.fail("Starter progression is not ready.");
+        }
+        WorkerRecord starter = new WorkerRecord(UUID.randomUUID(), null, Rarity.COMMON,
+                Trait.BALANCED, new WorkerStats(8, 8, 8, 8),
+                "Pioneer", plugin.getConfig().getString("workers.starter-skin", "Steve"),
+                1, 0, null, WorkerRecord.STATE_ITEM);
+        workerStore.insert(starter);
+        gameDesignService.markStarterWorker(owner, starter.getWorkerUuid());
+        return deposit(owner, starter, "Starter Worker Pioneer joined your Worker Bag!");
+    }
+
     // ---- virtual bag ----
 
     public int bagCapacity(UUID owner) {
@@ -255,6 +274,10 @@ public final class WorkerService {
 
     /** Withdraw a bag worker to item form; returns the item or null on error. */
     public ItemStack withdraw(UUID owner, WorkerRecord record) {
+        if (gameDesignService != null && (gameDesignService.isStarterWorker(record.getWorkerUuid())
+                || gameDesignService.isWorkerLocked(record.getWorkerUuid()))) {
+            return null;
+        }
         if (!record.isInBag() || !owner.equals(record.getOwnerUuid())) {
             return null;
         }
@@ -347,6 +370,16 @@ public final class WorkerService {
         lore.add(Ui.stars(record.getRarity())
                 .append(Ui.line("  " + record.getRarity(), record.getRarity().color())));
         lore.add(Ui.divider());
+        lore.add(Ui.line("Role  " + role(record), NamedTextColor.AQUA));
+        lore.add(Ui.line(String.format("+%.1f%% passive quantity", stats.diligence() / 100.0 * 100),
+                NamedTextColor.GRAY));
+        lore.add(Ui.line(String.format("+%.1f%% research power", stats.stamina() / 100.0 * 100),
+                NamedTextColor.GRAY));
+        lore.add(Ui.line(String.format("-%.1f%% expedition time", Math.min(50, stats.speed() * 0.25)),
+                NamedTextColor.GRAY));
+        lore.add(Ui.line(String.format("+%.1f%% Great shift", stats.luck() * 0.2),
+                NamedTextColor.GRAY));
+        lore.add(Ui.divider());
         lore.add(Ui.line("Trait ", NamedTextColor.GRAY)
                 .append(Ui.line("✧ " + Ui.pretty(record.getTrait().name()), NamedTextColor.YELLOW)));
         lore.add(Ui.line("Skin  ", NamedTextColor.GRAY)
@@ -365,6 +398,19 @@ public final class WorkerService {
         }
         lore.add(Ui.line("Worker Contract", NamedTextColor.DARK_GRAY));
         return lore;
+    }
+
+    public String role(WorkerRecord record) {
+        WorkerStats stats = record.getStats();
+        int max = Math.max(Math.max(stats.diligence(), stats.luck()),
+                Math.max(stats.stamina(), stats.speed()));
+        int min = Math.min(Math.min(stats.diligence(), stats.luck()),
+                Math.min(stats.stamina(), stats.speed()));
+        if (record.getTrait() == Trait.BALANCED && max - min <= 5) return "Leader";
+        if (max == stats.diligence()) return "Producer";
+        if (max == stats.luck()) return "Scout";
+        if (max == stats.stamina()) return "Researcher";
+        return "Runner";
     }
 
     /** Returns the worker bound to this item, or null if it is not a worker token. */
@@ -425,6 +471,12 @@ public final class WorkerService {
         }
         Rarity rarity = materials.get(0).getRarity();
         for (WorkerRecord material : materials) {
+            if (gameDesignService != null && gameDesignService.isStarterWorker(material.getWorkerUuid())) {
+                return Result.fail("The account-bound Starter Worker cannot be fused.");
+            }
+            if (gameDesignService != null && gameDesignService.isWorkerLocked(material.getWorkerUuid())) {
+                return Result.fail(material.getName() + " is favorite/locked.");
+            }
             if (material.getRarity() != rarity) {
                 return Result.fail("Both workers must share the same rarity.");
             }
@@ -442,22 +494,32 @@ public final class WorkerService {
 
         double chance = fuseChance(owner, rarity);
         boolean success = ThreadLocalRandom.current().nextDouble() < chance;
-
-        for (WorkerRecord material : materials) {
-            workerStore.delete(material);
-        }
+        long trainingNotes = Math.round(materials.stream().mapToLong(WorkerRecord::getExp).sum() * 0.25);
 
         if (success) {
+            for (WorkerRecord material : materials) {
+                workerStore.delete(material);
+            }
             setPity(owner, rarity, 0);
             WorkerRecord fused = mint(next);
+            if (gameDesignService != null) {
+                gameDesignService.addTrainingNotes(owner, trainingNotes);
+            }
             audit(owner, "FUSE", rarity + " SUCCESS -> " + next + " chance=" + Math.round(chance * 100) + "%");
             return deposit(owner, fused, "SUCCESS! Fused into " + fused.getName() + " (" + next + ")!");
         } else {
+            // Protect the selected base worker; a failed fuse consumes only
+            // the duplicate and advances pity.
+            workerStore.delete(materials.get(1));
+            if (gameDesignService != null) {
+                gameDesignService.addTrainingNotes(owner,
+                        Math.round(materials.get(1).getExp() * 0.25));
+            }
             int fails = pityCount(owner, rarity) + 1;
             setPity(owner, rarity, fails);
             double nextChance = fuseChance(owner, rarity);
             audit(owner, "FUSE", rarity + " FAIL pity=" + fails + " chance=" + Math.round(chance * 100) + "%");
-            return Result.fail("Fuse failed — both workers lost. Pity +1 (next "
+            return Result.fail("Fuse failed — protected base survived. Pity +1 (next "
                     + rarity + " fuse: " + Math.round(nextChance * 100) + "% success).");
         }
     }
@@ -504,6 +566,14 @@ public final class WorkerService {
     public long expForNextLevel(int level) {
         long base = plugin.getConfig().getLong("workers.exp-per-level-base", 100);
         return base * level;
+    }
+
+    public Result applyTrainingNotes(UUID owner, WorkerRecord worker, long amount) {
+        if (gameDesignService == null) return Result.fail("Training Notes are not available.");
+        long used = gameDesignService.takeTrainingNotes(owner, amount);
+        if (used <= 0) return Result.fail("No Training Notes available.");
+        grantExp(worker, used);
+        return Result.ok("Applied " + used + " Training Notes to " + worker.getName() + ".");
     }
 
     private void allocateStatPoints(WorkerRecord worker) {
@@ -559,6 +629,9 @@ public final class WorkerService {
         worker.setAssignedNodeId(node.getId());
         worker.setState(WorkerRecord.STATE_WORKING);
         workerStore.reindexAssignment(worker, null);
+        if (gameDesignService != null) {
+            gameDesignService.onWorkerAssigned(node);
+        }
         return Result.ok(worker.getName() + " assigned to " + node.getType() + " node.");
     }
 

@@ -75,6 +75,30 @@ public final class NodeDetailMenu extends Menu {
         set(4, Icon.of(Material.LECTERN).name(node.getType() + " Node", NamedTextColor.GREEN)
                 .loreComponents(headerLore).build());
 
+        if (gui.gameDesignService() != null) {
+            boolean focused = gui.gameDesignService().isFocused(node);
+            set(25, Icon.of(focused ? Material.RECOVERY_COMPASS : Material.COMPASS)
+                    .name(focused ? "Focused Node" : "Set as Focused Node",
+                            focused ? NamedTextColor.AQUA : NamedTextColor.YELLOW)
+                    .lore(focused ? "Receives daily and weekly progression"
+                                    : "Can change once every 24 hours",
+                            NamedTextColor.GRAY).build(), event -> {
+                var result = gui.gameDesignService().setFocus(viewer.getUniqueId(), node, false);
+                viewer.sendMessage(Component.text(result.message(),
+                        result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+                redraw();
+            });
+            set(35, Icon.of(Material.SMITHING_TABLE).name("Node Build", NamedTextColor.LIGHT_PURPLE)
+                    .loreComponents(List.of(
+                            Ui.line("Specialization: " + gui.gameDesignService().specialization(node),
+                                    NamedTextColor.GRAY),
+                            Ui.line("Refinement: " + gui.gameDesignService().refinement(node),
+                                    NamedTextColor.GRAY),
+                            Ui.line("Mastery: " + gui.gameDesignService().mastery(node),
+                                    NamedTextColor.GRAY))).build(),
+                    event -> new NodeBuildMenu(viewer, gui, nodeId).open());
+        }
+
         // Worker slots (row 2): one per tier.
         List<WorkerRecord> assigned = headerCrew;
         for (int slot = 0; slot < node.getTier() && slot < 9; slot++) {
@@ -120,6 +144,9 @@ public final class NodeDetailMenu extends Menu {
                 .loreComponents(bufferLore).build(),
                 e -> {
                     int moved = collectToWarehouse(node);
+                    if (gui.gameDesignService() != null) {
+                        gui.gameDesignService().onBufferCollected(node, moved);
+                    }
                     node.setState("ACTIVE");
                     gui.nodeStore().updateProduction(node);
                     gui.npcManager().refreshNode(node, viewer.getWorld());
@@ -166,6 +193,20 @@ public final class NodeDetailMenu extends Menu {
                 expNeeded <= 0 ? 1.0 : Math.min(1.0, node.getExplorationExp() / (double) expNeeded),
                 NamedTextColor.LIGHT_PURPLE,
                 Ui.num(node.getExplorationExp()) + "/" + Ui.num(expNeeded)));
+        if (gui.dropTableService() != null) {
+            var currentPool = gui.dropTableService().table(node.getType(), exploration.bracket(node));
+            exploreLore.add(Ui.line("Pool: " + currentPool.keySet().stream()
+                    .limit(4).map(Ui::pretty).collect(java.util.stream.Collectors.joining(", ")),
+                    NamedTextColor.GRAY));
+            int nextBracket = Math.min(10, exploration.bracket(node) + 1);
+            var additions = gui.dropTableService().additions(node.getType(), nextBracket);
+            if (!additions.isEmpty() && nextBracket > exploration.bracket(node)) {
+                exploreLore.add(Ui.line("Next at Lv." + ((nextBracket - 1) * 10) + ": "
+                        + additions.keySet().stream().limit(3).map(Ui::pretty)
+                        .collect(java.util.stream.Collectors.joining(", ")),
+                        NamedTextColor.AQUA));
+            }
+        }
         exploreLore.add(Ui.divider());
         if (event == null) {
             exploreLore.add(Ui.line("No event right now", NamedTextColor.DARK_GRAY));
@@ -174,9 +215,16 @@ public final class NodeDetailMenu extends Menu {
                     NamedTextColor.GOLD));
             switch (event.getState()) {
                 case "AVAILABLE" -> {
+                    var preview = exploration.preview(node, Integer.MAX_VALUE);
                     exploreLore.add(Ui.line("Expires in "
                             + Ui.time(event.getExpiresAt() - System.currentTimeMillis()),
                             NamedTextColor.YELLOW));
+                    exploreLore.add(Ui.line(preview.workers() + " workers • "
+                            + Ui.time(preview.durationMillis()), NamedTextColor.AQUA));
+                    exploreLore.add(Ui.line(String.format("Great %.1f%% • Jackpot %.1f%%",
+                            preview.greatChance(), preview.jackpotChance()), NamedTextColor.GOLD));
+                    preview.synergies().stream().limit(2).forEach(synergy ->
+                            exploreLore.add(Ui.line(synergy, NamedTextColor.GREEN)));
                     exploreLore.add(Ui.line("Click: send expedition!", NamedTextColor.GREEN));
                 }
                 case "RUNNING" -> exploreLore.add(Ui.line("Returns in "
@@ -283,18 +331,7 @@ public final class NodeDetailMenu extends Menu {
     }
 
     private int collectToWarehouse(NodeRecord node) {
-        int collected = 0;
-        for (var entry : List.copyOf(node.getStorage().entrySet())) {
-            int stored = gui.warehouseService().deposit(node.getOwnerUuid(), entry.getKey(), entry.getValue());
-            collected += stored;
-            if (stored >= entry.getValue()) {
-                node.getStorage().remove(entry.getKey());
-            } else {
-                node.getStorage().put(entry.getKey(), entry.getValue() - stored);
-                break;
-            }
-        }
-        return collected;
+        return gui.warehouseService().collectNode(node);
     }
 
     private ItemStack workerIcon(WorkerRecord worker) {

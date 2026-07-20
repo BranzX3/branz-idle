@@ -243,6 +243,79 @@ public final class Database {
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS idlefarm_game_state (
+                owner_uuid VARCHAR(36) NOT NULL,
+                scope VARCHAR(24) NOT NULL,
+                scope_id VARCHAR(64) NOT NULL,
+                state_key VARCHAR(64) NOT NULL,
+                value_text TEXT,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (owner_uuid, scope, scope_id, state_key)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_discoveries (
+                owner_uuid VARCHAR(36) NOT NULL,
+                node_type VARCHAR(32) NOT NULL,
+                material VARCHAR(64) NOT NULL,
+                lifetime_count BIGINT NOT NULL DEFAULT 0,
+                first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (owner_uuid, node_type, material)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_resource_caps (
+                owner_uuid VARCHAR(36) NOT NULL,
+                material VARCHAR(64) NOT NULL,
+                period_key VARCHAR(16) NOT NULL,
+                amount INT NOT NULL DEFAULT 0,
+                PRIMARY KEY (owner_uuid, material, period_key)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_credit_wallet (
+                owner_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                credits BIGINT NOT NULL DEFAULT 0,
+                season_id VARCHAR(32) NOT NULL DEFAULT 'preseason',
+                season_coin_offset BIGINT NOT NULL DEFAULT 0,
+                season_coins_earned BIGINT NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_credit_ledger (
+                transaction_id VARCHAR(64) NOT NULL PRIMARY KEY,
+                owner_uuid VARCHAR(36) NOT NULL,
+                entry_type VARCHAR(24) NOT NULL,
+                amount BIGINT NOT NULL,
+                detail_json TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                KEY idx_credit_owner (owner_uuid)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_trade_receipts (
+                trade_id VARCHAR(64) NOT NULL PRIMARY KEY,
+                player_a VARCHAR(36) NOT NULL,
+                player_b VARCHAR(36) NOT NULL,
+                offer_a TEXT,
+                offer_b TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                KEY idx_trade_a (player_a),
+                KEY idx_trade_b (player_b)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_telemetry (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                owner_uuid VARCHAR(36) NULL,
+                event_type VARCHAR(48) NOT NULL,
+                detail_json TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                KEY idx_telemetry_event (event_type),
+                KEY idx_telemetry_owner (owner_uuid)
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS idlefarm_audit_log (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 actor_uuid VARCHAR(36) NOT NULL,
@@ -413,6 +486,79 @@ public final class Database {
                 earned_today INTEGER NOT NULL DEFAULT 0
             )
             """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_game_state (
+                owner_uuid TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                scope_id TEXT NOT NULL,
+                state_key TEXT NOT NULL,
+                value_text TEXT,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (owner_uuid, scope, scope_id, state_key)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_discoveries (
+                owner_uuid TEXT NOT NULL,
+                node_type TEXT NOT NULL,
+                material TEXT NOT NULL,
+                lifetime_count INTEGER NOT NULL DEFAULT 0,
+                first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (owner_uuid, node_type, material)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_resource_caps (
+                owner_uuid TEXT NOT NULL,
+                material TEXT NOT NULL,
+                period_key TEXT NOT NULL,
+                amount INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (owner_uuid, material, period_key)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_credit_wallet (
+                owner_uuid TEXT NOT NULL PRIMARY KEY,
+                credits INTEGER NOT NULL DEFAULT 0,
+                season_id TEXT NOT NULL DEFAULT 'preseason',
+                season_coin_offset INTEGER NOT NULL DEFAULT 0,
+                season_coins_earned INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_credit_ledger (
+                transaction_id TEXT NOT NULL PRIMARY KEY,
+                owner_uuid TEXT NOT NULL,
+                entry_type TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                detail_json TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_credit_owner ON idlefarm_credit_ledger (owner_uuid)",
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_trade_receipts (
+                trade_id TEXT NOT NULL PRIMARY KEY,
+                player_a TEXT NOT NULL,
+                player_b TEXT NOT NULL,
+                offer_a TEXT,
+                offer_b TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_trade_a ON idlefarm_trade_receipts (player_a)",
+            "CREATE INDEX IF NOT EXISTS idx_trade_b ON idlefarm_trade_receipts (player_b)",
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_telemetry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_uuid TEXT NULL,
+                event_type TEXT NOT NULL,
+                detail_json TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_telemetry_event ON idlefarm_telemetry (event_type)",
+            "CREATE INDEX IF NOT EXISTS idx_telemetry_owner ON idlefarm_telemetry (owner_uuid)",
             """
             CREATE TABLE IF NOT EXISTS idlefarm_audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

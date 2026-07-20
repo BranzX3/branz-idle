@@ -132,7 +132,7 @@ public final class FuseMenu extends Menu {
         lore.add(Ui.line("Each fail: +" + Math.round(gui.plugin().getConfig()
                 .getDouble("workers.fuse.pity-per-fail", 0.1) * 100) + "% next time", NamedTextColor.GRAY));
         lore.add(Ui.divider());
-        lore.add(Ui.line("Fail consumes BOTH workers", NamedTextColor.RED));
+        lore.add(Ui.line("Fail: protected base survives; duplicate is consumed", NamedTextColor.YELLOW));
         set(INFO, Icon.of(Material.SMITHING_TABLE).name("Fuse Preview", NamedTextColor.LIGHT_PURPLE)
                 .loreComponents(lore).build());
         set(FUSE_BTN, Icon.of(Material.LIME_STAINED_GLASS_PANE)
@@ -161,10 +161,10 @@ public final class FuseMenu extends Menu {
         boolean aItem = WorkerRecord.STATE_ITEM.equals(a.getState());
         boolean bItem = WorkerRecord.STATE_ITEM.equals(b.getState());
         WorkerService.Result result = gui.workerService().fuse(viewer.getUniqueId(), List.of(a, b));
-        if (aItem) {
+        if (aItem && gui.workerStore().get(a.getWorkerUuid()) == null) {
             WorkerPickerMenu.consumeFromInventory(viewer, gui, a.getWorkerUuid());
         }
-        if (bItem) {
+        if (bItem && gui.workerStore().get(b.getWorkerUuid()) == null) {
             WorkerPickerMenu.consumeFromInventory(viewer, gui, b.getWorkerUuid());
         }
         if (result.success() && result.item() != null) {

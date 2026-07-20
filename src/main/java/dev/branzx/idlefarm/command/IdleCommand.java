@@ -7,6 +7,8 @@ import dev.branzx.idlefarm.node.NodeType;
 import dev.branzx.idlefarm.node.TrustLevel;
 import dev.branzx.idlefarm.gui.GuiManager;
 import dev.branzx.idlefarm.service.ClaimService;
+import dev.branzx.idlefarm.service.GameDesignService;
+import dev.branzx.idlefarm.service.TradeService;
 import dev.branzx.idlefarm.service.TrustService;
 import dev.branzx.idlefarm.service.WarehouseService;
 import dev.branzx.idlefarm.service.WorkerNpcManager;
@@ -44,6 +46,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     private final WarehouseService warehouseService;
     private final GuiManager guiManager;
     private final AdminCommands adminCommands;
+    private TradeService tradeService;
 
     public IdleCommand(IdleFarmPlugin plugin, PlayerDataStore dataStore, NodeStore nodeStore,
                        ClaimService claimService, TrustService trustService,
@@ -61,6 +64,10 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         this.workerStore = workerStore;
         this.npcManager = npcManager;
         this.adminCommands = adminCommands;
+    }
+
+    public void setTradeService(TradeService tradeService) {
+        this.tradeService = tradeService;
     }
 
     @Override
@@ -96,6 +103,14 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "convert" -> convert(sender, args);
             case "expedition" -> expedition(sender);
             case "visit" -> visit(sender, args);
+            case "progress", "chronicle", "journal", "commissions", "projects" -> progress(sender);
+            case "focus" -> focus(sender);
+            case "commission" -> commission(sender, args);
+            case "chapter" -> chapter(sender);
+            case "project" -> project(sender, args);
+            case "build" -> build(sender, args);
+            case "trade" -> trade(sender, args);
+            case "credits" -> credits(sender);
             case "admin" -> admin(sender, args);
             default -> usage(sender);
         };
@@ -317,9 +332,12 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         WorkerService.Result result = workerService.fuse(player.getUniqueId(), materials);
-        // Both materials are consumed whether the fuse succeeds or fails.
-        for (int slot : slots) {
-            player.getInventory().setItem(slot, null);
+        // Remove only tokens whose authoritative DB/cache worker was
+        // consumed. On failure the selected base survives.
+        for (int index = 0; index < slots.size(); index++) {
+            if (workerStore.get(materials.get(index).getWorkerUuid()) == null) {
+                player.getInventory().setItem(slots.get(index), null);
+            }
         }
         if (result.success() && result.item() != null) {
             giveOrDrop(player, result.item());
@@ -446,6 +464,9 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         // Collect-all routes to the owner's Warehouse, not inventory.
         int collected = collectToWarehouse(node);
+        if (guiManager.gameDesignService() != null) {
+            guiManager.gameDesignService().onBufferCollected(node, collected);
+        }
         int remaining = node.storageTotal();
         node.setState("ACTIVE");
         nodeStore.updateProduction(node);
@@ -462,19 +483,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
 
     /** Moves node buffer into the owner's warehouse; returns amount stored. */
     private int collectToWarehouse(NodeRecord node) {
-        java.util.UUID owner = node.getOwnerUuid();
-        int collected = 0;
-        for (var entry : List.copyOf(node.getStorage().entrySet())) {
-            int stored = warehouseService.deposit(owner, entry.getKey(), entry.getValue());
-            collected += stored;
-            if (stored >= entry.getValue()) {
-                node.getStorage().remove(entry.getKey());
-            } else {
-                node.getStorage().put(entry.getKey(), entry.getValue() - stored);
-                break; // warehouse full
-            }
-        }
-        return collected;
+        return warehouseService.collectNode(node);
     }
 
     private boolean warehouse(CommandSender sender) {
@@ -510,6 +519,108 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         guiManager.openExpedition(player);
+        return true;
+    }
+
+    private boolean progress(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Players only.", NamedTextColor.RED));
+            return true;
+        }
+        guiManager.openProgress(player);
+        return true;
+    }
+
+    private boolean focus(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Players only.", NamedTextColor.RED));
+            return true;
+        }
+        var chunk = player.getLocation().getChunk();
+        NodeRecord node = nodeStore.getByChunk(new ChunkKey(
+                chunk.getWorld().getName(), chunk.getX(), chunk.getZ()));
+        var design = guiManager.gameDesignService();
+        if (design == null) {
+            sender.sendMessage(Component.text("Progression service is not ready.", NamedTextColor.RED));
+            return true;
+        }
+        var result = design.setFocus(player.getUniqueId(), node, false);
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    private boolean commission(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player) || args.length < 2) {
+            sender.sendMessage(Component.text("Usage: /idle commission <focus|behavior|supply>",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        var result = guiManager.gameDesignService().claimCommission(player.getUniqueId(), args[1]);
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    private boolean chapter(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Players only.", NamedTextColor.RED));
+            return true;
+        }
+        var result = guiManager.gameDesignService().claimWeeklyChapter(player.getUniqueId());
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    private boolean project(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player) || args.length < 2) {
+            sender.sendMessage(Component.text(
+                    "Usage: /idle project <storehouse|expedition_dock|chronicle_hall> [amount]",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        int amount = 64;
+        if (args.length >= 3) {
+            try { amount = Integer.parseInt(args[2]); }
+            catch (NumberFormatException ignored) { amount = 64; }
+        }
+        var result = "server".equalsIgnoreCase(args[1])
+                ? guiManager.gameDesignService().contributeServerProject(player.getUniqueId(), amount)
+                : guiManager.gameDesignService()
+                        .contributeProject(player.getUniqueId(), args[1], amount);
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    private boolean build(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player) || args.length < 3) {
+            sender.sendMessage(Component.text(
+                    "Usage: /idle build <specialization|refinement|mastery|perk15|perk35|perk60|perk85> <choice>",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        var chunk = player.getLocation().getChunk();
+        NodeRecord node = nodeStore.getByChunk(new ChunkKey(
+                chunk.getWorld().getName(), chunk.getX(), chunk.getZ()));
+        if (node == null) {
+            sender.sendMessage(Component.text("Stand inside your Production Node.", NamedTextColor.RED));
+            return true;
+        }
+        var design = guiManager.gameDesignService();
+        GameDesignService.Result result;
+        String tier = args[1].toLowerCase(Locale.ROOT);
+        if (tier.startsWith("perk")) {
+            int level;
+            try { level = Integer.parseInt(tier.substring(4)); }
+            catch (NumberFormatException e) { level = -1; }
+            result = design.selectTypePerk(player.getUniqueId(), node, level, args[2]);
+        } else {
+            result = design.selectBuild(player.getUniqueId(), node, tier, args[2]);
+        }
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
         return true;
     }
 
@@ -626,6 +737,13 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
                             + " [" + event.getState() + "] " + detail, NamedTextColor.YELLOW));
                 }
             }
+            case "prepare" -> {
+                String option = args.length >= 3 ? args[2] : "";
+                var result = guiManager.gameDesignService()
+                        .prepareExpedition(player.getUniqueId(), node, option);
+                sender.sendMessage(Component.text(result.message(),
+                        result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+            }
             case "start" -> {
                 if (!trustService.canManage(player.getUniqueId(), node.getOwnerUuid())) {
                     sender.sendMessage(Component.text("Manager trust required.", NamedTextColor.RED));
@@ -652,7 +770,8 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
                     npcManager.refreshNode(node, player.getWorld());
                 }
             }
-            default -> sender.sendMessage(Component.text("Usage: /idle explore [info|start [team]|claim]",
+            default -> sender.sendMessage(Component.text(
+                    "Usage: /idle explore [info|prepare <speed|quantity|research>|start [team]|claim]",
                     NamedTextColor.YELLOW));
         }
         return true;
@@ -676,6 +795,82 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    private boolean trade(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player) || tradeService == null) {
+            sender.sendMessage(Component.text("Protected trade is available to online players.",
+                    NamedTextColor.RED));
+            return true;
+        }
+        if (args.length < 2) {
+            sender.sendMessage(Component.text(
+                    "Usage: /idle trade <player|accept|offer|view|confirm|cancel> [player]",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        String action = args[1].toLowerCase(Locale.ROOT);
+        TradeService.Result result;
+        switch (action) {
+            case "accept" -> {
+                if (args.length < 3 || Bukkit.getPlayerExact(args[2]) == null) {
+                    result = new TradeService.Result(false, "Usage: /idle trade accept <player>");
+                } else {
+                    Player requester = Bukkit.getPlayerExact(args[2]);
+                    result = tradeService.accept(player, requester);
+                    if (result.success()) {
+                        guiManager.openTrade(player);
+                        guiManager.openTrade(requester);
+                    }
+                }
+            }
+            case "offer" -> result = tradeService.offerHeld(player);
+            case "confirm" -> result = tradeService.confirm(player);
+            case "cancel" -> result = tradeService.cancel(player);
+            case "view" -> {
+                TradeService.View view = tradeService.view(player.getUniqueId());
+                if (view == null) {
+                    result = new TradeService.Result(false, "You are not in a trade.");
+                } else {
+                    guiManager.openTrade(player);
+                    return true;
+                }
+            }
+            default -> {
+                Player target = Bukkit.getPlayerExact(args[1]);
+                result = target == null
+                        ? new TradeService.Result(false, "That player is not online.")
+                        : tradeService.request(player, target);
+            }
+        }
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    private boolean credits(CommandSender sender) {
+        if (!(sender instanceof Player player) || guiManager.creditService() == null) {
+            sender.sendMessage(Component.text("Players only.", NamedTextColor.RED));
+            return true;
+        }
+        long balance = guiManager.creditService().balance(player.getUniqueId());
+        sender.sendMessage(Component.text("Credits: " + balance
+                + " (integer, non-transferable, non-cashable)", NamedTextColor.LIGHT_PURPLE));
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            var history = guiManager.creditService().historySync(player.getUniqueId(), 5);
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (history.isEmpty()) {
+                    sender.sendMessage(Component.text("No Credit purchase/spend history.",
+                            NamedTextColor.GRAY));
+                } else {
+                    history.forEach(entry -> sender.sendMessage(Component.text(
+                            entry.createdAt() + " " + entry.type() + " "
+                                    + (entry.amount() >= 0 ? "+" : "") + entry.amount()
+                                    + " [" + entry.transactionId() + "]", NamedTextColor.GRAY)));
+                }
+            });
+        });
+        return true;
+    }
+
     private boolean admin(CommandSender sender, String[] args) {
         if (!sender.hasPermission("idlefarm.admin")) {
             sender.sendMessage(Component.text("You do not have permission to do that.", NamedTextColor.RED));
@@ -689,7 +884,9 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             // Everything lives in the /idle GUI; only surface the few commands
             // that need typed arguments (plus admin for staff).
-            List<String> base = new java.util.ArrayList<>(List.of("visit", "skin"));
+            List<String> base = new java.util.ArrayList<>(List.of(
+                    "progress", "focus", "commission", "chapter", "project",
+                    "build", "trade", "credits", "visit", "skin"));
             if (sender.hasPermission("idlefarm.admin")) {
                 base.add("admin");
             }
@@ -697,13 +894,23 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("admin")) {
             return List.of("reload", "schem", "npc", "node", "pool", "event", "explevel",
-                    "give", "setcap", "audit");
+                    "give", "setcap", "credits", "validate", "metrics",
+                    "claims", "forceunclaim", "audit");
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("admin") && args[1].equalsIgnoreCase("event")) {
             return List.of("spawn", "cancel", "list");
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("admin") && args[1].equalsIgnoreCase("pool")) {
-            return List.of("mining", "farming", "woodcutting", "livestock", "hunter");
+            return List.of("mining", "farming", "woodcutting", "livestock", "hunter", "rollback");
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("commission")) {
+            return List.of("focus", "behavior", "supply", "catchup");
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("project")) {
+            return List.of("storehouse", "expedition_dock", "chronicle_hall", "server");
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("trade")) {
+            return List.of("accept", "offer", "view", "confirm", "cancel");
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("admin") && args[1].equalsIgnoreCase("give")) {
             return List.of("money", "item");

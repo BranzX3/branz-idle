@@ -40,6 +40,10 @@ public final class ExplorationService {
     public record WarehouseClaimResult(boolean success, int total, String message) {
     }
 
+    public record TeamPreview(int workers, long durationMillis, double greatChance,
+                              double jackpotChance, List<String> synergies) {
+    }
+
     public static final class EventRecord {
         final long id;
         final long nodeId;
@@ -96,6 +100,7 @@ public final class ExplorationService {
     private final NodeStore nodeStore;
     private final WorkerStore workerStore;
     private final ProgressionScale scale;
+    private GameDesignService gameDesignService;
     private final Map<Long, EventRecord> eventsByNode = new ConcurrentHashMap<>();
     private final Map<Long, PassiveResearchRecord> passiveResearch = new ConcurrentHashMap<>();
     private final AtomicLong nextEventId = new AtomicLong(1);
@@ -108,6 +113,10 @@ public final class ExplorationService {
         this.nodeStore = nodeStore;
         this.workerStore = workerStore;
         this.scale = new ProgressionScale(plugin);
+    }
+
+    public void setGameDesignService(GameDesignService gameDesignService) {
+        this.gameDesignService = gameDesignService;
     }
 
     private static final class PassiveResearchRecord {
@@ -211,6 +220,9 @@ public final class ExplorationService {
                     - expForNextExplorationLevel(node.getExplorationLevel()));
             node.setExplorationLevel(node.getExplorationLevel() + 1);
         }
+        if (gameDesignService != null) {
+            gameDesignService.onNodeLevel(node);
+        }
     }
 
     /**
@@ -237,6 +249,13 @@ public final class ExplorationService {
         long earned = 0;
         if (remaining > 0 && elapsed > 0 && node.getExplorationLevel() < scale.levelCap()) {
             double rate = scale.passiveResearchPerHour(crew, bufferFull);
+            if (bufferFull && gameDesignService != null) {
+                double configured = plugin.getConfig().getDouble(
+                        "exploration.passive-research.full-buffer-multiplier", 0.25);
+                if (configured > 0) {
+                    rate *= gameDesignService.fullBufferResearchMultiplier(node) / configured;
+                }
+            }
             earned = Math.min(remaining, (long) Math.floor(rate * elapsed / 3_600_000.0));
             if (earned > 0) {
                 progress.earnedToday += (int) earned;
@@ -285,6 +304,17 @@ public final class ExplorationService {
     }
 
     private void maybeSpawn(NodeRecord node, long now) {
+        long waitingForOwner = eventsByNode.entrySet().stream()
+                .filter(entry -> {
+                    NodeRecord other = nodeStore.getAll().stream()
+                            .filter(candidate -> candidate.getId() == entry.getKey())
+                            .findFirst().orElse(null);
+                    return other != null && other.getOwnerUuid().equals(node.getOwnerUuid());
+                }).count();
+        int inboxCap = plugin.getConfig().getInt("exploration.max-waiting-events", 3);
+        if (waitingForOwner >= inboxCap) {
+            return;
+        }
         Player owner = Bukkit.getPlayer(node.getOwnerUuid());
         if (owner == null) {
             return; // spawn rolls only while owner online
@@ -375,9 +405,11 @@ public final class ExplorationService {
         }
         List<WorkerRecord> team = idle.subList(0, Math.min(teamSize, idle.size()));
 
-        int speedSum = team.stream().mapToInt(w -> w.getStats().speed()).sum();
-        long baseMinutes = eventConfig(event.eventType).getLong("duration-minutes", 20);
-        long duration = (long) (baseMinutes * 60_000L / (1 + speedSum / 100.0));
+        TeamPreview preview = preview(node, teamSize);
+        long duration = preview.durationMillis();
+        String preparation = gameDesignService == null ? "NONE"
+                : gameDesignService.activatePreparation(node);
+        if ("SPEED".equals(preparation)) duration = Math.round(duration * 0.85);
 
         long now = System.currentTimeMillis();
         event.state = "RUNNING";
@@ -397,11 +429,66 @@ public final class ExplorationService {
         return null; // success
     }
 
+    public TeamPreview preview(NodeRecord node, int teamSize) {
+        EventRecord event = eventsByNode.get(node.getId());
+        if (event == null) return new TeamPreview(0, 0, 0, 0, List.of());
+        List<WorkerRecord> idle = workerStore.getAssigned(node.getId()).stream()
+                .filter(worker -> !WorkerRecord.STATE_EXPLORING.equals(worker.getState())).toList();
+        List<WorkerRecord> team = idle.subList(0, Math.min(Math.max(0, teamSize), idle.size()));
+        int speedSum = team.stream().mapToInt(worker -> worker.getStats().speed()).sum();
+        if (gameDesignService != null) {
+            speedSum += team.stream().filter(worker -> "TRAIL_BOOTS".equals(
+                    gameDesignService.workerCharm(worker.getWorkerUuid()))).mapToInt(worker -> 20).sum();
+            if ("LONG_ROUTES".equals(gameDesignService.seasonModifier())) {
+                speedSum = (int) Math.round(speedSum * 1.25);
+            }
+        }
+        long baseMinutes = eventConfig(event.eventType).getLong("duration-minutes", 20);
+        long duration = (long) (baseMinutes * 60_000L / (1 + speedSum / 100.0));
+        int luck = team.stream().mapToInt(worker -> worker.getStats().luck()).sum();
+        double jackpot = plugin.getConfig().getDouble("exploration.grade-odds.jackpot-base", 5)
+                + luck * plugin.getConfig().getDouble("exploration.grade-odds.jackpot-per-luck", 0.1);
+        double great = plugin.getConfig().getDouble("exploration.grade-odds.great-base", 20)
+                + luck * plugin.getConfig().getDouble("exploration.grade-odds.great-per-luck", 0.2);
+        if (gameDesignService != null && team.stream().anyMatch(worker -> "LUCKY_TOKEN".equals(
+                gameDesignService.workerCharm(worker.getWorkerUuid())))) {
+            great += 3.0;
+        }
+        java.util.Set<String> roles = team.stream().map(this::role).collect(java.util.stream.Collectors.toSet());
+        List<String> synergies = new ArrayList<>();
+        if (roles.size() >= 3) synergies.add("Specialists +10% TeamScore");
+        if (roles.contains("Researcher") && roles.contains("Runner")) synergies.add("Survey Corps +15% Node EXP");
+        if (roles.contains("Scout") && roles.contains("Producer")) synergies.add("Treasure Crew +10% loot");
+        if (roles.size() >= 4) synergies.add("Full House");
+        return new TeamPreview(team.size(), duration, Math.min(100 - jackpot, great),
+                Math.min(100, jackpot), List.copyOf(synergies));
+    }
+
+    private String role(WorkerRecord worker) {
+        var stats = worker.getStats();
+        int max = Math.max(Math.max(stats.diligence(), stats.luck()),
+                Math.max(stats.stamina(), stats.speed()));
+        int min = Math.min(Math.min(stats.diligence(), stats.luck()),
+                Math.min(stats.stamina(), stats.speed()));
+        if (worker.getTrait() == dev.branzx.idlefarm.worker.Trait.BALANCED && max - min <= 5) return "Leader";
+        if (max == stats.diligence()) return "Producer";
+        if (max == stats.luck()) return "Scout";
+        if (max == stats.stamina()) return "Researcher";
+        return "Runner";
+    }
+
     private void complete(NodeRecord node, EventRecord event) {
         List<WorkerRecord> team = teamOf(event);
+        String preparation = gameDesignService == null ? "NONE"
+                : gameDesignService.finishPreparation(node);
         int luckSum = team.stream().mapToInt(w -> w.getStats().luck()).sum();
-        event.grade = rollGrade(luckSum);
-        event.loot = rollLoot(event.eventType, event.grade, team.size());
+        double extraGreat = gameDesignService != null && team.stream().anyMatch(worker ->
+                "LUCKY_TOKEN".equals(gameDesignService.workerCharm(worker.getWorkerUuid()))) ? 3.0 : 0;
+        event.grade = rollGrade(luckSum, extraGreat);
+        java.util.Set<String> roles = team.stream().map(this::role).collect(java.util.stream.Collectors.toSet());
+        event.loot = rollLoot(event.eventType, event.grade, team.size(),
+                roles.contains("Scout") && roles.contains("Producer"),
+                "QUANTITY".equals(preparation));
         event.state = "COMPLETED";
         for (WorkerRecord worker : team) {
             worker.setState(WorkerRecord.STATE_WORKING);
@@ -450,6 +537,13 @@ public final class ExplorationService {
             return new WarehouseClaimResult(false, 0,
                     "Warehouse needs " + Math.max(0, total - free) + " more free space.");
         }
+        if (gameDesignService != null) {
+            for (Map.Entry<String, Integer> entry : loot.entrySet()) {
+                gameDesignService.discover(node.getOwnerUuid(), node.getType(),
+                        entry.getKey(), entry.getValue());
+            }
+            gameDesignService.onExplorationClaimed(node, event.grade);
+        }
         remove(event);
         return new WarehouseClaimResult(true, total,
                 "Expedition loot → Warehouse: " + total + " items!");
@@ -460,6 +554,9 @@ public final class ExplorationService {
         EventRecord event = eventsByNode.get(node.getId());
         if (event == null) {
             return;
+        }
+        if (gameDesignService != null) {
+            gameDesignService.cancelPreparation(node);
         }
         for (WorkerRecord worker : teamOf(event)) {
             if (WorkerRecord.STATE_EXPLORING.equals(worker.getState())) {
@@ -472,11 +569,12 @@ public final class ExplorationService {
 
     // ---- rolls ----
 
-    private String rollGrade(int luckSum) {
+    private String rollGrade(int luckSum, double extraGreat) {
         double jackpot = plugin.getConfig().getDouble("exploration.grade-odds.jackpot-base", 5)
                 + luckSum * plugin.getConfig().getDouble("exploration.grade-odds.jackpot-per-luck", 0.1);
         double great = plugin.getConfig().getDouble("exploration.grade-odds.great-base", 20)
-                + luckSum * plugin.getConfig().getDouble("exploration.grade-odds.great-per-luck", 0.2);
+                + luckSum * plugin.getConfig().getDouble("exploration.grade-odds.great-per-luck", 0.2)
+                + extraGreat;
         double roll = ThreadLocalRandom.current().nextDouble() * 100;
         if (roll < jackpot) {
             return "JACKPOT";
@@ -487,7 +585,8 @@ public final class ExplorationService {
         return "NORMAL";
     }
 
-    private String rollLoot(String eventType, String grade, int teamSize) {
+    private String rollLoot(String eventType, String grade, int teamSize,
+                            boolean treasureCrew, boolean preparedQuantity) {
         ConfigurationSection config = eventConfig(eventType);
         ConfigurationSection table = config.getConfigurationSection("loot");
         int baseCount = config.getInt("loot-count-base", 8);
@@ -496,7 +595,9 @@ public final class ExplorationService {
             case "GREAT" -> plugin.getConfig().getDouble("exploration.grade-multiplier.great", 1.8);
             default -> 1.0;
         };
-        int count = (int) Math.round(baseCount * gradeMultiplier * (1 + (teamSize - 1) * 0.5));
+        int count = (int) Math.round(baseCount * gradeMultiplier * (1 + (teamSize - 1) * 0.5)
+                * (treasureCrew ? 1.10 : 1.0));
+        if (preparedQuantity) count = (int) Math.round(count * 1.15);
 
         Map<String, Integer> rolled = new ConcurrentHashMap<>();
         if (table != null) {

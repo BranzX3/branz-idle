@@ -40,6 +40,8 @@ public final class AdminCommands {
     private dev.branzx.idlefarm.gui.GuiManager guiManager;
     private dev.branzx.idlefarm.storage.PlayerDataStore dataStore;
     private dev.branzx.idlefarm.service.ExplorationService explorationService;
+    private dev.branzx.idlefarm.service.CreditService creditService;
+    private dev.branzx.idlefarm.service.ClaimService claimService;
 
     public void setPhase8Services(dev.branzx.idlefarm.service.DropTableService dropTableService,
                                   dev.branzx.idlefarm.service.AuditService auditService,
@@ -53,6 +55,14 @@ public final class AdminCommands {
 
     public void setExplorationService(dev.branzx.idlefarm.service.ExplorationService explorationService) {
         this.explorationService = explorationService;
+    }
+
+    public void setCreditService(dev.branzx.idlefarm.service.CreditService creditService) {
+        this.creditService = creditService;
+    }
+
+    public void setClaimService(dev.branzx.idlefarm.service.ClaimService claimService) {
+        this.claimService = claimService;
     }
 
     public AdminCommands(IdleFarmPlugin plugin, NodeStore nodeStore, WorkerStore workerStore,
@@ -89,6 +99,11 @@ public final class AdminCommands {
             case "give" -> give(sender, args);
             case "setcap" -> setcap(sender, args);
             case "audit" -> audit(sender, args);
+            case "credits" -> credits(sender, args);
+            case "validate" -> validateContent(sender);
+            case "metrics" -> metrics(sender);
+            case "claims" -> claims(sender, args);
+            case "forceunclaim" -> forceUnclaim(sender, args);
             default -> usage(sender);
         };
     }
@@ -102,11 +117,106 @@ public final class AdminCommands {
                 /idle admin node
                 /idle admin pool [type[.bracket-N]]   (no arg = GUI browser)
                 /idle admin event spawn [type] | cancel | list   (stand in a node)
-                /idle admin explevel <level>   (stand in a node)
-                /idle admin give money <player> <amount>
-                /idle admin give item <player> <material> <count>
-                /idle admin setcap <player> <base> [bonus]
+                /idle admin explevel <level> <reason>   (stand in a node)
+                /idle admin give money <player> <amount> <reason>
+                /idle admin give item <player> <material> <count> <reason>
+                /idle admin setcap <player> <base> <bonus> <reason>
+                /idle admin credits <player> <amount> <reason>
+                /idle admin validate
+                /idle admin metrics
+                /idle admin claims <player>
+                /idle admin forceunclaim <world> <chunkX> <chunkZ> <reason>
                 /idle admin audit [player]""", NamedTextColor.YELLOW));
+        return true;
+    }
+
+    private boolean validateContent(CommandSender sender) {
+        List<String> errors = dropTableService.validate();
+        if (errors.isEmpty()) {
+            sender.sendMessage(Component.text("Content validation passed: all 5×10 pools are publishable.",
+                    NamedTextColor.GREEN));
+        } else {
+            sender.sendMessage(Component.text("Content validation failed (" + errors.size() + "):",
+                    NamedTextColor.RED));
+            errors.stream().limit(20).forEach(error ->
+                    sender.sendMessage(Component.text(" - " + error, NamedTextColor.YELLOW)));
+        }
+        return true;
+    }
+
+    private boolean metrics(CommandSender sender) {
+        org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Map<String, Long> summary = guiManager.gameDesignService().telemetrySummarySync();
+            org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
+                sender.sendMessage(Component.text("IdleFarm telemetry — last 7 days",
+                        NamedTextColor.AQUA));
+                if (summary.isEmpty()) {
+                    sender.sendMessage(Component.text("No telemetry recorded yet.", NamedTextColor.GRAY));
+                } else {
+                    summary.forEach((event, count) -> sender.sendMessage(
+                            Component.text(" " + event + ": " + count, NamedTextColor.GRAY)));
+                }
+            });
+        });
+        return true;
+    }
+
+    private boolean claims(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Usage: /idle admin claims <player>", NamedTextColor.YELLOW));
+            return true;
+        }
+        var target = org.bukkit.Bukkit.getOfflinePlayer(args[2]);
+        List<NodeRecord> nodes = nodeStore.getByOwner(target.getUniqueId());
+        sender.sendMessage(Component.text("Claims for " + args[2] + " (" + nodes.size() + ")",
+                NamedTextColor.AQUA));
+        nodes.forEach(node -> sender.sendMessage(Component.text(" #" + node.getId() + " "
+                + node.getType() + " T" + node.getTier() + " Lv." + node.getExplorationLevel()
+                + " @ " + node.getChunk().world() + " " + node.getChunk().x() + ","
+                + node.getChunk().z(), NamedTextColor.GRAY)));
+        return true;
+    }
+
+    private boolean forceUnclaim(CommandSender sender, String[] args) {
+        if (args.length < 6) {
+            sender.sendMessage(Component.text(
+                    "Usage: /idle admin forceunclaim <world> <chunkX> <chunkZ> <reason>",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        var world = org.bukkit.Bukkit.getWorld(args[2]);
+        if (world == null) {
+            sender.sendMessage(Component.text("Unknown loaded world: " + args[2], NamedTextColor.RED));
+            return true;
+        }
+        int x = Integer.parseInt(args[3]);
+        int z = Integer.parseInt(args[4]);
+        String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 5, args.length));
+        UUID actor = sender instanceof Player player ? player.getUniqueId() : new UUID(0, 0);
+        String auditId = UUID.randomUUID().toString();
+        var result = claimService.forceUnclaim(actor, world,
+                new ChunkKey(world.getName(), x, z), reason, auditId);
+        sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    private boolean credits(CommandSender sender, String[] args) {
+        if (args.length < 5) {
+            sender.sendMessage(Component.text(
+                    "Usage: /idle admin credits <player> <amount> <reason>", NamedTextColor.YELLOW));
+            return true;
+        }
+        org.bukkit.OfflinePlayer target = org.bukkit.Bukkit.getOfflinePlayer(args[2]);
+        long amount = Long.parseLong(args[3]);
+        String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
+        String transaction = "ADMIN:" + UUID.randomUUID();
+        boolean success = creditService != null && creditService.adjust(target.getUniqueId(), amount,
+                "ADMIN_ADJUST", transaction, "{\"reason\":\"" + reason.replace("\"", "'") + "\"}");
+        sender.sendMessage(Component.text(success
+                        ? "Credits adjusted. Audit transaction: " + transaction
+                        : "Credit adjustment failed or transaction was duplicated.",
+                success ? NamedTextColor.GREEN : NamedTextColor.RED));
         return true;
     }
 
@@ -121,6 +231,17 @@ public final class AdminCommands {
         if (args.length < 3) {
             new dev.branzx.idlefarm.gui.PoolBrowserMenu(player, guiManager, dropTableService,
                     auditService).open();
+            return true;
+        }
+        if ("rollback".equalsIgnoreCase(args[2])) {
+            boolean success = dropTableService.rollbackLatest();
+            sender.sendMessage(Component.text(success
+                            ? "Rolled back to the latest valid drop-table revision."
+                            : "No valid revision was available.",
+                    success ? NamedTextColor.GREEN : NamedTextColor.RED));
+            if (success) {
+                auditService.log(player.getUniqueId(), "CONTENT_ROLLBACK", "drops latest");
+            }
             return true;
         }
         new dev.branzx.idlefarm.gui.PoolEditorMenu(player, guiManager, dropTableService,
@@ -179,8 +300,9 @@ public final class AdminCommands {
             sender.sendMessage(Component.text("In-game only.", NamedTextColor.RED));
             return true;
         }
-        if (args.length < 3) {
-            sender.sendMessage(Component.text("Usage: /idle admin explevel <level>", NamedTextColor.YELLOW));
+        if (args.length < 4) {
+            sender.sendMessage(Component.text("Usage: /idle admin explevel <level> <reason>",
+                    NamedTextColor.YELLOW));
             return true;
         }
         NodeRecord node = nodeAt(player);
@@ -191,18 +313,23 @@ public final class AdminCommands {
         int level = Integer.parseInt(args[2]);
         explorationService.adminSetLevel(node, level);
         nodeStore.updateProduction(node);
+        String auditId = UUID.randomUUID().toString();
+        String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length));
         sender.sendMessage(Component.text("Node #" + node.getId() + " exploration level = " + level
-                + " (bracket " + explorationService.bracket(node) + ").", NamedTextColor.GREEN));
-        auditService.log(player.getUniqueId(), "ADMIN_EXPLEVEL", node.getId() + " -> " + level);
+                + " (bracket " + explorationService.bracket(node) + ") | audit " + auditId,
+                NamedTextColor.GREEN));
+        auditService.log(player.getUniqueId(), "ADMIN_EXPLEVEL", "id=" + auditId + " "
+                + node.getId() + " -> " + level + " reason=" + reason);
         return true;
     }
 
     // ---- economy ----
 
     private boolean give(CommandSender sender, String[] args) {
-        if (args.length < 5) {
+        if (args.length < 6) {
             sender.sendMessage(Component.text(
-                    "Usage: /idle admin give money <player> <amount> | give item <player> <material> <count>",
+                    "Usage: /idle admin give money <player> <amount> <reason> | "
+                            + "give item <player> <material> <count> <reason>",
                     NamedTextColor.YELLOW));
             return true;
         }
@@ -221,14 +348,19 @@ public final class AdminCommands {
                 return true;
             }
             data.addBalance(amount);
-            auditService.log(actor, "ADMIN_GIVE", "money " + amount + " -> " + target.getName());
+            String auditId = UUID.randomUUID().toString();
+            String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 5, args.length));
+            auditService.log(actor, "ADMIN_GIVE", "id=" + auditId + " money " + amount + " -> "
+                    + target.getName() + " reason=" + reason);
             sender.sendMessage(Component.text((amount >= 0 ? "Gave " : "Took ") + Math.abs(amount)
-                    + " money " + (amount >= 0 ? "to " : "from ") + target.getName(), NamedTextColor.GREEN));
+                    + " money " + (amount >= 0 ? "to " : "from ") + target.getName()
+                    + " | audit " + auditId, NamedTextColor.GREEN));
             return true;
         }
         if (args[2].equalsIgnoreCase("item")) {
-            if (args.length < 6) {
-                sender.sendMessage(Component.text("Usage: /idle admin give item <player> <material> <count>",
+            if (args.length < 7) {
+                sender.sendMessage(Component.text(
+                        "Usage: /idle admin give item <player> <material> <count> <reason>",
                         NamedTextColor.YELLOW));
                 return true;
             }
@@ -242,8 +374,12 @@ public final class AdminCommands {
             for (var overflow : leftover.values()) {
                 target.getWorld().dropItemNaturally(target.getLocation(), overflow);
             }
-            auditService.log(actor, "ADMIN_GIVE", "item " + material + " x" + count + " -> " + target.getName());
-            sender.sendMessage(Component.text("Gave " + count + "x " + material + " to " + target.getName(),
+            String auditId = UUID.randomUUID().toString();
+            String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 6, args.length));
+            auditService.log(actor, "ADMIN_GIVE", "id=" + auditId + " item " + material + " x" + count
+                    + " -> " + target.getName() + " reason=" + reason);
+            sender.sendMessage(Component.text("Gave " + count + "x " + material + " to " + target.getName()
+                    + " | audit " + auditId,
                     NamedTextColor.GREEN));
             return true;
         }
@@ -251,19 +387,23 @@ public final class AdminCommands {
     }
 
     private boolean setcap(CommandSender sender, String[] args) {
-        if (args.length < 4) {
-            sender.sendMessage(Component.text("Usage: /idle admin setcap <player> <base> [bonus]",
+        if (args.length < 6) {
+            sender.sendMessage(Component.text("Usage: /idle admin setcap <player> <base> <bonus> <reason>",
                     NamedTextColor.YELLOW));
             return true;
         }
         var target = plugin.getServer().getOfflinePlayer(args[2]);
         int base = Integer.parseInt(args[3]);
-        int bonus = args.length >= 5 ? Integer.parseInt(args[4]) : 0;
+        int bonus = Integer.parseInt(args[4]);
         nodeStore.setCap(target.getUniqueId(), base, bonus);
         UUID actor = sender instanceof Player p ? p.getUniqueId() : new UUID(0, 0);
-        auditService.log(actor, "ADMIN_SETCAP", args[2] + " base=" + base + " bonus=" + bonus);
+        String auditId = UUID.randomUUID().toString();
+        String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 5, args.length));
+        auditService.log(actor, "ADMIN_SETCAP", "id=" + auditId + " " + args[2]
+                + " base=" + base + " bonus=" + bonus + " reason=" + reason);
         sender.sendMessage(Component.text("Node cap for " + args[2] + " = " + (base + bonus),
                 NamedTextColor.GREEN));
+        sender.sendMessage(Component.text("Audit " + auditId, NamedTextColor.GRAY));
         return true;
     }
 
@@ -302,7 +442,11 @@ public final class AdminCommands {
     private boolean reload(CommandSender sender) {
         plugin.reloadConfig();
         schematicService.getRegistry().loadAll();
-        sender.sendMessage(Component.text("IdleFarm config + schematics reloaded.", NamedTextColor.GREEN));
+        if (dropTableService != null) {
+            dropTableService.load();
+        }
+        sender.sendMessage(Component.text("IdleFarm config, pools + schematics reloaded.",
+                NamedTextColor.GREEN));
         return true;
     }
 

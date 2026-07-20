@@ -22,7 +22,11 @@ public final class ProgressionScale {
     }
 
     public int levelCap() {
-        if (plugin.getConfig().getBoolean("frontier.enabled", false)) {
+        boolean sinksReady = plugin.getConfig().getBoolean("frontier.sink-gates.profession", false)
+                && plugin.getConfig().getBoolean("frontier.sink-gates.equipment", false)
+                && plugin.getConfig().getBoolean("frontier.sink-gates.repair", false)
+                && plugin.getConfig().getBoolean("frontier.sink-gates.project", false);
+        if (plugin.getConfig().getBoolean("frontier.enabled", false) && sinksReady) {
             return plugin.getConfig().getInt("frontier.level-cap", 200);
         }
         return plugin.getConfig().getInt("exploration.level-cap", 100);
