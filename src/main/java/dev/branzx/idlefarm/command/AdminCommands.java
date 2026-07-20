@@ -51,6 +51,7 @@ public final class AdminCommands {
         this.auditService = auditService;
         this.guiManager = guiManager;
         this.dataStore = dataStore;
+        guiManager.setAdminTools(this, auditService);
     }
 
     public void setExplorationService(dev.branzx.idlefarm.service.ExplorationService explorationService) {
@@ -310,7 +311,11 @@ public final class AdminCommands {
                 explorationService.cancel(node);
                 sender.sendMessage(Component.text("Event on node #" + node.getId() + " cancelled.",
                         NamedTextColor.GREEN));
-                auditService.log(player.getUniqueId(), "ADMIN_EVENT", "cancel @ " + node.getId());
+                String reason = args.length >= 4
+                        ? String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length))
+                        : "not supplied";
+                auditService.log(player.getUniqueId(), "ADMIN_EVENT",
+                        "cancel @ " + node.getId() + " reason=" + reason);
             }
             case "list" -> {
                 var event = explorationService.getEvent(node.getId());

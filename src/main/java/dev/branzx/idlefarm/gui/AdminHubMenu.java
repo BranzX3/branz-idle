@@ -42,7 +42,8 @@ public final class AdminHubMenu extends Menu {
         if (can("idlefarm.admin.operations")) {
             set(10, Icon.of(Material.SPYGLASS)
                     .name("ตรวจสอบ Node ปัจจุบัน", NamedTextColor.AQUA)
-                    .loreComponents(nodeLore()).build(), event -> run("idle admin node"));
+                    .loreComponents(nodeLore()).build(),
+                    event -> new AdminNodeMenu(viewer, gui).open());
         }
         if (can("idlefarm.admin.content")) {
             set(12, Icon.of(Material.CHEST)
@@ -50,13 +51,13 @@ public final class AdminHubMenu extends Menu {
                     .loreComponents(List.of(
                             Ui.line("ดูและแก้ pool ตาม type/bracket", NamedTextColor.GRAY),
                             Ui.click("เปิด Content Browser"))).build(),
-                    event -> run("idle admin pool"));
+                    event -> new AdminContentMenu(viewer, gui).open());
             set(14, Icon.of(Material.COMPARATOR)
                     .name("Validate Content", NamedTextColor.YELLOW)
                     .loreComponents(List.of(
                             Ui.line("ตรวจ material, weight และ fallback", NamedTextColor.GRAY),
                             Ui.click("รัน validation"))).build(),
-                    event -> run("idle admin validate"));
+                    event -> new AdminContentMenu(viewer, gui).open());
         }
         if (can("idlefarm.admin.audit")) {
             set(16, Icon.of(Material.REDSTONE_TORCH)
@@ -64,30 +65,30 @@ public final class AdminHubMenu extends Menu {
                     .loreComponents(List.of(
                             Ui.line("Economy และ telemetry summary", NamedTextColor.GRAY),
                             Ui.click("โหลด metrics"))).build(),
-                    event -> run("idle admin metrics"));
+                    event -> AdminMetricsMenu.open(viewer, gui));
         }
 
-        if (can("idlefarm.admin.economy")) {
+        if (can("idlefarm.admin.economy") || can("idlefarm.admin.operations")) {
             set(28, Icon.of(Material.PLAYER_HEAD)
                     .name("Player & Economy", NamedTextColor.GREEN)
                     .loreComponents(List.of(
                             Ui.line("Node cap, Coins และ Credits", NamedTextColor.GRAY),
-                            Ui.click("ดูคำสั่งพร้อมรูปแบบ"))).build(),
-                    event -> showHelp("economy"));
+                            Ui.click("เลือกผู้เล่น"))).build(),
+                    event -> new AdminPlayerListMenu(viewer, gui, 0).open());
         }
         if (can("idlefarm.admin.operations")) {
             set(30, Icon.of(Material.CLOCK)
                     .name("Events & Operations", NamedTextColor.GOLD)
                     .loreComponents(List.of(
                             Ui.line("Event และ Node operations", NamedTextColor.GRAY),
-                            Ui.click("ดูคำสั่ง operations"))).build(),
-                    event -> showHelp("operations"));
+                            Ui.click("เปิด Node Control"))).build(),
+                    event -> new AdminNodeMenu(viewer, gui).open());
             set(34, Icon.of(Material.TNT)
                     .name("Danger Zone", NamedTextColor.DARK_RED)
                     .loreComponents(List.of(
-                            Ui.line("งานย้อนกลับยากต้องพิมพ์ reason", NamedTextColor.RED),
-                            Ui.click("ดูคำสั่ง danger"))).build(),
-                    event -> showHelp("danger"));
+                            Ui.line("งานย้อนกลับยากต้องระบุ reason", NamedTextColor.RED),
+                            Ui.click("เปิด Node Control"))).build(),
+                    event -> new AdminNodeMenu(viewer, gui).open());
         }
         if (can("idlefarm.admin.audit")) {
             set(32, Icon.of(Material.WRITABLE_BOOK)
@@ -95,7 +96,8 @@ public final class AdminHubMenu extends Menu {
                     .loreComponents(List.of(
                             Ui.line("15 รายการล่าสุด", NamedTextColor.GRAY),
                             Ui.click("เปิด audit log"))).build(),
-                    event -> run("idle admin audit"));
+                    event -> AdminLogMenu.open(viewer, gui, null,
+                            () -> gui.openAdminHub(viewer)));
         }
         backToHub(gui);
     }
@@ -114,15 +116,6 @@ public final class AdminHubMenu extends Menu {
                 Ui.status(node.getType() + " • " + node.getState(), NamedTextColor.GREEN),
                 Ui.line("Node #" + node.getId() + " • Tier " + node.getTier(), NamedTextColor.GRAY),
                 Ui.click("ดูรายละเอียดใน chat"));
-    }
-
-    private void run(String command) {
-        viewer.closeInventory();
-        viewer.performCommand(command);
-    }
-
-    private void showHelp(String category) {
-        run("idle admin help " + category);
     }
 
     private boolean can(String permission) {

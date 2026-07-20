@@ -11,9 +11,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The player's virtual worker bag: a paged, click-driven roster. Left-click a
- * worker to withdraw it as a tradeable item; a "Deposit inventory" button
- * pulls loose contracts back in. Capacity is expandable with Money.
+ * The player's virtual worker bag: a paged, click-driven roster. Shift-click
+ * moves worker contracts between this bag and the player's inventory, like a
+ * normal chest. Capacity is expandable with Money.
  */
 public final class WorkerBagMenu extends Menu {
 
@@ -51,8 +51,8 @@ public final class WorkerBagMenu extends Menu {
         for (int i = 0; i < PAGE_SIZE && start + i < bag.size(); i++) {
             WorkerRecord worker = bag.get(start + i);
             List<Component> lore = new ArrayList<>(gui.workerService().workerLore(worker));
-            lore.add(Ui.line("Click: manage (rename / skin / withdraw)", NamedTextColor.DARK_GRAY));
-            lore.add(Ui.line("Shift-click: withdraw to inventory", NamedTextColor.DARK_GRAY));
+            lore.add(Ui.line("Click: manage worker", NamedTextColor.DARK_GRAY));
+            lore.add(Ui.line("Shift-click: move to inventory", NamedTextColor.GREEN));
             set(i, Icon.head(worker.getSkin()).name("✦ " + worker.getName(), worker.getRarity().color())
                     .loreComponents(lore).build(),
                     e -> {
@@ -105,6 +105,39 @@ public final class WorkerBagMenu extends Menu {
             }
         }
         redraw();
+    }
+
+    @Override
+    public boolean clickPlayerInventory(org.bukkit.event.inventory.InventoryClickEvent event) {
+        if (!event.isShiftClick() || event.getClickedInventory() == null) {
+            return false;
+        }
+        WorkerRecord record = gui.workerService().fromItem(event.getCurrentItem());
+        if (record == null || !WorkerRecord.STATE_ITEM.equals(record.getState())) {
+            return false;
+        }
+        String error = gui.workerService().depositItem(viewer.getUniqueId(), record);
+        if (error != null) {
+            viewer.sendMessage(Component.text(error, NamedTextColor.RED));
+            return true;
+        }
+        removeOne(event);
+        viewer.sendMessage(Component.text(record.getName() + " moved to Worker Bag.",
+                NamedTextColor.GREEN));
+        redraw();
+        return true;
+    }
+
+    private void removeOne(org.bukkit.event.inventory.InventoryClickEvent event) {
+        ItemStack item = event.getCurrentItem();
+        if (item == null) {
+            return;
+        }
+        if (item.getAmount() <= 1) {
+            event.getClickedInventory().setItem(event.getSlot(), null);
+        } else {
+            item.setAmount(item.getAmount() - 1);
+        }
     }
 
     private void depositAll() {

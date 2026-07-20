@@ -106,14 +106,13 @@ public final class NodeDetailMenu extends Menu {
             if (slot < assigned.size()) {
                 WorkerRecord worker = assigned.get(slot);
                 set(guiSlot, workerIcon(worker), e -> {
-                    var result = gui.workerService().eject(viewer.getUniqueId(), worker);
-                    if (result.success() && result.item() != null) {
-                        giveOrDrop(result.item());
-                        gui.npcManager().refreshNode(node, viewer.getWorld());
+                    if (e.isShiftClick()) {
+                        storeWorker(worker, node);
+                    } else {
+                        new WorkerDetailMenu(viewer, gui, worker.getWorkerUuid(),
+                                "Back to Node",
+                                () -> new NodeDetailMenu(viewer, gui, nodeId).open()).open();
                     }
-                    viewer.sendMessage(Component.text(result.message(),
-                            result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-                    redraw();
                 });
             } else {
                 set(guiSlot, Icon.of(Material.ITEM_FRAME)
@@ -337,10 +336,24 @@ public final class NodeDetailMenu extends Menu {
     private ItemStack workerIcon(WorkerRecord worker) {
         List<Component> lore = new ArrayList<>(gui.workerService().workerLore(worker));
         lore.add(Ui.line(stateBadge(worker.getState()), stateColor(worker.getState())));
-        lore.add(Ui.line("Click to eject", NamedTextColor.DARK_GRAY));
+        lore.add(Ui.line("Click: manage worker", NamedTextColor.DARK_GRAY));
+        lore.add(Ui.line("Shift-click: store in Worker Bag", NamedTextColor.GREEN));
         return Icon.head(worker.getSkin())
                 .name("✦ " + worker.getName(), worker.getRarity().color())
                 .loreComponents(lore).build();
+    }
+
+    private void storeWorker(WorkerRecord worker, NodeRecord node) {
+        var result = gui.workerService().eject(viewer.getUniqueId(), worker);
+        if (result.success()) {
+            if (result.item() != null) {
+                giveOrDrop(result.item());
+            }
+            gui.npcManager().refreshNode(node, viewer.getWorld());
+        }
+        viewer.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        redraw();
     }
 
     private String stateBadge(String state) {

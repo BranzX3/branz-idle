@@ -83,9 +83,11 @@ public final class NodesMenu extends Menu {
             } else if (event != null && "COMPLETED".equals(event.getState())) {
                 lore.add(Ui.line("★ Loot ready to claim!", NamedTextColor.GOLD));
             }
-            lore.add("STORAGE_FULL".equals(node.getState())
-                    ? Ui.line("■ Buffer full", NamedTextColor.RED)
-                    : Ui.line("● Producing", NamedTextColor.GREEN));
+            lore.add(crew == 0
+                    ? Ui.line("○ No workers — idle", NamedTextColor.YELLOW)
+                    : ("STORAGE_FULL".equals(node.getState())
+                            ? Ui.line("■ Buffer full", NamedTextColor.RED)
+                            : Ui.line("● Producing", NamedTextColor.GREEN)));
         } else {
             lore.add(Ui.line("⌂ Home plot", NamedTextColor.YELLOW));
         }

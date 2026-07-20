@@ -45,6 +45,8 @@ public final class GuiManager implements Listener {
     private dev.branzx.idlefarm.service.CreditService creditService;
     private dev.branzx.idlefarm.service.DropTableService dropTableService;
     private dev.branzx.idlefarm.service.TradeService tradeService;
+    private dev.branzx.idlefarm.command.AdminCommands adminCommands;
+    private dev.branzx.idlefarm.service.AuditService auditService;
 
     public GuiManager(IdleFarmPlugin plugin, NodeStore nodeStore, WorkerStore workerStore,
                       PlayerDataStore dataStore, WorkerService workerService,
@@ -98,6 +100,29 @@ public final class GuiManager implements Listener {
 
     public dev.branzx.idlefarm.service.TradeService tradeService() {
         return tradeService;
+    }
+
+    public void setAdminTools(dev.branzx.idlefarm.command.AdminCommands adminCommands,
+                              dev.branzx.idlefarm.service.AuditService auditService) {
+        this.adminCommands = adminCommands;
+        this.auditService = auditService;
+    }
+
+    public dev.branzx.idlefarm.service.AuditService auditService() {
+        return auditService;
+    }
+
+    /** Execute an existing audited admin action without making the admin type a command. */
+    public void runAdmin(Player player, String... arguments) {
+        if (adminCommands == null) {
+            player.sendMessage(net.kyori.adventure.text.Component.text(
+                    "Admin tools are not ready.", net.kyori.adventure.text.format.NamedTextColor.RED));
+            return;
+        }
+        String[] commandArgs = new String[arguments.length + 1];
+        commandArgs[0] = "admin";
+        System.arraycopy(arguments, 0, commandArgs, 1, arguments.length);
+        adminCommands.handle(player, commandArgs);
     }
 
     // ---- accessors for menus ----
@@ -260,6 +285,8 @@ public final class GuiManager implements Listener {
         boolean topClick = event.getRawSlot() < menu.getInventory().getSize();
         if (topClick) {
             menu.click(event);
+        } else {
+            menu.clickPlayerInventory(event);
         }
         // Cancel everything: top-slot handlers already did their work, and a
         // shift-click from the player inventory must not dump items into the menu.

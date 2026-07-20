@@ -74,6 +74,7 @@ public final class WorkerService {
 
     private AuditService auditService;
     private NodeAnchorStore anchorStore;
+    private dev.branzx.idlefarm.storage.NodeStore nodeStore;
     private GlobalExpeditionService globalExpeditionService;
     private GameDesignService gameDesignService;
 
@@ -83,6 +84,10 @@ public final class WorkerService {
 
     public void setAnchorStore(NodeAnchorStore anchorStore) {
         this.anchorStore = anchorStore;
+    }
+
+    public void setNodeStore(dev.branzx.idlefarm.storage.NodeStore nodeStore) {
+        this.nodeStore = nodeStore;
     }
 
     public void setGlobalExpeditionService(GlobalExpeditionService globalExpeditionService) {
@@ -625,6 +630,12 @@ public final class WorkerService {
         if (wasBag) {
             // Remove from the bag index cleanly before assigning.
             workerStore.moveToItem(worker);
+        }
+        // A worker starts earning from the assignment moment. Resetting the
+        // node anchor also guards against stale persisted idle timestamps.
+        node.setLastTickAt(System.currentTimeMillis());
+        if (nodeStore != null) {
+            nodeStore.updateProduction(node);
         }
         worker.setAssignedNodeId(node.getId());
         worker.setState(WorkerRecord.STATE_WORKING);

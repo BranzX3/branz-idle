@@ -95,6 +95,15 @@ public abstract class Menu implements InventoryHolder {
         return false;
     }
 
+    /**
+     * Optional handler for clicks in the player's inventory while this menu
+     * is open. Item movement remains cancelled; menus perform validated
+     * transfers explicitly.
+     */
+    public boolean clickPlayerInventory(InventoryClickEvent event) {
+        return false;
+    }
+
     @Override
     public Inventory getInventory() {
         return inventory;

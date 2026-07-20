@@ -5,6 +5,10 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class NodeRecord {
+    public static final String STATE_IDLE = "IDLE";
+    public static final String STATE_ACTIVE = "ACTIVE";
+    public static final String STATE_STORAGE_FULL = "STORAGE_FULL";
+
 
     private final long id;
     private final UUID ownerUuid;

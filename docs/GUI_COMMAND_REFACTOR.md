@@ -49,7 +49,7 @@ Admin Hub groups work by intent:
 - Content: pools, validation, schematics and NPC presentation.
 - Operations: events, Node state and maintenance.
 - Economy: Coins, Credits and Node caps.
-- Danger: irreversible operations; GUI only explains the typed command.
+- Danger: irreversible operations require a reason and confirmation screen.
 
 Scoped permissions:
 
@@ -59,6 +59,25 @@ Scoped permissions:
 - `idlefarm.admin.audit`
 
 `idlefarm.admin` remains the compatibility parent and grants every scope.
+
+### Full-control Admin UI
+
+Admins do not need to type admin commands for normal operations:
+
+- Player picker: online list plus offline-name search.
+- Player control: claims, Coins, Credits, Node cap, item grants and filtered
+  audit history.
+- Claims: inspect and teleport directly to a Node.
+- Node control: events, Exploration level, NPC status/refresh/state,
+  schematic rebuild and force-unclaim.
+- Content control: pool editor, validation report, rollback, reload and the
+  position-sensitive schematic authoring workflow.
+- System control: seven-day metrics and paginated audit history.
+
+Text input is limited to values that do not fit inventory slots well (player
+name, amount, material, IDs and audit reason). The admin never needs to
+construct a `/idle admin ...` command. Mutations reuse the existing
+permission-checked, audited action handlers internally.
 
 ## Command rules
 

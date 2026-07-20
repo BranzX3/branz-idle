@@ -15,11 +15,20 @@ public final class WorkerDetailMenu extends Menu {
 
     private final GuiManager gui;
     private final UUID workerUuid;
+    private final String backLabel;
+    private final Runnable onBack;
 
     public WorkerDetailMenu(Player viewer, GuiManager gui, UUID workerUuid) {
+        this(viewer, gui, workerUuid, "Back to Bag", () -> gui.openWorkerBag(viewer));
+    }
+
+    public WorkerDetailMenu(Player viewer, GuiManager gui, UUID workerUuid,
+                            String backLabel, Runnable onBack) {
         super(viewer);
         this.gui = gui;
         this.workerUuid = workerUuid;
+        this.backLabel = backLabel;
+        this.onBack = onBack;
     }
 
     @Override
@@ -134,9 +143,40 @@ public final class WorkerDetailMenu extends Menu {
                         }
                         gui.openWorkerBag(viewer);
                     });
+        } else if (worker.getAssignedNodeId() != null) {
+            set(15, Icon.of(Material.CHEST_MINECART)
+                    .name("Store in Worker Bag", NamedTextColor.GREEN)
+                    .lore("Return this worker from its Node", NamedTextColor.GRAY).build(),
+                    e -> storeAssignedWorker(worker));
         }
 
-        set(22, Icon.of(Material.NETHER_STAR).name("Back to Bag", NamedTextColor.GREEN).build(),
-                e -> gui.openWorkerBag(viewer));
+        set(22, Icon.of(Material.NETHER_STAR).name(backLabel, NamedTextColor.GREEN).build(),
+                e -> onBack.run());
+    }
+
+    private void storeAssignedWorker(WorkerRecord worker) {
+        Long nodeId = worker.getAssignedNodeId();
+        var result = gui.workerService().eject(viewer.getUniqueId(), worker);
+        if (result.success()) {
+            if (result.item() != null) {
+                giveOrDrop(result.item());
+            }
+            if (nodeId != null) {
+                gui.nodeStore().getAll().stream()
+                        .filter(node -> node.getId() == nodeId)
+                        .findFirst()
+                        .ifPresent(node -> gui.npcManager().refreshNode(node, viewer.getWorld()));
+            }
+        }
+        viewer.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        onBack.run();
+    }
+
+    private void giveOrDrop(ItemStack item) {
+        var leftover = viewer.getInventory().addItem(item);
+        for (ItemStack overflow : leftover.values()) {
+            viewer.getWorld().dropItemNaturally(viewer.getLocation(), overflow);
+        }
     }
 }

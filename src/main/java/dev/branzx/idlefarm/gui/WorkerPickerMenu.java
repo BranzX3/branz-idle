@@ -68,7 +68,7 @@ public final class WorkerPickerMenu extends Menu {
         int start = page * PAGE_SIZE;
         for (int i = 0; i < PAGE_SIZE && start + i < choices.size(); i++) {
             Choice choice = choices.get(start + i);
-            set(i, gui.workerService().createItem(choice.record()), e -> onPick.accept(choice));
+            set(i, assignmentIcon(choice.record()), e -> onPick.accept(choice));
         }
         if (choices.isEmpty()) {
             set(22, Icon.of(Material.BARRIER)
@@ -89,6 +89,18 @@ public final class WorkerPickerMenu extends Menu {
             set(53, Icon.of(Material.ARROW).name("Next", NamedTextColor.YELLOW).build(),
                     e -> new WorkerPickerMenu(viewer, gui, filter, exclude, heading, onPick, onBack, page + 1).open());
         }
+    }
+
+    private ItemStack assignmentIcon(WorkerRecord record) {
+        ItemStack item = gui.workerService().createItem(record);
+        var meta = item.getItemMeta();
+        List<Component> lore = meta.lore() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(meta.lore());
+        lore.add(Ui.line("Click / Shift-click: assign to this Node", NamedTextColor.GREEN));
+        meta.lore(lore);
+        item.setItemMeta(meta);
+        return item;
     }
 
     /**

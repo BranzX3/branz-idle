@@ -97,7 +97,12 @@ public final class ProductionEngine extends BukkitRunnable {
                 explorationService.advancePassiveResearch(node, crew, now,
                         node.storageTotal() >= bufferCapacity(node));
             }
+            node.setState(NodeRecord.STATE_IDLE);
             node.setLastTickAt(now);
+            // Persist the idle anchor as well as the state. Otherwise a
+            // restart can restore an old timestamp and backfill unstaffed
+            // time after a worker is eventually assigned.
+            nodeStore.updateProduction(node);
             return;
         }
 
@@ -244,7 +249,7 @@ public final class ProductionEngine extends BukkitRunnable {
 
     /** Sync node + worker states with buffer fullness; true if node state changed. */
     private boolean applyStates(NodeRecord node, List<WorkerRecord> crew, boolean full) {
-        String target = full ? "STORAGE_FULL" : "ACTIVE";
+        String target = full ? NodeRecord.STATE_STORAGE_FULL : NodeRecord.STATE_ACTIVE;
         String workerTarget = full ? WorkerRecord.STATE_STOP : WorkerRecord.STATE_WORKING;
         boolean changed = !target.equals(node.getState());
         node.setState(target);

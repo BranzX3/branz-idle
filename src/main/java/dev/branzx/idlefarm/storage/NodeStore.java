@@ -152,7 +152,8 @@ public final class NodeStore {
      * and queues the durable insert. Never blocks on the DB.
      */
     public NodeRecord insert(UUID owner, ChunkKey chunk, NodeType type, int originY) {
-        NodeRecord record = new NodeRecord(nextNodeId.getAndIncrement(), owner, chunk, type, 1, "ACTIVE",
+        NodeRecord record = new NodeRecord(nextNodeId.getAndIncrement(), owner, chunk, type, 1,
+                NodeRecord.STATE_IDLE,
                 originY, System.currentTimeMillis(), null);
         record.setExplorationLevel(1);
         index(record);
@@ -160,7 +161,7 @@ public final class NodeStore {
             try (Connection connection = database.getConnection();
                  PreparedStatement insert = connection.prepareStatement(
                          "INSERT INTO idlefarm_nodes (id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state, origin_y, exploration_level) "
-                                 + "VALUES (?, ?, ?, ?, ?, ?, 1, 'ACTIVE', ?, 1)")) {
+                                 + "VALUES (?, ?, ?, ?, ?, ?, 1, 'IDLE', ?, 1)")) {
                 insert.setLong(1, record.getId());
                 insert.setString(2, owner.toString());
                 insert.setString(3, chunk.world());

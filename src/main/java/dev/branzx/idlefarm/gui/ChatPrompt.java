@@ -59,6 +59,21 @@ public final class ChatPrompt implements Listener {
         }, onCancel);
     }
 
+    /** Prompt for a signed number, useful for audited admin adjustments. */
+    public void requestSignedNumber(Player player, String message,
+                                    Consumer<Double> onNumber, Runnable onCancel) {
+        request(player, message, raw -> {
+            try {
+                onNumber.accept(Double.parseDouble(raw.trim()));
+            } catch (NumberFormatException e) {
+                player.sendMessage(Component.text("Not a number: " + raw, NamedTextColor.RED));
+                if (onCancel != null) {
+                    onCancel.run();
+                }
+            }
+        }, onCancel);
+    }
+
     public boolean isWaiting(UUID uuid) {
         return waiting.containsKey(uuid);
     }

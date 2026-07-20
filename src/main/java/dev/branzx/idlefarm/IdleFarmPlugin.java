@@ -71,6 +71,7 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.workerStore.loadAllSync();
         this.npcManager.setWorkerStore(workerStore);
         this.workerService = new WorkerService(this, workerStore, dataStore, database);
+        this.workerService.setNodeStore(nodeStore);
         this.workerService.loadPitySync();
         this.workerService.loadBagBonusSync();
 
