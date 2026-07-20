@@ -1,14 +1,21 @@
 package dev.branzx.idlefarm.listener;
 
 import dev.branzx.idlefarm.IdleFarmPlugin;
+import dev.branzx.idlefarm.command.CommandLinks;
+import dev.branzx.idlefarm.node.NodeRecord;
 import dev.branzx.idlefarm.service.StreakService;
 import dev.branzx.idlefarm.storage.PlayerDataStore;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.scheduler.BukkitRunnable;
+
+import java.util.List;
 
 public final class PlayerConnectionListener implements Listener {
 
@@ -43,18 +50,88 @@ public final class PlayerConnectionListener implements Listener {
                     gameDesignService.onLogin(player.getUniqueId());
                 }
                 // Streak bonus needs the balance loaded; hop back to main thread.
-                if (streakService != null) {
-                    new BukkitRunnable() {
-                        @Override
-                        public void run() {
-                            if (player.isOnline()) {
-                                streakService.handleLogin(player);
-                            }
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        if (!player.isOnline()) {
+                            return;
                         }
-                    }.runTask(plugin);
-                }
+                        if (streakService != null) {
+                            streakService.handleLogin(player);
+                        }
+                        sendJoinSummary(player);
+                    }
+                }.runTask(plugin);
             }
         }.runTaskAsynchronously(plugin);
+    }
+
+    /**
+     * One consolidated "while you were away" block with click actions —
+     * never more than three lines, and nothing when all systems are idle.
+     */
+    private void sendJoinSummary(Player player) {
+        var nodeStore = plugin.getNodeStore();
+        var exploration = plugin.getExplorationService();
+        if (nodeStore == null) {
+            return;
+        }
+        List<NodeRecord> production = nodeStore.getByOwner(player.getUniqueId()).stream()
+                .filter(node -> node.getType().isProduction()).toList();
+        if (production.isEmpty()) {
+            return;
+        }
+        List<NodeRecord> fullNodes = production.stream()
+                .filter(node -> NodeRecord.STATE_STORAGE_FULL.equals(node.getState())).toList();
+        NodeRecord claimable = null;
+        NodeRecord waiting = null;
+        if (exploration != null) {
+            for (NodeRecord node : production) {
+                var event = exploration.getEvent(node.getId());
+                if (event == null) {
+                    continue;
+                }
+                if (claimable == null && "COMPLETED".equals(event.getState())) {
+                    claimable = node;
+                } else if (waiting == null && "AVAILABLE".equals(event.getState())) {
+                    waiting = node;
+                }
+            }
+        }
+        if (fullNodes.isEmpty() && claimable == null && waiting == null) {
+            return;
+        }
+        player.sendMessage(Component.text("[IdleFarm] While you were away:",
+                NamedTextColor.GOLD));
+        if (!fullNodes.isEmpty()) {
+            var line = Component.text()
+                    .append(Component.text("  " + fullNodes.size()
+                            + " node buffer(s) full — production stopped. ",
+                            NamedTextColor.YELLOW));
+            if (fullNodes.size() == 1) {
+                line.append(CommandLinks.run("[Collect]",
+                                "/idle collect " + fullNodes.getFirst().getId()))
+                        .append(Component.space());
+            }
+            line.append(CommandLinks.run("[Open Nodes]", "/idle nodes"));
+            player.sendMessage(line.build());
+        }
+        if (claimable != null) {
+            player.sendMessage(Component.text()
+                    .append(Component.text("  Exploration result ready. ",
+                            NamedTextColor.GREEN))
+                    .append(CommandLinks.run("[Claim]",
+                            "/idle explore claim " + claimable.getId()))
+                    .build());
+        }
+        if (waiting != null) {
+            player.sendMessage(Component.text()
+                    .append(Component.text("  Exploration event waiting. ",
+                            NamedTextColor.YELLOW))
+                    .append(CommandLinks.run("[Open]",
+                            "/idle explore info " + waiting.getId()))
+                    .build());
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

@@ -154,7 +154,7 @@ Legend: ✅ already implemented, 🔶 partial, ❌ missing.
 (`run`), argument commands (`suggest`). `[เปิด Hub]` / `[เปิด Admin Hub]`
 headers. This is the reference implementation of the pattern.
 
-### 4.2 Join summary (streak + offline recap) — ❌
+### 4.2 Join summary (streak + offline recap) — ✅ (commission line pending)
 
 On login, after `StreakService.handleLogin`, send one block:
 
@@ -171,7 +171,7 @@ On login, after `StreakService.handleLogin`, send one block:
 - Sourced from the same state the Hub priority card reads; the summary and
   the card can never disagree.
 
-### 4.3 Production buffer — ❌ (action bar only today)
+### 4.3 Production buffer — ✅
 
 - Transition to `STORAGE_FULL`: one line,
   `“Node <type> เต็มแล้ว — การผลิตหยุด”` + `[เก็บผลผลิต]`
@@ -195,13 +195,10 @@ On login, after `StreakService.handleLogin`, send one block:
 
 ### 4.6 Trade (escrow) — 🔶
 
-- Request received: ✅ `[Accept]` (`TradeService.java:88`).
-- Add to the request line: `[ปฏิเสธ]` (`/idle trade cancel`) so declining
-  does not require typing.
-- Session updates (offer changed, other side confirmed) via
-  `notifyBoth`/`notifyOther` should append `[ดูข้อเสนอ]`
-  (`/idle trade view`) — final `confirm` stays inside the trade GUI
-  (Tier C: it commits escrow).
+- Request received: ✅ `[Accept]` `[Decline]` (`/idle trade decline`).
+- Session updates (offer changed, other side confirmed): ✅ append
+  `[View]` (`/idle trade view`) — final `confirm` stays inside the trade
+  GUI (Tier C: it commits escrow).
 - Escrow settlement/refund notices are informational, plus `[เปิด Warehouse]`
   when items were delivered there.
 
@@ -282,8 +279,8 @@ tab completion and help inherit them automatically.
 2. **P0 — plumbing**: small `ChatActions` helper (wraps `CommandLinks`,
    adds the `[IdleFarm]` prefix, two-action limit, per-category cooldown
    registry persisted per player session).
-3. **P1 — join summary** (§4.2), buffer-full transition line (§4.3).
-4. **P1 — trade session actions** (§4.6): decline + view links.
+3. **P1 — join summary** (§4.2) ✅, buffer-full transition line (§4.3) ✅.
+4. **P1 — trade session actions** (§4.6) ✅: decline + view links.
 5. **P2 — progress moments** (§4.7): commission/project/expedition/chapter.
 6. **P2 — social + worker safety lines** (§4.8, §4.9).
 7. **P3 — admin alerts** (§4.11).

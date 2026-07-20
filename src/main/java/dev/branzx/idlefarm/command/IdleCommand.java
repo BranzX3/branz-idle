@@ -988,7 +988,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length < 2) {
             sender.sendMessage(Component.text(
-                    "Usage: /idle trade <player|accept|offer|view|confirm|cancel> [player]",
+                    "Usage: /idle trade <player|accept|decline|offer|view|confirm|cancel> [player]",
                     NamedTextColor.YELLOW));
             return true;
         }
@@ -1007,6 +1007,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
                     }
                 }
             }
+            case "decline" -> result = tradeService.decline(player);
             case "offer" -> result = tradeService.offerHeld(player);
             case "confirm" -> result = tradeService.confirm(player);
             case "cancel" -> result = tradeService.cancel(player);

@@ -1,11 +1,16 @@
 package dev.branzx.idlefarm.service;
 
 import dev.branzx.idlefarm.IdleFarmPlugin;
+import dev.branzx.idlefarm.command.CommandLinks;
 import dev.branzx.idlefarm.node.NodeRecord;
 import dev.branzx.idlefarm.storage.NodeStore;
 import dev.branzx.idlefarm.storage.WorkerStore;
 import dev.branzx.idlefarm.worker.WorkerRecord;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.List;
@@ -149,10 +154,34 @@ public final class ProductionEngine extends BukkitRunnable {
             // no phantom backlog accrues while stopped.
             node.setLastTickAt(now);
         }
-        dirty |= applyStates(node, crew, full);
+        boolean stateChanged = applyStates(node, crew, full);
+        if (stateChanged && full) {
+            notifyBufferFull(node);
+        }
+        dirty |= stateChanged;
         if (dirty) {
             nodeStore.updateProduction(node);
         }
+    }
+
+    /**
+     * One chat line on the transition to STORAGE_FULL only; the join summary
+     * covers transitions that happen while the owner is offline.
+     */
+    private void notifyBufferFull(NodeRecord node) {
+        Player owner = Bukkit.getPlayer(node.getOwnerUuid());
+        if (owner == null) {
+            return;
+        }
+        owner.sendMessage(Component.text()
+                .append(Component.text("[Production] ", NamedTextColor.GOLD))
+                .append(Component.text(node.getType()
+                        + " node buffer is full — production stopped. ",
+                        NamedTextColor.YELLOW))
+                .append(CommandLinks.run("[Collect]", "/idle collect " + node.getId()))
+                .append(Component.space())
+                .append(CommandLinks.run("[Open Nodes]", "/idle nodes"))
+                .build());
     }
 
     private double baseRate(NodeRecord node) {

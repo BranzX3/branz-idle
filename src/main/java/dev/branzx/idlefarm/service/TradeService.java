@@ -86,8 +86,23 @@ public final class TradeService implements Listener {
                         requester.getName() + " requested a protected trade. ",
                         NamedTextColor.YELLOW)
                 .append(CommandLinks.run("[Accept]",
-                        "/idle trade accept " + requester.getName())));
+                        "/idle trade accept " + requester.getName()))
+                .append(Component.space())
+                .append(CommandLinks.run("[Decline]", "/idle trade decline")));
         return Result.ok("Trade request sent to " + target.getName() + ".");
+    }
+
+    public Result decline(Player target) {
+        UUID pending = requests.remove(target.getUniqueId());
+        if (pending == null) {
+            return Result.fail("No pending trade request.");
+        }
+        Player requester = Bukkit.getPlayer(pending);
+        if (requester != null) {
+            requester.sendMessage(Component.text(target.getName()
+                    + " declined the trade request.", NamedTextColor.GRAY));
+        }
+        return Result.ok("Trade request declined.");
     }
 
     public Result accept(Player target, Player requester) {
@@ -143,7 +158,8 @@ public final class TradeService implements Listener {
         // over permanent item loss.
         player.saveData();
         resetConfirmations(session);
-        notifyBoth(session, "§eTrade offer changed; both confirmations reset.");
+        notifyBoth(session, sessionUpdate("Trade offer changed; both confirmations reset.",
+                NamedTextColor.YELLOW));
         return Result.ok("Added stack to escrow. Use /idle trade view or confirm.");
     }
 
@@ -153,7 +169,9 @@ public final class TradeService implements Listener {
         if (player.getUniqueId().equals(session.a)) session.aConfirmed = true;
         else session.bConfirmed = true;
         if (!session.aConfirmed || !session.bConfirmed) {
-            notifyOther(session, player.getUniqueId(), "§a" + player.getName() + " confirmed the trade.");
+            notifyOther(session, player.getUniqueId(),
+                    sessionUpdate(player.getName() + " confirmed the trade.",
+                            NamedTextColor.GREEN));
             return Result.ok("Confirmed. Waiting for the other player.");
         }
         return settle(session);
@@ -171,7 +189,8 @@ public final class TradeService implements Listener {
         offer.remove(index);
         deliverPending(player);
         resetConfirmations(session);
-        notifyBoth(session, "§eTrade offer changed; both confirmations reset.");
+        notifyBoth(session, sessionUpdate("Trade offer changed; both confirmations reset.",
+                NamedTextColor.YELLOW));
         return Result.ok("Stack removed from escrow.");
     }
 
@@ -186,7 +205,8 @@ public final class TradeService implements Listener {
         close(session);
         deliverPending(Bukkit.getPlayer(session.a));
         deliverPending(Bukkit.getPlayer(session.b));
-        notifyBoth(session, "§cTrade cancelled; escrow items were returned.");
+        notifyBoth(session, Component.text("Trade cancelled; escrow items were returned.",
+                NamedTextColor.RED));
         return Result.ok("Trade cancelled.");
     }
 
@@ -256,7 +276,8 @@ public final class TradeService implements Listener {
         design.telemetry(session.b, "TRADE_COMPLETED", "{\"trade\":\"" + session.id + "\"}");
         design.onTradeCompleted(session.a);
         design.onTradeCompleted(session.b);
-        notifyBoth(session, "§aProtected trade completed. Receipt: " + session.id);
+        notifyBoth(session, Component.text("Protected trade completed. Receipt: " + session.id,
+                NamedTextColor.GREEN));
         return Result.ok("Trade completed. Receipt: " + session.id);
     }
 
@@ -307,16 +328,22 @@ public final class TradeService implements Listener {
         }
     }
 
-    private void notifyBoth(Session session, String message) {
+    private void notifyBoth(Session session, Component message) {
         Player a = Bukkit.getPlayer(session.a);
         Player b = Bukkit.getPlayer(session.b);
         if (a != null) a.sendMessage(message);
         if (b != null) b.sendMessage(message);
     }
 
-    private void notifyOther(Session session, UUID actor, String message) {
+    private void notifyOther(Session session, UUID actor, Component message) {
         Player target = Bukkit.getPlayer(actor.equals(session.a) ? session.b : session.a);
         if (target != null) target.sendMessage(message);
+    }
+
+    /** Active-session update line carrying a [View] shortcut back to the trade. */
+    private Component sessionUpdate(String text, NamedTextColor color) {
+        return Component.text(text + " ", color)
+                .append(CommandLinks.run("[View]", "/idle trade view"));
     }
 
     private List<ItemStack> itemsOf(List<TradeEscrowStore.Entry> entries) {
