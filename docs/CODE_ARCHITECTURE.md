@@ -75,7 +75,10 @@ Cross-row gameplay invariants:
 - Node convert commits its Coin cost with the type change; unclaim commits
   the node delete with its refund.
 - A fuse consumes both materials and mints the result in one transaction.
-- Trade delivery happens only after the receipt row is durable.
+- Each offered trade stack is journaled in `idlefarm_trade_escrow` before it
+  leaves the player's inventory. Settlement commits the receipt and changes
+  every escrow recipient in one transaction. Unfinished `OPEN` rows become
+  owner refunds on startup; `PENDING_DELIVERY` rows replay on login.
 
 Player balance snapshots carry a revision. An older asynchronous save cannot
 mark or overwrite a newer in-memory mutation as clean.

@@ -2,6 +2,7 @@ package dev.branzx.idlefarm.service;
 
 import dev.branzx.idlefarm.IdleFarmPlugin;
 import dev.branzx.idlefarm.storage.Database;
+import dev.branzx.idlefarm.storage.TradeEscrowStore;
 import dev.branzx.idlefarm.worker.WorkerRecord;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -9,12 +10,9 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.event.Listener;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,8 +38,8 @@ public final class TradeService implements Listener {
         final String id = UUID.randomUUID().toString();
         final UUID a;
         final UUID b;
-        final List<ItemStack> aItems = new ArrayList<>();
-        final List<ItemStack> bItems = new ArrayList<>();
+        final List<TradeEscrowStore.Entry> aItems = new ArrayList<>();
+        final List<TradeEscrowStore.Entry> bItems = new ArrayList<>();
         boolean aConfirmed;
         boolean bConfirmed;
 
@@ -52,7 +50,7 @@ public final class TradeService implements Listener {
     }
 
     private final IdleFarmPlugin plugin;
-    private final Database database;
+    private final TradeEscrowStore escrow;
     private final AuditService audit;
     private final WorkerService workers;
     private final GameDesignService design;
@@ -62,10 +60,17 @@ public final class TradeService implements Listener {
     public TradeService(IdleFarmPlugin plugin, Database database, AuditService audit,
                         WorkerService workers, GameDesignService design) {
         this.plugin = plugin;
-        this.database = database;
+        this.escrow = new TradeEscrowStore(database);
         this.audit = audit;
         this.workers = workers;
         this.design = design;
+        int recovered = escrow.recoverInterruptedTrades();
+        if (recovered > 0) {
+            plugin.getLogger().warning("Recovered " + recovered
+                    + " item stack(s) from interrupted trades; delivery is queued for login.");
+        } else if (recovered < 0) {
+            plugin.getLogger().severe("Trade escrow recovery failed; pending rows were left untouched.");
+        }
     }
 
     public Result request(Player requester, Player target) {
@@ -106,6 +111,7 @@ public final class TradeService implements Listener {
             return Result.fail("That worker token is no longer authoritative.");
         }
         if (worker != null && java.util.stream.Stream.concat(session.aItems.stream(), session.bItems.stream())
+                .map(TradeEscrowStore.Entry::item)
                 .map(workers::fromItem).filter(java.util.Objects::nonNull)
                 .anyMatch(existing -> existing.getWorkerUuid().equals(worker.getWorkerUuid()))) {
             design.telemetry(player.getUniqueId(), "DUPLICATE_WORKER_UUID_ATTEMPT",
@@ -118,10 +124,18 @@ public final class TradeService implements Listener {
         if (worker != null && design.isWorkerLocked(worker.getWorkerUuid())) {
             return Result.fail("Favorite/locked workers cannot be traded.");
         }
-        List<ItemStack> offer = offerOf(session, player.getUniqueId());
+        List<TradeEscrowStore.Entry> offer = offerOf(session, player.getUniqueId());
         if (offer.size() >= 18) return Result.fail("Trade offer is full (18 stacks).");
-        offer.add(held.clone());
+        TradeEscrowStore.Entry entry = escrow.hold(session.id, player.getUniqueId(), held);
+        if (entry == null) {
+            return Result.fail("Item could not be secured in durable escrow; nothing moved.");
+        }
+        offer.add(entry);
         player.getInventory().setItemInMainHand(null);
+        // Persist the inventory side of the escrow handoff immediately. The
+        // DB row is written first so a hard kill favors a recoverable refund
+        // over permanent item loss.
+        player.saveData();
         resetConfirmations(session);
         notifyBoth(session, "§eTrade offer changed; both confirmations reset.");
         return Result.ok("Added stack to escrow. Use /idle trade view or confirm.");
@@ -142,10 +156,14 @@ public final class TradeService implements Listener {
     public Result removeOffer(Player player, int index) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) return Result.fail("You are not in a trade.");
-        List<ItemStack> offer = offerOf(session, player.getUniqueId());
+        List<TradeEscrowStore.Entry> offer = offerOf(session, player.getUniqueId());
         if (index < 0 || index >= offer.size()) return Result.fail("Offer changed; refresh the trade.");
-        ItemStack returned = offer.remove(index);
-        deliver(player, List.of(returned));
+        TradeEscrowStore.Entry returned = offer.get(index);
+        if (!escrow.queueReturn(returned.escrowId())) {
+            return Result.fail("Stack could not be released from durable escrow.");
+        }
+        offer.remove(index);
+        deliverPending(player);
         resetConfirmations(session);
         notifyBoth(session, "§eTrade offer changed; both confirmations reset.");
         return Result.ok("Stack removed from escrow.");
@@ -154,9 +172,14 @@ public final class TradeService implements Listener {
     public Result cancel(Player player) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) return Result.fail("You are not in a trade.");
-        returnItems(session.a, session.aItems);
-        returnItems(session.b, session.bItems);
+        if (!escrow.queueTradeReturn(session.id,
+                session.aItems.size() + session.bItems.size())) {
+            resetConfirmations(session);
+            return Result.fail("Trade could not be cancelled safely; escrow remains protected.");
+        }
         close(session);
+        deliverPending(Bukkit.getPlayer(session.a));
+        deliverPending(Bukkit.getPlayer(session.b));
         notifyBoth(session, "§cTrade cancelled; escrow items were returned.");
         return Result.ok("Trade cancelled.");
     }
@@ -166,17 +189,20 @@ public final class TradeService implements Listener {
         if (session == null) return null;
         boolean isA = player.equals(session.a);
         return new View(isA ? session.b : session.a,
-                List.copyOf(isA ? session.aItems : session.bItems),
-                List.copyOf(isA ? session.bItems : session.aItems),
+                itemsOf(isA ? session.aItems : session.bItems),
+                itemsOf(isA ? session.bItems : session.aItems),
                 isA ? session.aConfirmed : session.bConfirmed,
                 isA ? session.bConfirmed : session.aConfirmed);
     }
 
     public void shutdown() {
         for (Session session : new java.util.HashSet<>(sessions.values())) {
-            returnItems(session.a, session.aItems);
-            returnItems(session.b, session.bItems);
-            close(session);
+            if (escrow.queueTradeReturn(session.id,
+                    session.aItems.size() + session.bItems.size())) {
+                close(session);
+                deliverPending(Bukkit.getPlayer(session.a));
+                deliverPending(Bukkit.getPlayer(session.b));
+            }
         }
         requests.clear();
     }
@@ -190,6 +216,11 @@ public final class TradeService implements Listener {
         requests.values().removeIf(event.getPlayer().getUniqueId()::equals);
     }
 
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        deliverPending(event.getPlayer());
+    }
+
     private Result settle(Session session) {
         Player a = Bukkit.getPlayer(session.a);
         Player b = Bukkit.getPlayer(session.b);
@@ -200,27 +231,17 @@ public final class TradeService implements Listener {
         }
         String offerA = serialize(session.aItems);
         String offerB = serialize(session.bItems);
-        // Ordered blocking commit: items are only delivered after the receipt
-        // row is durable, and the write queue stays the single writer.
-        boolean committed = database.executeTransaction("trade receipt " + session.id, connection -> {
-            try (PreparedStatement insert = connection.prepareStatement(
-                    "INSERT INTO idlefarm_trade_receipts "
-                            + "(trade_id, player_a, player_b, offer_a, offer_b) VALUES (?, ?, ?, ?, ?)")) {
-                insert.setString(1, session.id);
-                insert.setString(2, session.a.toString());
-                insert.setString(3, session.b.toString());
-                insert.setString(4, offerA);
-                insert.setString(5, offerB);
-                insert.executeUpdate();
-            }
-        });
+        // Receipt and ownership transfer commit together. Actual inventory
+        // delivery is replayable from PENDING_DELIVERY rows after a restart.
+        boolean committed = escrow.settle(session.id, session.a, session.b, offerA, offerB,
+                session.aItems.size() + session.bItems.size());
         if (!committed) {
             resetConfirmations(session);
             return Result.fail("Trade could not be committed; nothing moved.");
         }
-        deliver(a, session.bItems);
-        deliver(b, session.aItems);
         close(session);
+        deliverPending(a);
+        deliverPending(b);
         audit.log(session.a, "TRADE_COMPLETED", "{\"trade\":\"" + session.id
                 + "\",\"partner\":\"" + session.b + "\"}");
         audit.log(session.b, "TRADE_COMPLETED", "{\"trade\":\"" + session.id
@@ -233,7 +254,7 @@ public final class TradeService implements Listener {
         return Result.ok("Trade completed. Receipt: " + session.id);
     }
 
-    private List<ItemStack> offerOf(Session session, UUID player) {
+    private List<TradeEscrowStore.Entry> offerOf(Session session, UUID player) {
         return player.equals(session.a) ? session.aItems : session.bItems;
     }
 
@@ -255,9 +276,29 @@ public final class TradeService implements Listener {
         }
     }
 
-    private void returnItems(UUID owner, List<ItemStack> items) {
-        Player player = Bukkit.getPlayer(owner);
-        if (player != null) deliver(player, items);
+    private void deliverPending(Player player) {
+        if (player == null || !player.isOnline()) return;
+        List<TradeEscrowStore.Entry> entries;
+        try {
+            entries = escrow.pending(player.getUniqueId());
+        } catch (IllegalStateException e) {
+            plugin.getLogger().severe("Could not load pending trade delivery for "
+                    + player.getUniqueId() + ": " + e.getMessage());
+            return;
+        }
+        if (entries.isEmpty()) return;
+        for (TradeEscrowStore.Entry entry : entries) {
+            deliver(player, List.of(entry.item()));
+        }
+        // Save the granted inventory before deleting the replay journal. If
+        // the process dies between these operations, replay can duplicate an
+        // item but cannot silently lose one.
+        player.saveData();
+        if (!escrow.acknowledge(entries)) {
+            plugin.getLogger().severe("Delivered " + entries.size()
+                    + " trade escrow stack(s) but could not acknowledge them; "
+                    + "manual review is required before the next login.");
+        }
     }
 
     private void notifyBoth(Session session, String message) {
@@ -272,9 +313,14 @@ public final class TradeService implements Listener {
         if (target != null) target.sendMessage(message);
     }
 
-    private String serialize(List<ItemStack> items) {
+    private List<ItemStack> itemsOf(List<TradeEscrowStore.Entry> entries) {
+        return entries.stream().map(TradeEscrowStore.Entry::item)
+                .map(ItemStack::clone).toList();
+    }
+
+    private String serialize(List<TradeEscrowStore.Entry> items) {
         return items.stream()
-                .map(item -> Base64.getEncoder().encodeToString(item.serializeAsBytes()))
+                .map(entry -> TradeEscrowStore.encode(entry.item()))
                 .reduce((left, right) -> left + ";" + right).orElse("");
     }
 }

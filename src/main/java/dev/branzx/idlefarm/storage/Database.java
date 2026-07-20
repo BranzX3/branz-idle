@@ -379,6 +379,19 @@ public final class Database {
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS idlefarm_trade_escrow (
+                escrow_id VARCHAR(64) NOT NULL PRIMARY KEY,
+                trade_id VARCHAR(64) NOT NULL,
+                owner_uuid VARCHAR(36) NOT NULL,
+                recipient_uuid VARCHAR(36) NOT NULL,
+                item_data MEDIUMTEXT NOT NULL,
+                state VARCHAR(24) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                KEY idx_escrow_trade (trade_id),
+                KEY idx_escrow_recipient_state (recipient_uuid, state)
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS idlefarm_telemetry (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 owner_uuid VARCHAR(36) NULL,
@@ -630,6 +643,20 @@ public final class Database {
             """,
             "CREATE INDEX IF NOT EXISTS idx_trade_a ON idlefarm_trade_receipts (player_a)",
             "CREATE INDEX IF NOT EXISTS idx_trade_b ON idlefarm_trade_receipts (player_b)",
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_trade_escrow (
+                escrow_id TEXT NOT NULL PRIMARY KEY,
+                trade_id TEXT NOT NULL,
+                owner_uuid TEXT NOT NULL,
+                recipient_uuid TEXT NOT NULL,
+                item_data TEXT NOT NULL,
+                state TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_escrow_trade ON idlefarm_trade_escrow (trade_id)",
+            "CREATE INDEX IF NOT EXISTS idx_escrow_recipient_state "
+                    + "ON idlefarm_trade_escrow (recipient_uuid, state)",
             """
             CREATE TABLE IF NOT EXISTS idlefarm_telemetry (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

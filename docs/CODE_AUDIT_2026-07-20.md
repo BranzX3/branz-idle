@@ -69,9 +69,10 @@ These are product/content work, not regressions fixed by this refactor:
 2. ~~Move the remaining convert/unclaim refund and project/commission
    resource settlements into cross-aggregate transactions.~~ Done (second
    pass).
-3. Add durable trade escrow/recovery for hard process termination (the
-   receipt is transactional now, but escrow items held in memory are still
-   lost on a hard kill mid-trade).
+3. ~~Add durable trade escrow/recovery for hard process termination.~~ Done:
+   every stack now has a durable journal row, receipt/ownership transfer is
+   transactional, and interrupted offers are queued for owner refund on
+   restart/login.
 4. Add further restart/fault-injection tests for claim, commission and
    project settlement (fuse and unclaim now covered).
 5. ~~Replace late service setters with a composition root and constructor
