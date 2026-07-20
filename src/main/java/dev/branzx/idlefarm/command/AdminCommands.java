@@ -6,6 +6,7 @@ import dev.branzx.idlefarm.node.NodeRecord;
 import dev.branzx.idlefarm.schematic.RelPos;
 import dev.branzx.idlefarm.schematic.SchematicDefinition;
 import dev.branzx.idlefarm.schematic.SchematicRegistry;
+import dev.branzx.idlefarm.service.AdminAlerts;
 import dev.branzx.idlefarm.service.SchematicService;
 import dev.branzx.idlefarm.service.WorkerNpcManager;
 import dev.branzx.idlefarm.storage.NodeStore;
@@ -535,6 +536,16 @@ public final class AdminCommands {
         schematicService.getRegistry().loadAll();
         if (dropTableService != null) {
             dropTableService.load();
+            List<String> errors = dropTableService.validate();
+            if (!errors.isEmpty()) {
+                AdminAlerts.broadcast("idlefarm.admin.content",
+                        Component.text()
+                                .append(Component.text("[Alert] ", NamedTextColor.RED))
+                                .append(Component.text("Content validation failed after reload ("
+                                        + errors.size() + " issue(s)). ", NamedTextColor.YELLOW))
+                                .append(CommandLinks.run("[Validate]", "/idle admin validate"))
+                                .build());
+            }
         }
         String auditId = auditAdmin(actor(sender), "ADMIN_RELOAD", reason,
                 "config,published pools,schematics");

@@ -232,7 +232,9 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         NodeType type = NodeType.fromString(args[1]);
         if (type == null) {
-            sender.sendMessage(Component.text("Unknown node type: " + args[1], NamedTextColor.RED));
+            sender.sendMessage(Component.text("Unknown node type: " + args[1] + " ",
+                    NamedTextColor.RED)
+                    .append(CommandLinks.run("[Open Map]", "/idle map")));
             return true;
         }
         if (!claimService.isClaimableWorld(player.getWorld())) {
@@ -362,7 +364,9 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         WorkerRecord held = workerService.fromItem(player.getInventory().getItemInMainHand());
         if (held == null) {
-            sender.sendMessage(Component.text("Hold a worker contract to choose the fuse rarity.", NamedTextColor.RED));
+            sender.sendMessage(Component.text("Hold a worker contract to choose the fuse rarity. ",
+                    NamedTextColor.RED)
+                    .append(CommandLinks.run("[Open Bag]", "/idle bag")));
             return true;
         }
         List<WorkerRecord> materials = new java.util.ArrayList<>();
@@ -410,7 +414,9 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         NodeRecord node = nodeAt(player);
         if (node == null || !trustService.canManage(player.getUniqueId(), node.getOwnerUuid())) {
-            sender.sendMessage(Component.text("Stand in a production node you can manage.", NamedTextColor.RED));
+            sender.sendMessage(Component.text("Stand in a production node you can manage. ",
+                    NamedTextColor.RED)
+                    .append(CommandLinks.run("[Open Nodes]", "/idle nodes")));
             return true;
         }
         WorkerService.Result result = workerService.assign(player.getUniqueId(), worker, node);
@@ -430,7 +436,9 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         NodeRecord node = nodeAt(player);
         if (node == null || !trustService.canManage(player.getUniqueId(), node.getOwnerUuid())) {
-            sender.sendMessage(Component.text("Stand in a production node you can manage.", NamedTextColor.RED));
+            sender.sendMessage(Component.text("Stand in a production node you can manage. ",
+                    NamedTextColor.RED)
+                    .append(CommandLinks.run("[Open Nodes]", "/idle nodes")));
             return true;
         }
         List<WorkerRecord> assigned = workerStore.getAssigned(node.getId());
@@ -521,7 +529,8 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         refreshNodeNpc(node);
         if (remaining > 0) {
             sender.sendMessage(Component.text("Collected " + collected + " to Warehouse; "
-                    + remaining + " left (warehouse full).", NamedTextColor.YELLOW));
+                    + remaining + " left (warehouse full). ", NamedTextColor.YELLOW)
+                    .append(CommandLinks.run("[Open Warehouse]", "/idle warehouse")));
         } else {
             sender.sendMessage(Component.text("Collected " + collected + " items to Warehouse.",
                     NamedTextColor.GREEN));
@@ -740,7 +749,9 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         NodeType type = NodeType.fromString(args[1]);
         if (type == null) {
-            sender.sendMessage(Component.text("Unknown node type: " + args[1], NamedTextColor.RED));
+            sender.sendMessage(Component.text("Unknown node type: " + args[1] + " ",
+                    NamedTextColor.RED)
+                    .append(CommandLinks.run("[Open Map]", "/idle map")));
             return true;
         }
         ChunkKey chunk = new ChunkKey(player.getWorld().getName(),
@@ -962,7 +973,8 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
 
     private Component noTargetNode() {
         return Component.text("No production node targeted. Stand in one, set a Focused Node, "
-                + "or pass a node id.", NamedTextColor.RED);
+                + "or pass a node id. ", NamedTextColor.RED)
+                .append(CommandLinks.run("[Open Nodes]", "/idle nodes"));
     }
 
     /** NPC refresh must use the node's own world; chat clicks can act cross-world. */

@@ -126,6 +126,7 @@ public final class TradeService implements Listener {
         if (worker != null && held.getAmount() != 1) {
             design.telemetry(player.getUniqueId(), "DUPLICATE_WORKER_UUID_ATTEMPT",
                     "{\"worker\":\"" + worker.getWorkerUuid() + "\"}");
+            alertDuplicateAttempt(player);
             return Result.fail("Worker contracts must be a single authoritative item.");
         }
         if (worker != null && !WorkerRecord.STATE_ITEM.equals(worker.getState())) {
@@ -137,6 +138,7 @@ public final class TradeService implements Listener {
                 .anyMatch(existing -> existing.getWorkerUuid().equals(worker.getWorkerUuid()))) {
             design.telemetry(player.getUniqueId(), "DUPLICATE_WORKER_UUID_ATTEMPT",
                     "{\"worker\":\"" + worker.getWorkerUuid() + "\"}");
+            alertDuplicateAttempt(player);
             return Result.fail("That worker UUID is already in escrow.");
         }
         if (worker != null && design.isStarterWorker(worker.getWorkerUuid())) {
@@ -344,6 +346,16 @@ public final class TradeService implements Listener {
     private Component sessionUpdate(String text, NamedTextColor color) {
         return Component.text(text + " ", color)
                 .append(CommandLinks.run("[View]", "/idle trade view"));
+    }
+
+    private void alertDuplicateAttempt(Player player) {
+        AdminAlerts.broadcast("idlefarm.admin.audit", Component.text()
+                .append(Component.text("[Alert] ", NamedTextColor.RED))
+                .append(Component.text("Duplicate worker token attempt by "
+                        + player.getName() + ". ", NamedTextColor.YELLOW))
+                .append(CommandLinks.run("[View Audit]",
+                        "/idle admin audit " + player.getName()))
+                .build());
     }
 
     private List<ItemStack> itemsOf(List<TradeEscrowStore.Entry> entries) {
