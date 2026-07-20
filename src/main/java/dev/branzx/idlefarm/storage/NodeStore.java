@@ -124,7 +124,10 @@ public final class NodeStore {
         String state = record.getState();
         long lastTick = record.getLastTickAt();
         int tier = record.getTier();
+        int explorationLevel = record.getExplorationLevel();
+        long explorationExp = record.getExplorationExp();
         String nodeType = record.getType().name();
+        long upgradeEndsAt = record.getUpgradeEndsAt();
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement update = connection.prepareStatement(
@@ -135,10 +138,10 @@ public final class NodeStore {
                 update.setString(2, storageJson);
                 update.setTimestamp(3, new java.sql.Timestamp(lastTick));
                 update.setInt(4, tier);
-                update.setInt(5, record.getExplorationLevel());
-                update.setLong(6, record.getExplorationExp());
+                update.setInt(5, explorationLevel);
+                update.setLong(6, explorationExp);
                 update.setString(7, nodeType);
-                update.setLong(8, record.getUpgradeEndsAt());
+                update.setLong(8, upgradeEndsAt);
                 update.setLong(9, record.getId());
                 update.executeUpdate();
             } catch (SQLException e) {
@@ -147,19 +150,58 @@ public final class NodeStore {
         });
     }
 
+    /** Commits a production-state mutation and its Coin cost together. */
+    public boolean updateProductionWithCost(NodeRecord record, PlayerData player, double cost) {
+        String storageJson = record.serializeStorage();
+        String state = record.getState();
+        long lastTick = record.getLastTickAt();
+        int tier = record.getTier();
+        int explorationLevel = record.getExplorationLevel();
+        long explorationExp = record.getExplorationExp();
+        String nodeType = record.getType().name();
+        long upgradeEndsAt = record.getUpgradeEndsAt();
+        double balanceAfter = player.getBalance() - cost;
+        boolean committed = database.executeTransaction("paid node update " + record.getId(),
+                connection -> {
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idlefarm_nodes SET state = ?, storage_json = ?, last_tick_at = ?, "
+                            + "tier = ?, exploration_level = ?, exploration_exp = ?, node_type = ?, "
+                            + "upgrade_ends_at = ? WHERE id = ?")) {
+                update.setString(1, state);
+                update.setString(2, storageJson);
+                update.setTimestamp(3, new java.sql.Timestamp(lastTick));
+                update.setInt(4, tier);
+                update.setInt(5, explorationLevel);
+                update.setLong(6, explorationExp);
+                update.setString(7, nodeType);
+                update.setLong(8, upgradeEndsAt);
+                update.setLong(9, record.getId());
+                if (update.executeUpdate() != 1) throw new SQLException("Node row is missing");
+            }
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idlefarm_players SET balance = ? WHERE uuid = ?")) {
+                update.setDouble(1, balanceAfter);
+                update.setString(2, player.getUuid().toString());
+                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
+            }
+        });
+        if (committed) player.addBalance(-cost);
+        return committed;
+    }
+
     /**
-     * Applies to the in-memory index immediately (main thread, authoritative)
-     * and queues the durable insert. Never blocks on the DB.
+     * Creates a claim and settles its Coin cost in one ordered transaction.
+     * The node is indexed only after the durable commit succeeds.
      */
-    public NodeRecord insert(UUID owner, ChunkKey chunk, NodeType type, int originY) {
+    public NodeRecord insert(UUID owner, ChunkKey chunk, NodeType type, int originY,
+                             PlayerData player, double cost) {
         NodeRecord record = new NodeRecord(nextNodeId.getAndIncrement(), owner, chunk, type, 1,
                 NodeRecord.STATE_IDLE,
                 originY, System.currentTimeMillis(), null);
         record.setExplorationLevel(1);
-        index(record);
-        database.submitWrite(() -> {
-            try (Connection connection = database.getConnection();
-                 PreparedStatement insert = connection.prepareStatement(
+        double balanceAfter = player.getBalance() - cost;
+        boolean committed = database.executeTransaction("claim node " + record.getId(), connection -> {
+            try (PreparedStatement insert = connection.prepareStatement(
                          "INSERT INTO idlefarm_nodes (id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state, origin_y, exploration_level) "
                                  + "VALUES (?, ?, ?, ?, ?, ?, 1, 'IDLE', ?, 1)")) {
                 insert.setLong(1, record.getId());
@@ -170,10 +212,17 @@ public final class NodeStore {
                 insert.setString(6, type.name());
                 insert.setInt(7, originY);
                 insert.executeUpdate();
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to persist node at " + chunk + ": " + e.getMessage());
+            }
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idlefarm_players SET balance = ? WHERE uuid = ?")) {
+                update.setDouble(1, balanceAfter);
+                update.setString(2, owner.toString());
+                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
             }
         });
+        if (!committed) return null;
+        index(record);
+        player.addBalance(-cost);
         return record;
     }
 

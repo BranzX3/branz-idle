@@ -44,6 +44,12 @@ public final class WarehouseMenu extends Menu {
 
     @Override
     protected void build() {
+        if (!owner.equals(viewer.getUniqueId())) {
+            viewer.closeInventory();
+            viewer.sendMessage(Component.text("You cannot open another player's Warehouse.",
+                    NamedTextColor.RED));
+            return;
+        }
         List<Map.Entry<String, Integer>> entries =
                 new ArrayList<>(gui.warehouseService().getContents(owner).entrySet());
         int start = page * PAGE_SIZE;
@@ -137,13 +143,8 @@ public final class WarehouseMenu extends Menu {
 
     private void expand() {
         var data = gui.dataStore().getOnline(viewer.getUniqueId());
-        boolean ok = data != null && gui.warehouseService().expandCapacity(owner, amount -> {
-            if (data.getBalance() < amount) {
-                return false;
-            }
-            data.addBalance(-amount);
-            return true;
-        });
+        boolean ok = data != null && owner.equals(viewer.getUniqueId())
+                && gui.warehouseService().expandCapacity(owner, data);
         viewer.sendMessage(Component.text(ok ? "Warehouse expanded!" : "Not enough money to expand.",
                 ok ? NamedTextColor.GREEN : NamedTextColor.RED));
         if (ok) {

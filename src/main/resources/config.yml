@@ -26,6 +26,22 @@ rewards:
 # Currency display name used in messages/scoreboard.
 currency-name: "Coins"
 
+# Central reward catalog used by gameplay settlement and UI descriptions.
+# Keep changes aligned with docs/BALANCE_BIBLE.md and the 28-32 day target.
+progression:
+  rewards:
+    starter-node-exp: 300
+    first-collection-exp: 100
+    first-expedition-exp: 700
+    extra-expedition-exp: 100
+    extra-expeditions-per-day: 3
+    focus-commission-exp: 400
+    behavior-commission-coins: 600
+    supply-commission-chronicle-points: 3
+    weekly-chapter-exp: 3500
+    weekly-chapter-coins: 2000
+    catchup-commission-exp: 200
+
 # Multiplier applied to rewards for players standing in an AFK-designated
 # region/world. Set to 1.0 to disable bonus.
 afk-bonus-multiplier: 1.0

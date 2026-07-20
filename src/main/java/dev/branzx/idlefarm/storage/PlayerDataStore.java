@@ -56,17 +56,57 @@ public final class PlayerDataStore {
     }
 
     public void saveSync(PlayerData data) {
+        long revision = data.getRevision();
+        UUID uuid = data.getUuid();
+        String name = data.getName();
+        double balance = data.getBalance();
+        long minutes = data.getTotalOnlineMinutes();
+        boolean committed = database.executeTransaction("save player " + uuid, connection -> {
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idlefarm_players SET name = ?, balance = ?, total_online_minutes = ? "
+                            + "WHERE uuid = ?")) {
+                update.setString(1, name);
+                update.setDouble(2, balance);
+                update.setLong(3, minutes);
+                update.setString(4, uuid.toString());
+                update.executeUpdate();
+            }
+        });
+        if (committed) data.markPersisted(revision);
+    }
+
+    /**
+     * Queues a snapshot save behind all preceding gameplay writes. Revision
+     * checking prevents a later mutation from being marked clean by an older
+     * snapshot completing asynchronously.
+     */
+    public void saveAsync(PlayerData data) {
+        if (data == null || !data.isDirty()) return;
+        long revision = data.getRevision();
+        String name = data.getName();
+        double balance = data.getBalance();
+        long minutes = data.getTotalOnlineMinutes();
+        UUID uuid = data.getUuid();
+        database.submitWrite(() -> saveSnapshot(uuid, name, balance, minutes, data, revision));
+    }
+
+    public void saveAllDirtyAsync() {
+        online.values().forEach(this::saveAsync);
+    }
+
+    private void saveSnapshot(UUID uuid, String name, double balance, long minutes,
+                              PlayerData source, long revision) {
         try (Connection connection = database.getConnection();
              PreparedStatement update = connection.prepareStatement(
                      "UPDATE idlefarm_players SET name = ?, balance = ?, total_online_minutes = ? WHERE uuid = ?")) {
-            update.setString(1, data.getName());
-            update.setDouble(2, data.getBalance());
-            update.setLong(3, data.getTotalOnlineMinutes());
-            update.setString(4, data.getUuid().toString());
+            update.setString(1, name);
+            update.setDouble(2, balance);
+            update.setLong(3, minutes);
+            update.setString(4, uuid.toString());
             update.executeUpdate();
-            data.clearDirty();
+            source.markPersisted(revision);
         } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to save player data for " + data.getUuid() + ": " + e.getMessage());
+            plugin.getLogger().severe("Failed to save player data for " + uuid + ": " + e.getMessage());
         }
     }
 

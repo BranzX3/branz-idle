@@ -99,19 +99,25 @@ public final class PerkService {
         if (data == null || data.getBalance() < cost) {
             return "Not enough money (need " + cost + ").";
         }
-        data.addBalance(-cost);
-        perks.computeIfAbsent(owner, k -> ConcurrentHashMap.newKeySet()).add(perk);
-        database.submitWrite(() -> {
-            try (Connection connection = database.getConnection();
-                 PreparedStatement insert = connection.prepareStatement(
+        double balanceAfter = data.getBalance() - cost;
+        boolean committed = database.executeTransaction("buy perk " + owner + " " + perk,
+                connection -> {
+            try (PreparedStatement insert = connection.prepareStatement(
                          "REPLACE INTO idlefarm_perks (owner_uuid, perk) VALUES (?, ?)")) {
                 insert.setString(1, owner.toString());
                 insert.setString(2, perk);
                 insert.executeUpdate();
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to persist perk: " + e.getMessage());
+            }
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idlefarm_players SET balance = ? WHERE uuid = ?")) {
+                update.setDouble(1, balanceAfter);
+                update.setString(2, owner.toString());
+                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
             }
         });
+        if (!committed) return "Purchase could not be settled; no Coins were charged.";
+        data.addBalance(-cost);
+        perks.computeIfAbsent(owner, k -> ConcurrentHashMap.newKeySet()).add(perk);
         return null;
     }
 }

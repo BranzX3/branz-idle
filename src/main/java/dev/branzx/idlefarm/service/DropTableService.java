@@ -47,6 +47,8 @@ public final class DropTableService {
         List<String> errors = validate();
         if (!errors.isEmpty()) {
             errors.forEach(error -> plugin.getLogger().severe("Drop-table validation: " + error));
+            throw new IllegalStateException("Refusing to publish invalid drop tables ("
+                    + errors.size() + " validation errors)");
         }
     }
 
@@ -179,7 +181,7 @@ public final class DropTableService {
         String typeKey = type.name().toLowerCase(Locale.ROOT);
         ConfigurationSection section = yaml.getConfigurationSection(typeKey);
         if (section == null) {
-            return Map.of("cobblestone", 1.0);
+            return Map.of();
         }
         if (section.getConfigurationSection("bracket-1") != null) {
             Map<String, Double> cumulative = new LinkedHashMap<>();
@@ -198,7 +200,7 @@ public final class DropTableService {
                     }
                 }
             }
-            return cumulative.isEmpty() ? Map.of("cobblestone", 1.0) : cumulative;
+            return Map.copyOf(cumulative);
         }
         Map<String, Double> table = new LinkedHashMap<>();
         for (String key : section.getKeys(false)) {
@@ -207,7 +209,7 @@ public final class DropTableService {
             }
             table.put(key, section.getDouble(key));
         }
-        return table.isEmpty() ? Map.of("cobblestone", 1.0) : table;
+        return Map.copyOf(table);
     }
 
     /**
@@ -287,15 +289,25 @@ public final class DropTableService {
         return table;
     }
 
-    public void setWeight(String path, String material, double weight) {
+    public boolean setWeight(String path, String material, double weight) {
         Material parsed = Material.matchMaterial(material);
         if (parsed == null || !parsed.isItem() || !Double.isFinite(weight)) {
             plugin.getLogger().warning("Rejected invalid drop-table edit: " + material + "=" + weight);
-            return;
+            return false;
+        }
+        String key = path + "." + material.toLowerCase(Locale.ROOT);
+        Object previous = yaml.get(key);
+        yaml.set(key, weight <= 0 ? null : weight);
+        List<String> errors = validate();
+        if (!errors.isEmpty()) {
+            yaml.set(key, previous);
+            plugin.getLogger().warning("Rejected drop-table edit that would invalidate published content: "
+                    + errors.getFirst());
+            return false;
         }
         backupRevision();
-        yaml.set(path + "." + material.toLowerCase(Locale.ROOT), weight <= 0 ? null : weight);
         save();
+        return true;
     }
 
     private void backupRevision() {

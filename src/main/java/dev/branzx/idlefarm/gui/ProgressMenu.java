@@ -78,8 +78,11 @@ public final class ProgressMenu extends Menu {
                         redraw();
                     });
         }
+        var rewardCatalog = design.progressionRewards();
         set(16, Icon.of(Material.ENCHANTED_BOOK).name("Weekly Node Chapter", NamedTextColor.GOLD)
-                .lore("5 daily actions → 3,500 Node EXP + 2,000 Coins", NamedTextColor.GRAY).build(),
+                .lore("5 active days → " + rewardCatalog.weeklyChapterExp()
+                                + " Node EXP + " + rewardCatalog.weeklyChapterCoins() + " Coins",
+                        NamedTextColor.GRAY).build(),
                 event -> {
                     GameDesignService.Result result = design.claimWeeklyChapter(viewer.getUniqueId());
                     message(result);

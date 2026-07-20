@@ -2,6 +2,7 @@ package dev.branzx.idlefarm.service;
 
 import dev.branzx.idlefarm.IdleFarmPlugin;
 import dev.branzx.idlefarm.storage.Database;
+import dev.branzx.idlefarm.storage.PlayerData;
 import dev.branzx.idlefarm.node.NodeRecord;
 
 import java.sql.Connection;
@@ -21,6 +22,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * writes go through the ordered async queue.
  */
 public final class WarehouseService {
+
+    /**
+     * Immutable durable representation used by cross-aggregate transactions
+     * such as Exploration loot settlement.
+     */
+    public record Snapshot(UUID owner, int capacity, String serializedContents) {
+    }
 
     private final IdleFarmPlugin plugin;
     private final Database database;
@@ -54,11 +62,15 @@ public final class WarehouseService {
     }
 
     public Map<String, Integer> getContents(UUID owner) {
+        return Map.copyOf(mutableContents(owner));
+    }
+
+    private Map<String, Integer> mutableContents(UUID owner) {
         return contents.computeIfAbsent(owner, k -> new LinkedHashMap<>());
     }
 
     public int total(UUID owner) {
-        return getContents(owner).values().stream().mapToInt(Integer::intValue).sum();
+        return mutableContents(owner).values().stream().mapToInt(Integer::intValue).sum();
     }
 
     public int freeSpace(UUID owner) {
@@ -72,7 +84,7 @@ public final class WarehouseService {
     public int deposit(UUID owner, String material, int amount) {
         int stored = Math.min(amount, freeSpace(owner));
         if (stored > 0) {
-            getContents(owner).merge(material.toUpperCase(java.util.Locale.ROOT), stored, Integer::sum);
+            mutableContents(owner).merge(material.toUpperCase(java.util.Locale.ROOT), stored, Integer::sum);
             persist(owner);
         }
         return stored;
@@ -83,24 +95,41 @@ public final class WarehouseService {
      * Returns false without changing anything when the bundle does not fit.
      */
     public boolean depositAll(UUID owner, Map<String, Integer> items) {
+        Snapshot snapshot = prepareDepositAll(owner, items);
+        if (snapshot == null) {
+            return false;
+        }
+        if (!items.isEmpty()) {
+            persist(snapshot);
+        }
+        return true;
+    }
+
+    /**
+     * Applies an all-or-nothing bundle to the runtime cache without scheduling
+     * a standalone write. The caller must persist the returned snapshot,
+     * normally as part of a transaction that settles the source reward too.
+     */
+    public Snapshot prepareDepositAll(UUID owner, Map<String, Integer> items) {
         long requested = items.values().stream()
                 .filter(amount -> amount != null && amount > 0)
                 .mapToLong(Integer::longValue)
                 .sum();
         if (requested > freeSpace(owner)) {
-            return false;
+            return null;
         }
-        Map<String, Integer> warehouse = getContents(owner);
+        Map<String, Integer> warehouse = mutableContents(owner);
         for (Map.Entry<String, Integer> entry : items.entrySet()) {
             int amount = entry.getValue() == null ? 0 : entry.getValue();
             if (amount > 0) {
                 warehouse.merge(entry.getKey().toUpperCase(java.util.Locale.ROOT), amount, Integer::sum);
             }
         }
-        if (requested > 0) {
-            persist(owner);
-        }
-        return true;
+        return snapshot(owner);
+    }
+
+    public Snapshot snapshot(UUID owner) {
+        return new Snapshot(owner, getCapacity(owner), serialize(mutableContents(owner)));
     }
 
     /**
@@ -110,7 +139,7 @@ public final class WarehouseService {
      */
     public int collectNode(NodeRecord node) {
         UUID owner = node.getOwnerUuid();
-        Map<String, Integer> warehouse = getContents(owner);
+        Map<String, Integer> warehouse = mutableContents(owner);
         int moved = 0;
         synchronized (node) {
             int space = freeSpace(owner);
@@ -158,7 +187,7 @@ public final class WarehouseService {
 
     /** Removes up to {@code amount}; returns the number actually removed. */
     public int withdraw(UUID owner, String material, int amount) {
-        Map<String, Integer> map = getContents(owner);
+        Map<String, Integer> map = mutableContents(owner);
         String key = material.toUpperCase(java.util.Locale.ROOT);
         int have = map.getOrDefault(key, 0);
         int removed = Math.min(have, amount);
@@ -173,35 +202,53 @@ public final class WarehouseService {
         return removed;
     }
 
-    public boolean expandCapacity(UUID owner, PlayerBalance balance) {
+    public boolean expandCapacity(UUID owner, PlayerData player) {
         int step = plugin.getConfig().getInt("warehouse.expand-step", 1000);
         double cost = plugin.getConfig().getDouble("warehouse.expand-cost", 5000);
-        if (!balance.trySpend(cost)) {
+        if (player == null || player.getBalance() < cost) {
             return false;
         }
-        capacities.put(owner, getCapacity(owner) + step);
-        persist(owner);
+        int capacity = getCapacity(owner) + step;
+        String content = serialize(mutableContents(owner));
+        double balanceAfter = player.getBalance() - cost;
+        boolean committed = database.executeTransaction("expand warehouse " + owner, connection -> {
+            try (PreparedStatement upsert = connection.prepareStatement(
+                    "REPLACE INTO idlefarm_warehouse "
+                            + "(owner_uuid, capacity, content_json) VALUES (?, ?, ?)")) {
+                upsert.setString(1, owner.toString());
+                upsert.setInt(2, capacity);
+                upsert.setString(3, content);
+                upsert.executeUpdate();
+            }
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idlefarm_players SET balance = ? WHERE uuid = ?")) {
+                update.setDouble(1, balanceAfter);
+                update.setString(2, player.getUuid().toString());
+                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
+            }
+        });
+        if (!committed) return false;
+        capacities.put(owner, capacity);
+        player.addBalance(-cost);
         return true;
     }
 
-    /** Minimal spend hook so this service needn't depend on PlayerData directly. */
-    public interface PlayerBalance {
-        boolean trySpend(double amount);
+    private void persist(UUID owner) {
+        persist(snapshot(owner));
     }
 
-    private void persist(UUID owner) {
-        int capacity = getCapacity(owner);
-        String json = serialize(getContents(owner));
+    private void persist(Snapshot snapshot) {
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement upsert = connection.prepareStatement(
                          "REPLACE INTO idlefarm_warehouse (owner_uuid, capacity, content_json) VALUES (?, ?, ?)")) {
-                upsert.setString(1, owner.toString());
-                upsert.setInt(2, capacity);
-                upsert.setString(3, json);
+                upsert.setString(1, snapshot.owner().toString());
+                upsert.setInt(2, snapshot.capacity());
+                upsert.setString(3, snapshot.serializedContents());
                 upsert.executeUpdate();
             } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to persist warehouse for " + owner + ": " + e.getMessage());
+                plugin.getLogger().severe("Failed to persist warehouse for " + snapshot.owner()
+                        + ": " + e.getMessage());
             }
         });
     }

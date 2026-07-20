@@ -93,7 +93,10 @@ public final class PoolEditorMenu extends Menu {
 
     private void adjust(String material, double current, ClickType click) {
         if (click == ClickType.DROP || click == ClickType.CONTROL_DROP) {
-            drops.setWeight(path, material, 0);
+            if (!drops.setWeight(path, material, 0)) {
+                rejected();
+                return;
+            }
             audit.log(viewer.getUniqueId(), "POOL_EDIT", path + " remove " + material);
             redraw();
             return;
@@ -103,7 +106,11 @@ public final class PoolEditorMenu extends Menu {
             gui.chatPrompt().requestNumber(viewer,
                     "Enter exact weight for " + Ui.pretty(material) + " (current " + Ui.num(current) + ")",
                     value -> {
-                        drops.setWeight(path, material, value);
+                        if (!drops.setWeight(path, material, value)) {
+                            rejected();
+                            open();
+                            return;
+                        }
                         audit.log(viewer.getUniqueId(), "POOL_EDIT",
                                 path + " " + material + " =" + value + " (typed)");
                         open(); // reopen the editor
@@ -122,7 +129,10 @@ public final class PoolEditorMenu extends Menu {
             return;
         }
         double updated = Math.max(0, current + delta);
-        drops.setWeight(path, material, updated);
+        if (!drops.setWeight(path, material, updated)) {
+            rejected();
+            return;
+        }
         audit.log(viewer.getUniqueId(), "POOL_EDIT",
                 path + " " + material + " " + current + "->" + updated);
         redraw();
@@ -136,10 +146,19 @@ public final class PoolEditorMenu extends Menu {
             return;
         }
         String material = held.getType().name().toLowerCase(Locale.ROOT);
-        drops.setWeight(path, material, 10);
+        if (!drops.setWeight(path, material, 10)) {
+            rejected();
+            return;
+        }
         audit.log(viewer.getUniqueId(), "POOL_EDIT", path + " add " + material + " w=10");
         viewer.sendMessage(Component.text("Added " + Ui.pretty(material) + " (weight 10).",
                 NamedTextColor.GREEN));
         redraw();
+    }
+
+    private void rejected() {
+        viewer.sendMessage(Component.text(
+                "Edit rejected: every published bracket must remain valid and non-empty.",
+                NamedTextColor.RED));
     }
 }

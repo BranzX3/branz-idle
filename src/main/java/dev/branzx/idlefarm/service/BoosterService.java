@@ -97,19 +97,16 @@ public final class BoosterService {
         if (data == null || data.getBalance() < cost) {
             return "Not enough money (need " + cost + ").";
         }
-        data.addBalance(-cost);
-
         long now = System.currentTimeMillis();
         long extension = durationMinutes(type) * 60_000L;
         Map<String, Active> byType = active.computeIfAbsent(owner, k -> new ConcurrentHashMap<>());
         Active current = byType.get(type);
         long newExpiry = (current != null && current.expiresAt() > now ? current.expiresAt() : now) + extension;
         Active booster = new Active(boostMultiplier(type), newExpiry);
-        byType.put(type, booster);
-
-        database.submitWrite(() -> {
-            try (Connection connection = database.getConnection();
-                 PreparedStatement upsert = connection.prepareStatement(
+        double balanceAfter = data.getBalance() - cost;
+        boolean committed = database.executeTransaction("buy booster " + owner + " " + type,
+                connection -> {
+            try (PreparedStatement upsert = connection.prepareStatement(
                          "REPLACE INTO idlefarm_boosters (owner_uuid, booster_type, multiplier, expires_at) "
                                  + "VALUES (?, ?, ?, ?)")) {
                 upsert.setString(1, owner.toString());
@@ -117,10 +114,17 @@ public final class BoosterService {
                 upsert.setDouble(3, booster.multiplier());
                 upsert.setTimestamp(4, new Timestamp(booster.expiresAt()));
                 upsert.executeUpdate();
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to persist booster: " + e.getMessage());
+            }
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idlefarm_players SET balance = ? WHERE uuid = ?")) {
+                update.setDouble(1, balanceAfter);
+                update.setString(2, owner.toString());
+                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
             }
         });
+        if (!committed) return "Purchase could not be settled; no Coins were charged.";
+        data.addBalance(-cost);
+        byType.put(type, booster);
         return null;
     }
 }

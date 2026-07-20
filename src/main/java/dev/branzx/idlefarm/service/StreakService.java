@@ -13,6 +13,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * (base × streak, capped). Missing a day resets to 1.
  */
 public final class StreakService {
+
+    private static final ZoneId GAME_ZONE = ZoneId.of("Asia/Bangkok");
 
     private record Streak(int days, String lastDay) {
     }
@@ -59,7 +62,7 @@ public final class StreakService {
     /** Call on join (after player data loads). Pays the daily bonus once per day. */
     public void handleLogin(Player player) {
         UUID owner = player.getUniqueId();
-        String today = LocalDate.now().toString();
+        String today = LocalDate.now(GAME_ZONE).toString();
         Streak current = streaks.get(owner);
         if (current != null && today.equals(current.lastDay())) {
             return; // already counted today
@@ -70,17 +73,38 @@ public final class StreakService {
         } else {
             days = 1;
         }
-        Streak updated = new Streak(days, today);
-        streaks.put(owner, updated);
-        persist(owner, updated);
-
         double base = plugin.getConfig().getDouble("streak.base-money", 100);
         int capDays = plugin.getConfig().getInt("streak.max-multiplier-days", 7);
         double bonus = base * Math.min(days, capDays);
         PlayerData data = dataStore.getOnline(owner);
-        if (data != null) {
-            data.addBalance(bonus);
+        if (data == null) return;
+        Streak updated = new Streak(days, today);
+        boolean committed = database.executeTransaction("daily streak " + owner + " " + today,
+                connection -> {
+                    try (PreparedStatement upsert = connection.prepareStatement(
+                            "REPLACE INTO idlefarm_streaks "
+                                    + "(owner_uuid, current_streak, last_login_day) VALUES (?, ?, ?)")) {
+                        upsert.setString(1, owner.toString());
+                        upsert.setInt(2, updated.days());
+                        upsert.setString(3, updated.lastDay());
+                        upsert.executeUpdate();
+                    }
+                    try (PreparedStatement update = connection.prepareStatement(
+                            "UPDATE idlefarm_players SET balance = balance + ? WHERE uuid = ?")) {
+                        update.setDouble(1, bonus);
+                        update.setString(2, owner.toString());
+                        if (update.executeUpdate() != 1) {
+                            throw new SQLException("Player row is missing");
+                        }
+                    }
+                });
+        if (!committed) {
+            player.sendMessage(Component.text("[Streak] Reward settlement failed; please relog.",
+                    NamedTextColor.RED));
+            return;
         }
+        streaks.put(owner, updated);
+        data.addBalance(bonus);
         String currency = plugin.getConfig().getString("currency-name", "Coins");
         player.sendMessage(Component.text()
                 .append(Component.text("[Streak] ", NamedTextColor.GOLD))
@@ -89,19 +113,4 @@ public final class StreakService {
                 .build());
     }
 
-    private void persist(UUID owner, Streak streak) {
-        database.submitWrite(() -> {
-            try (Connection connection = database.getConnection();
-                 PreparedStatement upsert = connection.prepareStatement(
-                         "REPLACE INTO idlefarm_streaks (owner_uuid, current_streak, last_login_day) "
-                                 + "VALUES (?, ?, ?)")) {
-                upsert.setString(1, owner.toString());
-                upsert.setInt(2, streak.days());
-                upsert.setString(3, streak.lastDay());
-                upsert.executeUpdate();
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to persist streak: " + e.getMessage());
-            }
-        });
-    }
 }

@@ -12,9 +12,15 @@ import java.sql.Statement;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 public final class Database {
+
+    @FunctionalInterface
+    public interface TransactionWork {
+        void execute(Connection connection) throws Exception;
+    }
 
     private final IdleFarmPlugin plugin;
     private HikariDataSource dataSource;
@@ -82,6 +88,66 @@ public final class Database {
                 plugin.getLogger().severe("Queued DB write failed: " + e.getMessage());
             }
         });
+    }
+
+    /**
+     * Runs one ordered asynchronous unit of work in a database transaction.
+     * Services should use this whenever a gameplay action changes more than
+     * one durable row. A failure rolls the whole unit back instead of leaving
+     * a partially-settled reward or transfer.
+     */
+    public void submitTransaction(String operation, TransactionWork work) {
+        submitWrite(() -> runTransaction(operation, work));
+    }
+
+    /**
+     * Ordered blocking transaction for actions that must know whether the
+     * durable commit succeeded before granting an entitlement. Keep these
+     * operations rare (checkout/admin settlement), since the caller waits for
+     * the database writer.
+     */
+    public boolean executeTransaction(String operation, TransactionWork work) {
+        if (Thread.currentThread().getName().equals("IdleFarm-DB-Writer")) {
+            throw new IllegalStateException(
+                    "Blocking transaction cannot be nested on the DB writer: " + operation);
+        }
+        Future<?> future = writeQueue.submit(() -> runTransaction(operation, work));
+        try {
+            future.get();
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (java.util.concurrent.ExecutionException e) {
+            plugin.getLogger().warning(operation + " was rejected: "
+                    + e.getCause().getMessage());
+            return false;
+        }
+    }
+
+    private void runTransaction(String operation, TransactionWork work) {
+        try (Connection connection = getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                work.execute(connection);
+                connection.commit();
+            } catch (Exception e) {
+                try {
+                    connection.rollback();
+                } catch (SQLException rollbackFailure) {
+                    e.addSuppressed(rollbackFailure);
+                }
+                throw new IllegalStateException(operation + " transaction failed", e);
+            } finally {
+                try {
+                    connection.setAutoCommit(true);
+                } catch (SQLException ignored) {
+                    // The pooled connection is closing immediately.
+                }
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException(operation + " could not acquire a connection", e);
+        }
     }
 
     private static final String[] MYSQL_DDL = {
@@ -200,6 +266,14 @@ public final class Database {
             CREATE TABLE IF NOT EXISTS idlefarm_expedition_locks (
                 worker_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
                 ends_at TIMESTAMP NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_reward_settlements (
+                settlement_id VARCHAR(96) NOT NULL PRIMARY KEY,
+                owner_uuid VARCHAR(36) NOT NULL,
+                amount DOUBLE NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """,
             """
@@ -444,6 +518,14 @@ public final class Database {
             CREATE TABLE IF NOT EXISTS idlefarm_expedition_locks (
                 worker_uuid TEXT NOT NULL PRIMARY KEY,
                 ends_at TIMESTAMP NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_reward_settlements (
+                settlement_id TEXT NOT NULL PRIMARY KEY,
+                owner_uuid TEXT NOT NULL,
+                amount REAL NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """,
             """

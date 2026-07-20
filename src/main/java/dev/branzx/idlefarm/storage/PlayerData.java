@@ -1,6 +1,7 @@
 package dev.branzx.idlefarm.storage;
 
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class PlayerData {
@@ -10,6 +11,7 @@ public final class PlayerData {
     private final AtomicReference<Double> balance;
     private volatile long totalOnlineMinutes;
     private volatile boolean dirty;
+    private final AtomicLong revision = new AtomicLong();
 
     public PlayerData(UUID uuid, String name, double balance, long totalOnlineMinutes) {
         this.uuid = uuid;
@@ -28,6 +30,7 @@ public final class PlayerData {
 
     public void setName(String name) {
         this.name = name;
+        markDirty();
     }
 
     public double getBalance() {
@@ -36,7 +39,7 @@ public final class PlayerData {
 
     public void addBalance(double amount) {
         balance.updateAndGet(v -> v + amount);
-        dirty = true;
+        markDirty();
     }
 
     public long getTotalOnlineMinutes() {
@@ -45,7 +48,7 @@ public final class PlayerData {
 
     public void incrementOnlineMinutes(long minutes) {
         this.totalOnlineMinutes += minutes;
-        dirty = true;
+        markDirty();
     }
 
     public boolean isDirty() {
@@ -54,5 +57,20 @@ public final class PlayerData {
 
     public void clearDirty() {
         dirty = false;
+    }
+
+    public long getRevision() {
+        return revision.get();
+    }
+
+    public void markPersisted(long savedRevision) {
+        if (revision.get() == savedRevision) {
+            dirty = false;
+        }
+    }
+
+    private void markDirty() {
+        revision.incrementAndGet();
+        dirty = true;
     }
 }

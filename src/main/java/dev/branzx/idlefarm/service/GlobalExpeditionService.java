@@ -18,9 +18,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.WeekFields;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -35,6 +37,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * broadcast, and a fresh week begins automatically.
  */
 public final class GlobalExpeditionService {
+
+    private static final ZoneId GAME_ZONE = ZoneId.of("Asia/Bangkok");
 
     public record Score(UUID owner, long contribution) {
     }
@@ -58,7 +62,7 @@ public final class GlobalExpeditionService {
     }
 
     public static String currentWeek() {
-        LocalDate now = LocalDate.now();
+        LocalDate now = LocalDate.now(GAME_ZONE);
         WeekFields iso = WeekFields.ISO;
         return now.get(iso.weekBasedYear()) + "-W" + String.format("%02d", now.get(iso.weekOfWeekBasedYear()));
     }
@@ -90,6 +94,12 @@ public final class GlobalExpeditionService {
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to load expedition data: " + e.getMessage());
         }
+        // A server may have been offline during rollover. Settle every stale
+        // week on startup instead of leaving its rewards orphaned forever.
+        List.copyOf(scores.keySet()).stream()
+                .filter(week -> !week.equals(activeWeek))
+                .sorted()
+                .forEach(this::settle);
     }
 
     /**
@@ -245,7 +255,7 @@ public final class GlobalExpeditionService {
     }
 
     private void settle(String week) {
-        Map<UUID, Long> finished = scores.remove(week);
+        Map<UUID, Long> finished = scores.get(week);
         if (finished == null || finished.isEmpty()) {
             return;
         }
@@ -262,52 +272,57 @@ public final class GlobalExpeditionService {
                 plugin.getConfig().getLong("expedition.participation-threshold", 250);
         double participationReward =
                 plugin.getConfig().getDouble("expedition.participation-reward", 500);
+        Map<UUID, Double> payouts = new LinkedHashMap<>();
         for (Score score : ranking) {
             if (score.contribution() >= participationThreshold) {
-                payout(score.owner(), participationReward);
+                payouts.merge(score.owner(), participationReward, Double::sum);
             }
         }
         for (int i = 0; i < ranking.size() && i < rewards.size(); i++) {
             Score score = ranking.get(i);
             double reward = rewards.get(i);
-            payout(score.owner(), reward);
+            payouts.merge(score.owner(), reward, Double::sum);
             var offline = Bukkit.getOfflinePlayer(score.owner());
             announce.append("#").append(i + 1).append(" ")
                     .append(offline.getName() == null ? "?" : offline.getName())
                     .append(" (").append(score.contribution()).append(") ");
         }
-        Bukkit.broadcast(Component.text("[Expedition] " + announce, NamedTextColor.GOLD));
-        // Purge settled rows.
-        database.submitWrite(() -> {
-            try (Connection connection = database.getConnection();
-                 PreparedStatement delete = connection.prepareStatement(
-                         "DELETE FROM idlefarm_expedition WHERE week = ?")) {
+        boolean committed = database.executeTransaction("settle Global Expedition " + week, connection -> {
+            for (Map.Entry<UUID, Double> payout : payouts.entrySet()) {
+                try (PreparedStatement ledger = connection.prepareStatement(
+                        "INSERT INTO idlefarm_reward_settlements "
+                                + "(settlement_id, owner_uuid, amount) VALUES (?, ?, ?)")) {
+                    ledger.setString(1, "GLOBAL_EXPEDITION:" + week + ":" + payout.getKey());
+                    ledger.setString(2, payout.getKey().toString());
+                    ledger.setDouble(3, payout.getValue());
+                    ledger.executeUpdate();
+                }
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE idlefarm_players SET balance = balance + ? WHERE uuid = ?")) {
+                    update.setDouble(1, payout.getValue());
+                    update.setString(2, payout.getKey().toString());
+                    if (update.executeUpdate() != 1) {
+                        throw new SQLException("Missing player row for " + payout.getKey());
+                    }
+                }
+            }
+            try (PreparedStatement delete = connection.prepareStatement(
+                    "DELETE FROM idlefarm_expedition WHERE week = ?")) {
                 delete.setString(1, week);
                 delete.executeUpdate();
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to purge settled expedition: " + e.getMessage());
             }
         });
-    }
-
-    /** Credits Money whether the winner is online or not. */
-    private void payout(UUID owner, double amount) {
-        PlayerData online = dataStore.getOnline(owner);
-        if (online != null) {
-            online.addBalance(amount);
+        if (!committed) {
+            plugin.getLogger().severe("Global Expedition " + week
+                    + " was not settled; it will retry after restart/rollover.");
             return;
         }
-        database.submitWrite(() -> {
-            try (Connection connection = database.getConnection();
-                 PreparedStatement update = connection.prepareStatement(
-                         "UPDATE idlefarm_players SET balance = balance + ? WHERE uuid = ?")) {
-                update.setDouble(1, amount);
-                update.setString(2, owner.toString());
-                update.executeUpdate();
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to pay expedition reward: " + e.getMessage());
-            }
+        payouts.forEach((owner, amount) -> {
+            PlayerData online = dataStore.getOnline(owner);
+            if (online != null) online.addBalance(amount);
         });
+        scores.remove(week);
+        Bukkit.broadcast(Component.text("[Expedition] " + announce, NamedTextColor.GOLD));
     }
 
     private void persistLock(UUID worker, long endsAt) {

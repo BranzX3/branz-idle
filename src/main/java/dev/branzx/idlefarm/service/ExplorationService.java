@@ -18,6 +18,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -36,6 +37,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * node a large exploration-EXP bonus — the fast lane for brackets.
  */
 public final class ExplorationService {
+
+    private static final ZoneId GAME_ZONE = ZoneId.of("Asia/Bangkok");
 
     public record WarehouseClaimResult(boolean success, int total, String message) {
     }
@@ -234,12 +237,11 @@ public final class ExplorationService {
                                        long now, boolean bufferFull) {
         PassiveResearchRecord progress = passiveResearch.computeIfAbsent(node.getId(),
                 ignored -> new PassiveResearchRecord(node.getLastTickAt(),
-                        LocalDate.now().toString(), 0));
+                        LocalDate.now(GAME_ZONE).toString(), 0));
         long previous = progress.lastAt > 0 ? progress.lastAt : now;
         long elapsed = Math.max(0, Math.min(now - previous, scale.restedResearchMillis()));
-        progress.lastAt = now;
 
-        String today = LocalDate.now().toString();
+        String today = LocalDate.now(GAME_ZONE).toString();
         if (!today.equals(progress.day)) {
             progress.day = today;
             progress.earnedToday = 0;
@@ -260,7 +262,22 @@ public final class ExplorationService {
             if (earned > 0) {
                 progress.earnedToday += (int) earned;
                 grantExplorationExp(node, earned);
+                // Preserve sub-EXP time instead of discarding it every tick.
+                // This is essential for the 25% full-buffer rate, which may
+                // produce less than one EXP per scheduler interval.
+                long consumed = rate <= 0 ? elapsed
+                        : Math.min(elapsed, (long) Math.ceil(earned * 3_600_000.0 / rate));
+                progress.lastAt = Math.min(now, previous + consumed);
+                if (earned >= remaining) {
+                    progress.lastAt = now;
+                }
+            } else if (rate <= 0) {
+                progress.lastAt = now;
             }
+        } else {
+            // Do not accumulate a hidden backlog while unstaffed, capped, or
+            // already at the level ceiling.
+            progress.lastAt = now;
         }
         persistPassiveResearch(node.getId(), progress);
         return earned;
@@ -486,7 +503,7 @@ public final class ExplorationService {
                 "LUCKY_TOKEN".equals(gameDesignService.workerCharm(worker.getWorkerUuid()))) ? 3.0 : 0;
         event.grade = rollGrade(luckSum, extraGreat);
         java.util.Set<String> roles = team.stream().map(this::role).collect(java.util.stream.Collectors.toSet());
-        event.loot = rollLoot(event.eventType, event.grade, team.size(),
+        event.loot = rollLoot(node, event.eventType, event.grade, team.size(),
                 roles.contains("Scout") && roles.contains("Producer"),
                 "QUANTITY".equals(preparation));
         event.state = "COMPLETED";
@@ -533,10 +550,30 @@ public final class ExplorationService {
         Map<String, Integer> loot = parseLoot(event.loot);
         int total = loot.values().stream().mapToInt(Integer::intValue).sum();
         int free = warehouse.freeSpace(node.getOwnerUuid());
-        if (!warehouse.depositAll(node.getOwnerUuid(), loot)) {
+        WarehouseService.Snapshot warehouseSnapshot =
+                warehouse.prepareDepositAll(node.getOwnerUuid(), loot);
+        if (warehouseSnapshot == null) {
             return new WarehouseClaimResult(false, 0,
                     "Warehouse needs " + Math.max(0, total - free) + " more free space.");
         }
+        // The Warehouse bundle and source event are one durable settlement.
+        // A restart can therefore see either an unclaimed event or the stored
+        // loot, but never both and never neither.
+        database.submitTransaction("exploration loot claim", connection -> {
+            try (PreparedStatement upsert = connection.prepareStatement(
+                    "REPLACE INTO idlefarm_warehouse "
+                            + "(owner_uuid, capacity, content_json) VALUES (?, ?, ?)")) {
+                upsert.setString(1, warehouseSnapshot.owner().toString());
+                upsert.setInt(2, warehouseSnapshot.capacity());
+                upsert.setString(3, warehouseSnapshot.serializedContents());
+                upsert.executeUpdate();
+            }
+            try (PreparedStatement delete = connection.prepareStatement(
+                    "DELETE FROM idlefarm_exploration_events WHERE id = ?")) {
+                delete.setLong(1, event.id);
+                delete.executeUpdate();
+            }
+        });
         if (gameDesignService != null) {
             for (Map.Entry<String, Integer> entry : loot.entrySet()) {
                 gameDesignService.discover(node.getOwnerUuid(), node.getType(),
@@ -544,7 +581,7 @@ public final class ExplorationService {
             }
             gameDesignService.onExplorationClaimed(node, event.grade);
         }
-        remove(event);
+        eventsByNode.remove(event.nodeId, event);
         return new WarehouseClaimResult(true, total,
                 "Expedition loot → Warehouse: " + total + " items!");
     }
@@ -585,7 +622,7 @@ public final class ExplorationService {
         return "NORMAL";
     }
 
-    private String rollLoot(String eventType, String grade, int teamSize,
+    private String rollLoot(NodeRecord node, String eventType, String grade, int teamSize,
                             boolean treasureCrew, boolean preparedQuantity) {
         ConfigurationSection config = eventConfig(eventType);
         ConfigurationSection table = config.getConfigurationSection("loot");
@@ -603,15 +640,30 @@ public final class ExplorationService {
         if (table != null) {
             List<String> materials = List.copyOf(table.getKeys(false));
             double totalWeight = materials.stream().mapToDouble(table::getDouble).sum();
-            for (int i = 0; i < count; i++) {
-                double roll = ThreadLocalRandom.current().nextDouble() * totalWeight;
-                double cumulative = 0;
-                for (String material : materials) {
-                    cumulative += table.getDouble(material);
-                    if (roll < cumulative) {
-                        rolled.merge(material.toUpperCase(Locale.ROOT), 1, Integer::sum);
-                        break;
+            if (totalWeight > 0) {
+                String fallback = materials.stream()
+                        .map(material -> material.toUpperCase(Locale.ROOT))
+                        .filter(material -> !isCappedRare(material))
+                        .findFirst().orElse("COBBLESTONE");
+                for (int i = 0; i < count; i++) {
+                    String selected = null;
+                    for (int attempt = 0; attempt < 8 && selected == null; attempt++) {
+                        double roll = ThreadLocalRandom.current().nextDouble() * totalWeight;
+                        double cumulative = 0;
+                        for (String material : materials) {
+                            cumulative += table.getDouble(material);
+                            if (roll < cumulative) {
+                                String candidate = material.toUpperCase(Locale.ROOT);
+                                if (gameDesignService == null || gameDesignService.allowResource(
+                                        node.getOwnerUuid(), candidate,
+                                        node.getExplorationLevel())) {
+                                    selected = candidate;
+                                }
+                                break;
+                            }
+                        }
                     }
+                    rolled.merge(selected == null ? fallback : selected, 1, Integer::sum);
                 }
             }
         }
@@ -625,15 +677,26 @@ public final class ExplorationService {
         return sb.toString();
     }
 
+    private boolean isCappedRare(String material) {
+        return java.util.Set.of("DIAMOND", "EMERALD", "NAUTILUS_SHELL", "GHAST_TEAR",
+                "ANCIENT_DEBRIS", "NETHERITE_SCRAP", "WITHER_SKELETON_SKULL")
+                .contains(material);
+    }
+
     // ---- helpers / persistence ----
 
     private List<WorkerRecord> teamOf(EventRecord event) {
         List<WorkerRecord> team = new ArrayList<>();
         for (String uuid : event.workerUuids.split(",")) {
             if (!uuid.isBlank()) {
-                WorkerRecord worker = workerStore.get(UUID.fromString(uuid));
-                if (worker != null) {
-                    team.add(worker);
+                try {
+                    WorkerRecord worker = workerStore.get(UUID.fromString(uuid));
+                    if (worker != null) {
+                        team.add(worker);
+                    }
+                } catch (IllegalArgumentException ignored) {
+                    plugin.getLogger().warning("Ignoring malformed worker UUID on exploration event "
+                            + event.id + ": " + uuid);
                 }
             }
         }

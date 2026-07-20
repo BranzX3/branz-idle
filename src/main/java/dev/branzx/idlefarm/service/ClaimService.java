@@ -178,8 +178,10 @@ public final class ClaimService {
         }
 
         int originY = type.isProduction() ? SchematicService.groundY(world, chunk) : 0;
-        NodeRecord record = nodeStore.insert(owner, chunk, type, originY);
-        data.addBalance(-cost);
+        NodeRecord record = nodeStore.insert(owner, chunk, type, originY, data, cost);
+        if (record == null) {
+            return Result.fail("Claim could not be committed; no Coins were charged.");
+        }
         if (type.isProduction()) {
             schematicService.buildHousing(record, world);
             npcManager.spawnForNode(record, world);
@@ -330,9 +332,12 @@ public final class ClaimService {
         if (data == null || data.getBalance() < cost) {
             return Result.fail("Not enough money (need " + cost + ").");
         }
-        data.addBalance(-cost);
+        long previousEndsAt = node.getUpgradeEndsAt();
         node.setUpgradeEndsAt(System.currentTimeMillis() + buildSeconds(node.getTier() + 1) * 1000L);
-        nodeStore.updateProduction(node);
+        if (!nodeStore.updateProductionWithCost(node, data, cost)) {
+            node.setUpgradeEndsAt(previousEndsAt);
+            return Result.fail("Upgrade could not be committed; no Coins were charged.");
+        }
         audit(owner, "UPGRADE_START", "node#" + node.getId() + " -> T" + (node.getTier() + 1)
                 + " cost=" + cost);
         return Result.ok("Upgrade to T" + (node.getTier() + 1) + " started ("

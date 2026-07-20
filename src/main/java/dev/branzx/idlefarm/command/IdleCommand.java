@@ -72,6 +72,16 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        try {
+            return dispatch(sender, args);
+        } catch (NumberFormatException e) {
+            sender.sendMessage(Component.text("Invalid number: " + e.getMessage(),
+                    NamedTextColor.RED));
+            return true;
+        }
+    }
+
+    private boolean dispatch(CommandSender sender, String[] args) {
         // Bare /idle opens the GUI hub for players.
         if (args.length == 0) {
             if (sender instanceof Player player) {
@@ -502,8 +512,6 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             guiManager.gameDesignService().onBufferCollected(node, collected);
         }
         int remaining = node.storageTotal();
-        node.setState("ACTIVE");
-        nodeStore.updateProduction(node);
         npcManager.refreshNode(node, player.getWorld());
         if (remaining > 0) {
             sender.sendMessage(Component.text("Collected " + collected + " to Warehouse; "

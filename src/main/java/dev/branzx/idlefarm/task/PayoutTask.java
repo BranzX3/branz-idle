@@ -57,6 +57,10 @@ public final class PayoutTask extends BukkitRunnable {
                     "+" + formatAmount(payout) + " " + currencyName + "  +" + exp + " EXP",
                     NamedTextColor.GREEN));
         }
+        // Bound crash-loss exposure to one payout interval instead of the
+        // whole login session. Saves are ordered and remain off the main
+        // server thread.
+        dataStore.saveAllDirtyAsync();
     }
 
     private String formatAmount(double amount) {

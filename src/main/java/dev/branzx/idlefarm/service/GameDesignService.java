@@ -4,6 +4,7 @@ import dev.branzx.idlefarm.IdleFarmPlugin;
 import dev.branzx.idlefarm.node.NodeRecord;
 import dev.branzx.idlefarm.node.NodeType;
 import dev.branzx.idlefarm.storage.Database;
+import dev.branzx.idlefarm.storage.GameStateStore;
 import dev.branzx.idlefarm.storage.NodeStore;
 import dev.branzx.idlefarm.storage.PlayerData;
 import dev.branzx.idlefarm.storage.PlayerDataStore;
@@ -59,9 +60,6 @@ public final class GameDesignService {
                           boolean completed) {
     }
 
-    private record StateKey(UUID owner, String scope, String scopeId, String key) {
-    }
-
     private record AchievementDefinition(String id, String name, String description, int points) {
     }
 
@@ -78,7 +76,8 @@ public final class GameDesignService {
     private final NodeStore nodeStore;
     private final PlayerDataStore dataStore;
     private final AuditService audit;
-    private final Map<StateKey, String> state = new ConcurrentHashMap<>();
+    private final GameStateStore stateStore;
+    private final ProgressionRewards rewards;
     private final Map<String, Integer> capCounts = new ConcurrentHashMap<>();
     private final Map<String, Long> discoveries = new ConcurrentHashMap<>();
     private final Map<String, AchievementDefinition> achievementDefinitions = new LinkedHashMap<>();
@@ -92,6 +91,8 @@ public final class GameDesignService {
         this.nodeStore = nodeStore;
         this.dataStore = dataStore;
         this.audit = audit;
+        this.stateStore = new GameStateStore(plugin, database);
+        this.rewards = ProgressionRewards.from(plugin);
     }
 
     public void setRuntimeServices(WarehouseService warehouse, ExplorationService exploration) {
@@ -99,18 +100,18 @@ public final class GameDesignService {
         this.exploration = exploration;
     }
 
+    public ProgressionRewards progressionRewards() {
+        return rewards;
+    }
+
     public void loadAllSync() {
         loadAchievementDefinitions();
+        try {
+            stateStore.loadAllSync();
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to load scoped game state: " + e.getMessage());
+        }
         try (Connection connection = database.getConnection()) {
-            try (PreparedStatement select = connection.prepareStatement(
-                    "SELECT owner_uuid, scope, scope_id, state_key, value_text FROM idlefarm_game_state");
-                 ResultSet rs = select.executeQuery()) {
-                while (rs.next()) {
-                    state.put(new StateKey(UUID.fromString(rs.getString("owner_uuid")),
-                                    rs.getString("scope"), rs.getString("scope_id"), rs.getString("state_key")),
-                            rs.getString("value_text"));
-                }
-            }
             try (PreparedStatement select = connection.prepareStatement(
                     "SELECT owner_uuid, node_type, material, lifetime_count FROM idlefarm_discoveries");
                  ResultSet rs = select.executeQuery()) {
@@ -220,7 +221,7 @@ public final class GameDesignService {
         if (first) {
             put(owner, "ACCOUNT", "-", "starter_production", "1");
             setFocus(owner, node, true);
-            grantNodeExp(node, 300);
+            grantNodeExp(node, rewards.starterNodeExp());
             if (exploration != null) {
                 exploration.adminSpawn(node, "first_survey");
             }
@@ -237,10 +238,7 @@ public final class GameDesignService {
     public boolean isStarterWorker(UUID worker) {
         if (worker == null) return false;
         String id = worker.toString();
-        return state.entrySet().stream().anyMatch(entry ->
-                "ACCOUNT".equals(entry.getKey().scope())
-                        && "starter_worker".equals(entry.getKey().key())
-                        && id.equals(entry.getValue()));
+        return stateStore.containsValue("ACCOUNT", "starter_worker", id);
     }
 
     public boolean toggleWorkerLock(UUID owner, UUID worker) {
@@ -253,11 +251,7 @@ public final class GameDesignService {
     public boolean isWorkerLocked(UUID worker) {
         if (worker == null) return false;
         String id = worker.toString();
-        return state.entrySet().stream().anyMatch(entry ->
-                "WORKER".equals(entry.getKey().scope())
-                        && id.equals(entry.getKey().scopeId())
-                        && "locked".equals(entry.getKey().key())
-                        && "1".equals(entry.getValue()));
+        return "1".equals(stateStore.findByScopeId("WORKER", id, "locked"));
     }
 
     public String workerCharm(UUID owner, UUID worker) {
@@ -267,11 +261,7 @@ public final class GameDesignService {
     public String workerCharm(UUID worker) {
         if (worker == null) return "NONE";
         String id = worker.toString();
-        return state.entrySet().stream()
-                .filter(entry -> "WORKER".equals(entry.getKey().scope())
-                        && id.equals(entry.getKey().scopeId())
-                        && "charm".equals(entry.getKey().key()))
-                .map(Map.Entry::getValue).findFirst().orElse("NONE");
+        return valueOr(stateStore.findByScopeId("WORKER", id, "charm"), "NONE");
     }
 
     public Result equipCharm(UUID owner, WorkerRecord worker, String charm) {
@@ -320,7 +310,7 @@ public final class GameDesignService {
         UUID owner = node.getOwnerUuid();
         String day = dayKey();
         if (isFocused(node) && claimOnce(owner, "DAILY", day, "first_collection")) {
-            grantNodeExp(node, 100);
+            grantNodeExp(node, rewards.firstCollectionExp());
         }
         increment(owner, "NODE", String.valueOf(node.getId()), "collected_total", amount);
         advanceCommission(node, "collect", amount);
@@ -347,11 +337,14 @@ public final class GameDesignService {
         String day = dayKey();
         long exp;
         if (isFocused(node) && claimOnce(owner, "DAILY", day, "first_expedition")) {
-            exp = 700;
+            exp = rewards.firstExpeditionExp();
         } else {
             int extra = getInt(owner, "DAILY", day, "extra_expeditions", 0);
-            exp = extra < 3 ? 100 : 0;
-            if (extra < 3) put(owner, "DAILY", day, "extra_expeditions", String.valueOf(extra + 1));
+            exp = extra < rewards.extraExpeditionsPerDay()
+                    ? rewards.extraExpeditionExp() : 0;
+            if (extra < rewards.extraExpeditionsPerDay()) {
+                put(owner, "DAILY", day, "extra_expeditions", String.valueOf(extra + 1));
+            }
         }
         grantNodeExp(node, Math.round(exp * eventExpMultiplier(node)));
         increment(owner, "NODE", String.valueOf(node.getId()), "events_total", 1);
@@ -371,15 +364,15 @@ public final class GameDesignService {
         ensureDailyCommissions(owner, focus, day);
         List<Commission> result = new ArrayList<>(List.of(
                 commission(owner, day, "focus", "Advance your Focused Node", 1,
-                        "400 Node EXP"),
+                        rewards.focusCommissionExp() + " Node EXP"),
                 commission(owner, day, "behavior", "Complete a worker or expedition action", 1,
-                        "600 Coins"),
+                        rewards.behaviorCommissionCoins() + " Coins"),
                 commission(owner, day, "supply", "Deliver 64 mixed unlocked resources", 64,
-                        "3 Chronicle Points")));
+                        rewards.supplyCommissionChroniclePoints() + " Chronicle Points")));
         int catchup = getInt(owner, "ACCOUNT", "-", "catchup_commissions", 0);
         if (catchup > 0) {
             result.add(new Commission("catchup", "Returning-player simplified commission",
-                    1, 1, "200 Node EXP (50%)",
+                    1, 1, rewards.catchupCommissionExp() + " Node EXP (catch-up)",
                     "1".equals(get(owner, "DAILY", day, "commission_catchup_claimed"))));
         }
         return List.copyOf(result);
@@ -396,18 +389,19 @@ public final class GameDesignService {
         if (commission.claimed()) return Result.fail("That commission was already claimed.");
         if (commission.current() < commission.target()) return Result.fail("Commission is not complete yet.");
         switch (slot.toLowerCase(Locale.ROOT)) {
-            case "focus" -> grantNodeExp(focus, 400);
-            case "behavior" -> addCoins(owner, 600);
+            case "focus" -> grantNodeExp(focus, rewards.focusCommissionExp());
+            case "behavior" -> addCoins(owner, rewards.behaviorCommissionCoins());
             case "supply" -> {
                 if (consumeMixedWarehouse(owner, 64) < 64) {
                     return Result.fail("Warehouse no longer has the required 64 resources.");
                 }
-                increment(owner, "ACCOUNT", "-", "chronicle_points", 3);
+                increment(owner, "ACCOUNT", "-", "chronicle_points",
+                        rewards.supplyCommissionChroniclePoints());
             }
             case "catchup" -> {
                 int available = getInt(owner, "ACCOUNT", "-", "catchup_commissions", 0);
                 if (available <= 0) return Result.fail("No catch-up commission is available.");
-                grantNodeExp(focus, 200);
+                grantNodeExp(focus, rewards.catchupCommissionExp());
                 put(owner, "ACCOUNT", "-", "catchup_commissions", String.valueOf(available - 1));
             }
             default -> { return Result.fail("Unknown commission slot."); }
@@ -427,10 +421,11 @@ public final class GameDesignService {
         if (!claimOnce(owner, "WEEKLY", week, "chapter_claimed")) {
             return Result.fail("Weekly Chapter already claimed.");
         }
-        grantNodeExp(focus, 3_500);
-        addCoins(owner, 2_000);
+        grantNodeExp(focus, rewards.weeklyChapterExp());
+        addCoins(owner, rewards.weeklyChapterCoins());
         audit.log(owner, "CHAPTER_CLAIM", "{\"week\":\"" + week + "\"}");
-        return Result.ok("Weekly Node Chapter claimed: +3,500 Node EXP and +2,000 Coins.");
+        return Result.ok("Weekly Node Chapter claimed: +" + rewards.weeklyChapterExp()
+                + " Node EXP and +" + rewards.weeklyChapterCoins() + " Coins.");
     }
 
     private void advanceCommission(NodeRecord node, String action, int amount) {
@@ -442,8 +437,13 @@ public final class GameDesignService {
             put(owner, "DAILY", day, "commission_behavior_progress", "1");
         }
         put(owner, "DAILY", day, "commission_focus_progress", "1");
-        int weekly = getInt(owner, "WEEKLY", weekKey(), "chapter_progress", 0);
-        put(owner, "WEEKLY", weekKey(), "chapter_progress", String.valueOf(Math.min(5, weekly + 1)));
+        // A Weekly Chapter asks for activity across five distinct days, not
+        // five rapid actions in one session.
+        if (claimOnce(owner, "DAILY", day, "weekly_chapter_action")) {
+            int weekly = getInt(owner, "WEEKLY", weekKey(), "chapter_progress", 0);
+            put(owner, "WEEKLY", weekKey(), "chapter_progress",
+                    String.valueOf(Math.min(5, weekly + 1)));
+        }
     }
 
     private void ensureDailyCommissions(UUID owner, NodeRecord focus, String day) {
@@ -1002,63 +1002,27 @@ public final class GameDesignService {
     }
 
     private boolean claimOnce(UUID owner, String scope, String scopeId, String key) {
-        StateKey stateKey = new StateKey(owner, scope, scopeId, key);
-        if (state.putIfAbsent(stateKey, "1") != null) return false;
-        persist(stateKey, "1");
-        return true;
+        return stateStore.claimOnce(owner, scope, scopeId, key);
     }
 
     private long increment(UUID owner, String scope, String scopeId, String key, long amount) {
-        long next = getLong(owner, scope, scopeId, key, 0) + amount;
-        put(owner, scope, scopeId, key, String.valueOf(next));
-        return next;
+        return stateStore.increment(owner, scope, scopeId, key, amount);
     }
 
     private String get(UUID owner, String scope, String scopeId, String key) {
-        return state.get(new StateKey(owner, scope, scopeId, key));
+        return stateStore.get(owner, scope, scopeId, key);
     }
 
     private int getInt(UUID owner, String scope, String scopeId, String key, int fallback) {
-        try {
-            String value = get(owner, scope, scopeId, key);
-            return value == null ? fallback : Integer.parseInt(value);
-        } catch (NumberFormatException ignored) {
-            return fallback;
-        }
+        return stateStore.getInt(owner, scope, scopeId, key, fallback);
     }
 
     private long getLong(UUID owner, String scope, String scopeId, String key, long fallback) {
-        try {
-            String value = get(owner, scope, scopeId, key);
-            return value == null ? fallback : Long.parseLong(value);
-        } catch (NumberFormatException ignored) {
-            return fallback;
-        }
+        return stateStore.getLong(owner, scope, scopeId, key, fallback);
     }
 
     private void put(UUID owner, String scope, String scopeId, String key, String value) {
-        StateKey stateKey = new StateKey(owner, scope, scopeId, key);
-        state.put(stateKey, value);
-        persist(stateKey, value);
-    }
-
-    private void persist(StateKey key, String value) {
-        database.submitWrite(() -> {
-            try (Connection connection = database.getConnection();
-                 PreparedStatement upsert = connection.prepareStatement(
-                         "REPLACE INTO idlefarm_game_state "
-                                 + "(owner_uuid, scope, scope_id, state_key, value_text, updated_at) "
-                                 + "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)")) {
-                upsert.setString(1, key.owner().toString());
-                upsert.setString(2, key.scope());
-                upsert.setString(3, key.scopeId());
-                upsert.setString(4, key.key());
-                upsert.setString(5, value);
-                upsert.executeUpdate();
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to persist game state: " + e.getMessage());
-            }
-        });
+        stateStore.put(owner, scope, scopeId, key, value);
     }
 
     private void persistCap(UUID owner, String material, String period, int amount) {

@@ -11,6 +11,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -45,5 +46,20 @@ class WarehouseServiceTest {
         assertTrue(warehouse.depositAll(owner, Map.of("diamond", 2, "coal", 3)));
         assertEquals(Map.of("DIAMOND", 2, "COAL", 3), warehouse.getContents(owner));
         assertEquals(0, warehouse.freeSpace(owner));
+    }
+
+    @Test
+    void callersCannotMutateWarehouseWithoutCapacityAndPersistenceChecks() {
+        IdleFarmPlugin plugin = mock(IdleFarmPlugin.class);
+        FileConfiguration config = mock(FileConfiguration.class);
+        when(plugin.getConfig()).thenReturn(config);
+        when(config.getInt("warehouse.base-capacity", 2000)).thenReturn(5);
+        WarehouseService warehouse = new WarehouseService(plugin, mock(Database.class));
+        UUID owner = UUID.randomUUID();
+        warehouse.deposit(owner, "stone", 1);
+
+        assertThrows(UnsupportedOperationException.class,
+                () -> warehouse.getContents(owner).put("DIAMOND", 999));
+        assertEquals(Map.of("STONE", 1), warehouse.getContents(owner));
     }
 }

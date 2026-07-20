@@ -199,6 +199,14 @@ public final class ProductionEngine extends BukkitRunnable {
         java.util.Map<String, Double> baseTable = dropTableService != null
                 ? dropTableService.table(node.getType(), bracket, node.getExplorationLevel())
                 : java.util.Map.of("cobblestone", 1.0);
+        if (baseTable.isEmpty()) {
+            // Startup validation normally makes this unreachable. Retaining a
+            // deterministic common fallback prevents a live node tick from
+            // crashing if an external file is corrupted after startup.
+            plugin.getLogger().severe("Empty runtime drop table for " + node.getType()
+                    + " bracket " + bracket + "; using COBBLESTONE fallback.");
+            baseTable = java.util.Map.of("cobblestone", 1.0);
+        }
         java.util.Map<String, Double> table = new java.util.LinkedHashMap<>();
         baseTable.forEach((material, weight) -> table.put(material,
                 weight * (gameDesignService == null ? 1.0

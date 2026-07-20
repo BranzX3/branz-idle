@@ -128,12 +128,13 @@ public final class WorkerStore {
 
     public void insert(WorkerRecord record) {
         index(record);
+        WorkerSnapshot snapshot = WorkerSnapshot.from(record);
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement insert = connection.prepareStatement(
                          "INSERT INTO idlefarm_workers (worker_uuid, owner_uuid, rarity, trait, stats, name, skin, level, exp, assigned_node_id, state) "
                                  + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
-                bind(insert, record);
+                bind(insert, snapshot);
                 insert.executeUpdate();
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to persist worker " + record.getWorkerUuid() + ": " + e.getMessage());
@@ -141,29 +142,56 @@ public final class WorkerStore {
         });
     }
 
+    /** Mints a worker and debits its Coin price in one durable transaction. */
+    public boolean insertWithCost(WorkerRecord record, PlayerData player, double cost) {
+        WorkerSnapshot snapshot = WorkerSnapshot.from(record);
+        double balanceAfter = player.getBalance() - cost;
+        boolean committed = database.executeTransaction("mint worker " + snapshot.workerUuid(),
+                connection -> {
+            try (PreparedStatement insert = connection.prepareStatement(
+                    "INSERT INTO idlefarm_workers "
+                            + "(worker_uuid, owner_uuid, rarity, trait, stats, name, skin, level, exp, "
+                            + "assigned_node_id, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                bind(insert, snapshot);
+                insert.executeUpdate();
+            }
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idlefarm_players SET balance = ? WHERE uuid = ?")) {
+                update.setDouble(1, balanceAfter);
+                update.setString(2, player.getUuid().toString());
+                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
+            }
+        });
+        if (!committed) return false;
+        index(record);
+        player.addBalance(-cost);
+        return true;
+    }
+
     public void update(WorkerRecord record) {
+        WorkerSnapshot snapshot = WorkerSnapshot.from(record);
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement update = connection.prepareStatement(
                          "UPDATE idlefarm_workers SET owner_uuid = ?, stats = ?, name = ?, skin = ?, level = ?, "
                                  + "exp = ?, assigned_node_id = ?, state = ? WHERE worker_uuid = ?")) {
-                if (record.getOwnerUuid() == null) {
+                if (snapshot.ownerUuid() == null) {
                     update.setNull(1, java.sql.Types.VARCHAR);
                 } else {
-                    update.setString(1, record.getOwnerUuid().toString());
+                    update.setString(1, snapshot.ownerUuid().toString());
                 }
-                update.setString(2, record.getStats().serialize());
-                update.setString(3, record.getName());
-                update.setString(4, record.getSkin());
-                update.setInt(5, record.getLevel());
-                update.setLong(6, record.getExp());
-                if (record.getAssignedNodeId() == null) {
+                update.setString(2, snapshot.stats());
+                update.setString(3, snapshot.name());
+                update.setString(4, snapshot.skin());
+                update.setInt(5, snapshot.level());
+                update.setLong(6, snapshot.exp());
+                if (snapshot.assignedNodeId() == null) {
                     update.setNull(7, java.sql.Types.BIGINT);
                 } else {
-                    update.setLong(7, record.getAssignedNodeId());
+                    update.setLong(7, snapshot.assignedNodeId());
                 }
-                update.setString(8, record.getState());
-                update.setString(9, record.getWorkerUuid().toString());
+                update.setString(8, snapshot.state());
+                update.setString(9, snapshot.workerUuid().toString());
                 update.executeUpdate();
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to update worker " + record.getWorkerUuid() + ": " + e.getMessage());
@@ -210,25 +238,37 @@ public final class WorkerStore {
         }
     }
 
-    private void bind(PreparedStatement insert, WorkerRecord record) throws SQLException {
-        insert.setString(1, record.getWorkerUuid().toString());
-        if (record.getOwnerUuid() == null) {
+    private void bind(PreparedStatement insert, WorkerSnapshot snapshot) throws SQLException {
+        insert.setString(1, snapshot.workerUuid().toString());
+        if (snapshot.ownerUuid() == null) {
             insert.setNull(2, java.sql.Types.VARCHAR);
         } else {
-            insert.setString(2, record.getOwnerUuid().toString());
+            insert.setString(2, snapshot.ownerUuid().toString());
         }
-        insert.setString(3, record.getRarity().name());
-        insert.setString(4, record.getTrait().name());
-        insert.setString(5, record.getStats().serialize());
-        insert.setString(6, record.getName());
-        insert.setString(7, record.getSkin());
-        insert.setInt(8, record.getLevel());
-        insert.setLong(9, record.getExp());
-        if (record.getAssignedNodeId() == null) {
+        insert.setString(3, snapshot.rarity());
+        insert.setString(4, snapshot.trait());
+        insert.setString(5, snapshot.stats());
+        insert.setString(6, snapshot.name());
+        insert.setString(7, snapshot.skin());
+        insert.setInt(8, snapshot.level());
+        insert.setLong(9, snapshot.exp());
+        if (snapshot.assignedNodeId() == null) {
             insert.setNull(10, java.sql.Types.BIGINT);
         } else {
-            insert.setLong(10, record.getAssignedNodeId());
+            insert.setLong(10, snapshot.assignedNodeId());
         }
-        insert.setString(11, record.getState());
+        insert.setString(11, snapshot.state());
+    }
+
+    private record WorkerSnapshot(UUID workerUuid, UUID ownerUuid, String rarity, String trait,
+                                  String stats, String name, String skin, int level, long exp,
+                                  Long assignedNodeId, String state) {
+        private static WorkerSnapshot from(WorkerRecord record) {
+            return new WorkerSnapshot(record.getWorkerUuid(), record.getOwnerUuid(),
+                    record.getRarity().name(), record.getTrait().name(),
+                    record.getStats().serialize(), record.getName(), record.getSkin(),
+                    record.getLevel(), record.getExp(), record.getAssignedNodeId(),
+                    record.getState());
+        }
     }
 }

@@ -87,10 +87,13 @@ public final class CreditService {
      * Idempotent payment-provider/admin adjustment. Replaying the same
      * transaction id cannot mint Credits twice.
      */
-    public boolean adjust(UUID owner, long amount, String type, String transactionId, String detail) {
+    public synchronized boolean adjust(UUID owner, long amount, String type,
+                                       String transactionId, String detail) {
         if (transactionId == null || transactionId.isBlank() || amount == 0) return false;
-        try (Connection connection = database.getConnection()) {
-            connection.setAutoCommit(false);
+        Wallet before = current(owner);
+        if (amount < 0 && before.credits() + amount < 0) return false;
+        Wallet after = before.credits(before.credits() + amount);
+        boolean committed = database.executeTransaction("Credit adjustment " + transactionId, connection -> {
             try (PreparedStatement insert = connection.prepareStatement(
                     "INSERT INTO idlefarm_credit_ledger "
                             + "(transaction_id, owner_uuid, entry_type, amount, detail_json) VALUES (?, ?, ?, ?, ?)")) {
@@ -101,13 +104,6 @@ public final class CreditService {
                 insert.setString(5, detail);
                 insert.executeUpdate();
             }
-            Wallet before = current(owner);
-            long next = Math.max(0, before.credits() + amount);
-            if (amount < 0 && before.credits() + amount < 0) {
-                connection.rollback();
-                return false;
-            }
-            Wallet after = before.credits(next);
             try (PreparedStatement upsert = connection.prepareStatement(
                     "REPLACE INTO idlefarm_credit_wallet "
                             + "(owner_uuid, credits, season_id, season_coin_offset, season_coins_earned) "
@@ -115,15 +111,12 @@ public final class CreditService {
                 bindWallet(upsert, owner, after);
                 upsert.executeUpdate();
             }
-            connection.commit();
-            wallets.put(owner, after);
-            audit.log(owner, "CREDIT_" + type, "{\"transaction\":\"" + safe(transactionId)
-                    + "\",\"amount\":" + amount + "}");
-            return true;
-        } catch (SQLException e) {
-            // Duplicate transaction IDs are the expected idempotent replay path.
-            return false;
-        }
+        });
+        if (!committed) return false;
+        wallets.put(owner, after);
+        audit.log(owner, "CREDIT_" + type, "{\"transaction\":\"" + safe(transactionId)
+                + "\",\"amount\":" + amount + "}");
+        return true;
     }
 
     /**
@@ -131,8 +124,8 @@ public final class CreditService {
      * payable in Coins; seasonal offset is additionally bounded by 30,000
      * Coins and 25% of Coins earned.
      */
-    public Checkout hybridPay(UUID owner, long coinPrice, long requestedCredits,
-                              String purchaseId, String idempotencyKey) {
+    public synchronized Checkout hybridPay(UUID owner, long coinPrice, long requestedCredits,
+                                           String purchaseId, String idempotencyKey) {
         if (coinPrice <= 0) return Checkout.fail("Invalid checkout price.");
         PlayerData player = dataStore.getOnline(owner);
         if (player == null) return Checkout.fail("Player data is not loaded.");
@@ -150,16 +143,50 @@ public final class CreditService {
         long offset = credits * ratio;
         long coins = coinPrice - offset;
         if (player.getBalance() < coins) return Checkout.fail("Not enough Coins.");
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return Checkout.fail("Checkout requires an idempotency key.");
+        }
 
         String tx = "HYBRID:" + idempotencyKey;
-        if (credits > 0 && !adjust(owner, -credits, "SPEND", tx,
-                "{\"purchase\":\"" + safe(purchaseId) + "\",\"coinOffset\":" + offset + "}")) {
+        Wallet after = new Wallet(wallet.credits() - credits, wallet.season(),
+                wallet.seasonOffset() + offset, wallet.seasonCoinsEarned());
+        double balanceAfter = player.getBalance() - coins;
+        String detail = "{\"purchase\":\"" + safe(purchaseId) + "\",\"coinOffset\":" + offset
+                + ",\"coins\":" + coins + "}";
+        boolean committed = database.executeTransaction("Hybrid checkout " + tx, connection -> {
+            // The immutable row is also the replay guard when zero Credits
+            // are used; every checkout is idempotent, not only Credit spends.
+            try (PreparedStatement insert = connection.prepareStatement(
+                    "INSERT INTO idlefarm_credit_ledger "
+                            + "(transaction_id, owner_uuid, entry_type, amount, detail_json) "
+                            + "VALUES (?, ?, 'CHECKOUT', ?, ?)")) {
+                insert.setString(1, tx);
+                insert.setString(2, owner.toString());
+                insert.setLong(3, -credits);
+                insert.setString(4, detail);
+                insert.executeUpdate();
+            }
+            try (PreparedStatement upsert = connection.prepareStatement(
+                    "REPLACE INTO idlefarm_credit_wallet "
+                            + "(owner_uuid, credits, season_id, season_coin_offset, season_coins_earned) "
+                            + "VALUES (?, ?, ?, ?, ?)")) {
+                bindWallet(upsert, owner, after);
+                upsert.executeUpdate();
+            }
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idlefarm_players SET balance = ? WHERE uuid = ?")) {
+                update.setDouble(1, balanceAfter);
+                update.setString(2, owner.toString());
+                if (update.executeUpdate() != 1) {
+                    throw new SQLException("Player wallet row is missing");
+                }
+            }
+        });
+        if (!committed) {
             return Checkout.fail("Checkout was already processed or the Credit balance changed.");
         }
         player.addBalance(-coins);
-        Wallet after = current(owner).offset(current(owner).seasonOffset() + offset);
         wallets.put(owner, after);
-        persist(owner, after);
         audit.log(owner, "HYBRID_PAY", "{\"purchase\":\"" + safe(purchaseId)
                 + "\",\"coins\":" + coins + ",\"credits\":" + credits + "}");
         return new Checkout(true, "Paid " + coins + " Coins + " + credits + " Credits.", coins, credits);

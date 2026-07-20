@@ -137,12 +137,20 @@ public final class WorkerService {
         if (data.getBalance() < cost) {
             return Result.fail("Not enough money (need " + cost + ").");
         }
-        data.addBalance(-cost);
-
         Rarity rarity = rollRarity();
-        WorkerRecord record = mint(rarity);
+        WorkerRecord record = createWorker(rarity);
+        boolean toBag = workerStore.bagCount(owner) < bagCapacity(owner);
+        if (toBag) {
+            record.setOwnerUuid(owner);
+            record.setState(WorkerRecord.STATE_BAG);
+        }
+        if (!workerStore.insertWithCost(record, data, cost)) {
+            return Result.fail("Hire could not be committed; no Coins were charged.");
+        }
         audit(owner, "HIRE", record.getName() + " " + rarity + " cost=" + cost);
-        return deposit(owner, record, "Hired " + record.getName() + " (" + rarity + ")!");
+        String message = "Hired " + record.getName() + " (" + rarity + ")!";
+        return toBag ? Result.ok(message + " → Worker Bag.")
+                : Result.ok(message + " (bag full → item)", createItem(record));
     }
 
     private Rarity rollRarity() {
@@ -170,7 +178,7 @@ public final class WorkerService {
         };
     }
 
-    private WorkerRecord mint(Rarity rarity) {
+    private WorkerRecord createWorker(Rarity rarity) {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         int min = plugin.getConfig().getInt("workers.stat-ranges." + rarity.name().toLowerCase(Locale.ROOT) + ".min",
                 defaultStatMin(rarity));
@@ -185,10 +193,8 @@ public final class WorkerService {
         String name = NAMES[random.nextInt(NAMES.length)];
         String skin = rollSkin();
 
-        WorkerRecord record = new WorkerRecord(UUID.randomUUID(), null, rarity, trait, stats,
+        return new WorkerRecord(UUID.randomUUID(), null, rarity, trait, stats,
                 name, skin, 1, 0, null, WorkerRecord.STATE_ITEM);
-        workerStore.insert(record);
-        return record;
     }
 
     /** Grants the one account-bound, fixed-stat onboarding worker. */
@@ -235,19 +241,28 @@ public final class WorkerService {
         if (data == null || data.getBalance() < cost) {
             return "Not enough money (need " + cost + ").";
         }
-        data.addBalance(-cost);
-        int bonus = bagBonus.merge(owner, step, Integer::sum);
-        database.submitWrite(() -> {
-            try (var connection = database.getConnection();
-                 var upsert = connection.prepareStatement(
+        int bonus = bagBonus.getOrDefault(owner, 0) + step;
+        double balanceAfter = data.getBalance() - cost;
+        boolean committed = database.executeTransaction("expand worker bag " + owner,
+                connection -> {
+            try (var upsert = connection.prepareStatement(
                          "REPLACE INTO idlefarm_bag_cap (owner_uuid, bonus) VALUES (?, ?)")) {
                 upsert.setString(1, owner.toString());
                 upsert.setInt(2, bonus);
                 upsert.executeUpdate();
-            } catch (java.sql.SQLException e) {
-                plugin.getLogger().severe("Failed to persist bag cap: " + e.getMessage());
+            }
+            try (var update = connection.prepareStatement(
+                    "UPDATE idlefarm_players SET balance = ? WHERE uuid = ?")) {
+                update.setDouble(1, balanceAfter);
+                update.setString(2, owner.toString());
+                if (update.executeUpdate() != 1) {
+                    throw new java.sql.SQLException("Player row is missing");
+                }
             }
         });
+        if (!committed) return "Expansion could not be settled; no Coins were charged.";
+        data.addBalance(-cost);
+        bagBonus.put(owner, bonus);
         return null;
     }
 
@@ -428,7 +443,11 @@ public final class WorkerService {
         if (uuid == null) {
             return null;
         }
-        return workerStore.get(UUID.fromString(uuid));
+        try {
+            return workerStore.get(UUID.fromString(uuid));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     // ---- fuse (2-worker gacha with per-rarity pity) ----
@@ -474,8 +493,14 @@ public final class WorkerService {
         if (materials.size() != 2) {
             return Result.fail("Fuse combines exactly 2 workers of the same rarity.");
         }
+        if (materials.get(0).getWorkerUuid().equals(materials.get(1).getWorkerUuid())) {
+            return Result.fail("A worker cannot fill both fuse material slots.");
+        }
         Rarity rarity = materials.get(0).getRarity();
         for (WorkerRecord material : materials) {
+            if (material.isInBag() && !owner.equals(material.getOwnerUuid())) {
+                return Result.fail("You do not own " + material.getName() + ".");
+            }
             if (gameDesignService != null && gameDesignService.isStarterWorker(material.getWorkerUuid())) {
                 return Result.fail("The account-bound Starter Worker cannot be fused.");
             }
@@ -506,7 +531,8 @@ public final class WorkerService {
                 workerStore.delete(material);
             }
             setPity(owner, rarity, 0);
-            WorkerRecord fused = mint(next);
+            WorkerRecord fused = createWorker(next);
+            workerStore.insert(fused);
             if (gameDesignService != null) {
                 gameDesignService.addTrainingNotes(owner, trainingNotes);
             }
@@ -614,6 +640,13 @@ public final class WorkerService {
     public Result assign(UUID actor, WorkerRecord worker, NodeRecord node) {
         if (!node.getType().isProduction()) {
             return Result.fail("Workers can only be assigned to production nodes.");
+        }
+        if (worker.isInBag() && !actor.equals(worker.getOwnerUuid())) {
+            return Result.fail("That Worker Bag contract belongs to another player.");
+        }
+        if (gameDesignService != null && gameDesignService.isStarterWorker(worker.getWorkerUuid())
+                && !actor.equals(worker.getOwnerUuid())) {
+            return Result.fail("The account-bound Starter Worker cannot change owners.");
         }
         // Dupe guard: must be available (bag or item), not already assigned.
         boolean available = WorkerRecord.STATE_ITEM.equals(worker.getState())

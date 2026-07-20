@@ -37,6 +37,12 @@ public final class PlayerConnectionListener implements Listener {
             @Override
             public void run() {
                 dataStore.loadOrCreateSync(player.getUniqueId(), player.getName());
+                if (!player.isOnline()) {
+                    // A fast disconnect can race the asynchronous load. Do
+                    // not leave a ghost "online" cache entry behind.
+                    dataStore.unload(player.getUniqueId());
+                    return;
+                }
                 if (gameDesignService != null) {
                     gameDesignService.onLogin(player.getUniqueId());
                 }

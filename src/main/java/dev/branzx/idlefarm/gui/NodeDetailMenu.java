@@ -33,8 +33,7 @@ public final class NodeDetailMenu extends Menu {
     private NodeRecord node() {
         return gui.nodeStore().getByOwner(viewer.getUniqueId()).stream()
                 .filter(n -> n.getId() == nodeId).findFirst()
-                .orElseGet(() -> gui.nodeStore().getAll().stream()
-                        .filter(n -> n.getId() == nodeId).findFirst().orElse(null));
+                .orElse(null);
     }
 
     @Override
@@ -123,7 +122,11 @@ public final class NodeDetailMenu extends Menu {
         }
 
         // Collect.
-        int cap = gui.plugin().getConfig().getInt("production.buffer-capacity-per-tier", 64) * node.getTier();
+        double bufferMultiplier = gui.gameDesignService() == null ? 1.0
+                : gui.gameDesignService().bufferMultiplier(node);
+        int cap = (int) Math.round(gui.plugin().getConfig()
+                .getInt("production.buffer-capacity-per-tier", 256)
+                * node.getTier() * bufferMultiplier);
         List<Component> bufferLore = new java.util.ArrayList<>();
         bufferLore.add(Ui.bar("Buffer", cap == 0 ? 0 : node.storageTotal() / (double) cap,
                 node.storageTotal() >= cap ? NamedTextColor.RED : NamedTextColor.GOLD,
@@ -146,8 +149,6 @@ public final class NodeDetailMenu extends Menu {
                     if (gui.gameDesignService() != null) {
                         gui.gameDesignService().onBufferCollected(node, moved);
                     }
-                    node.setState("ACTIVE");
-                    gui.nodeStore().updateProduction(node);
                     gui.npcManager().refreshNode(node, viewer.getWorld());
                     viewer.sendMessage(Component.text("Collected " + moved + " to Warehouse.",
                             NamedTextColor.GREEN));
@@ -280,7 +281,11 @@ public final class NodeDetailMenu extends Menu {
                 choice -> {
                     // Re-fetch the live record and consume the item by UUID.
                     WorkerRecord worker = gui.workerStore().get(choice.workerUuid());
-                    if (worker == null || !WorkerRecord.STATE_ITEM.equals(worker.getState())) {
+                    boolean available = worker != null
+                            && (WorkerRecord.STATE_ITEM.equals(worker.getState())
+                            || (worker.isInBag()
+                            && viewer.getUniqueId().equals(worker.getOwnerUuid())));
+                    if (!available) {
                         viewer.sendMessage(Component.text("That worker is no longer available.",
                                 NamedTextColor.RED));
                         new NodeDetailMenu(viewer, gui, nodeId).open();
