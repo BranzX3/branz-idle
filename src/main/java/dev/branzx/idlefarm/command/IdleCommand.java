@@ -82,6 +82,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         String sub = args[0].toLowerCase(Locale.ROOT);
         return switch (sub) {
+            case "help" -> help(sender, args);
             case "balance" -> balance(sender);
             case "top" -> top(sender);
             case "claim" -> claim(sender, args);
@@ -117,11 +118,44 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean usage(CommandSender sender) {
-        sender.sendMessage(Component.text("» Type /idle to open the menu — everything is in there.",
-                NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("  Extra: /idle visit <player>, /idle skin <name>"
-                + (sender.hasPermission("idlefarm.admin") ? ", /idle admin" : ""),
-                NamedTextColor.GRAY));
+        return help(sender, new String[]{"help"});
+    }
+
+    private boolean help(CommandSender sender, String[] args) {
+        String filter = args.length >= 2 ? args[1].toLowerCase(Locale.ROOT) : null;
+        sender.sendMessage(Component.text("IdleFarm Commands", NamedTextColor.GOLD));
+        if (filter == null) {
+            sender.sendMessage(Component.text("ผู้เล่น: /idle เปิด Hub | /idle help <หมวด>",
+                    NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("หมวด: "
+                    + String.join(", ", CommandCatalog.categories(CommandCatalog.Audience.PLAYER)),
+                    NamedTextColor.GRAY));
+            if (hasAnyAdminPermission(sender)) {
+                sender.sendMessage(Component.text("ผู้ดูแล: /idle admin เปิด Admin Hub",
+                        NamedTextColor.RED));
+            }
+            return true;
+        }
+        List<CommandCatalog.Entry> entries =
+                CommandCatalog.inCategory(CommandCatalog.Audience.PLAYER, filter);
+        if (entries.isEmpty()) {
+            CommandCatalog.Entry entry = CommandCatalog.findPlayer(filter);
+            entries = entry == null ? List.of() : List.of(entry);
+        }
+        entries = entries.stream()
+                .filter(entry -> entry.permission() == null || sender.hasPermission(entry.permission()))
+                .toList();
+        if (entries.isEmpty()) {
+            sender.sendMessage(Component.text("ไม่พบ command หรือหมวด '" + filter + "'.",
+                    NamedTextColor.RED));
+            return true;
+        }
+        for (CommandCatalog.Entry entry : entries) {
+            String suffix = entry.syntax().isBlank() ? "" : " " + entry.syntax();
+            sender.sendMessage(Component.text("/idle " + entry.name() + suffix,
+                            NamedTextColor.YELLOW)
+                    .append(Component.text(" — " + entry.description(), NamedTextColor.GRAY)));
+        }
         return true;
     }
 
@@ -872,7 +906,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean admin(CommandSender sender, String[] args) {
-        if (!sender.hasPermission("idlefarm.admin")) {
+        if (!hasAnyAdminPermission(sender)) {
             sender.sendMessage(Component.text("You do not have permission to do that.", NamedTextColor.RED));
             return true;
         }
@@ -882,20 +916,42 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            // Everything lives in the /idle GUI; only surface the few commands
-            // that need typed arguments (plus admin for staff).
-            List<String> base = new java.util.ArrayList<>(List.of(
-                    "progress", "focus", "commission", "chapter", "project",
-                    "build", "trade", "credits", "visit", "skin"));
-            if (sender.hasPermission("idlefarm.admin")) {
-                base.add("admin");
+            List<CommandCatalog.Entry> visible = CommandCatalog.playerEntries().stream()
+                    .filter(entry -> entry.permission() == null || sender.hasPermission(entry.permission()))
+                    .toList();
+            List<String> base = new java.util.ArrayList<>(
+                    CommandCatalog.suggestions(visible, args[0]));
+            if ("help".startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                base.add("help");
+            }
+            if (hasAnyAdminPermission(sender)) {
+                if ("admin".startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                    base.add("admin");
+                }
             }
             return base;
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("admin")) {
-            return List.of("reload", "schem", "npc", "node", "pool", "event", "explevel",
-                    "give", "setcap", "credits", "validate", "metrics",
-                    "claims", "forceunclaim", "audit");
+            List<CommandCatalog.Entry> visible = CommandCatalog.adminEntries().stream()
+                    .filter(entry -> sender.hasPermission(entry.permission()))
+                    .toList();
+            List<String> result = new java.util.ArrayList<>(
+                    CommandCatalog.suggestions(visible, args[1]));
+            if ("help".startsWith(args[1].toLowerCase(Locale.ROOT))) {
+                result.add("help");
+            }
+            return result;
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("help")) {
+            return CommandCatalog.categories(CommandCatalog.Audience.PLAYER).stream()
+                    .filter(value -> value.startsWith(args[1].toLowerCase(Locale.ROOT)))
+                    .toList();
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("admin")
+                && args[1].equalsIgnoreCase("help")) {
+            return CommandCatalog.categories(CommandCatalog.Audience.ADMIN).stream()
+                    .filter(value -> value.startsWith(args[2].toLowerCase(Locale.ROOT)))
+                    .toList();
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("admin") && args[1].equalsIgnoreCase("event")) {
             return List.of("spawn", "cancel", "list");
@@ -926,6 +982,11 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             return List.of("working", "idle", "stop", "clear");
         }
         return List.of();
+    }
+
+    private boolean hasAnyAdminPermission(CommandSender sender) {
+        return CommandCatalog.adminEntries().stream()
+                .anyMatch(entry -> sender.hasPermission(entry.permission()));
     }
 
     private String formatAmount(double amount) {

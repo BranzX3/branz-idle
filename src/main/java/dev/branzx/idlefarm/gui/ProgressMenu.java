@@ -33,7 +33,7 @@ public final class ProgressMenu extends Menu {
 
     @Override
     protected void build() {
-        for (int i = 0; i < rows() * 9; i++) set(i, Icon.filler());
+        fill();
         GameDesignService design = gui.gameDesignService();
         if (design == null) return;
 
@@ -167,8 +167,7 @@ public final class ProgressMenu extends Menu {
                                 NamedTextColor.GRAY),
                         Ui.line("Modifier: " + pretty(design.seasonModifier()), NamedTextColor.YELLOW)))
                 .build());
-        set(49, Icon.of(Material.NETHER_STAR).name("Main Hub", NamedTextColor.GREEN).build(),
-                event -> gui.openMainHub(viewer));
+        backToHub(gui);
         set(52, Icon.of(Material.EXPERIENCE_BOTTLE)
                 .name("Chronicle Points: " + design.chroniclePoints(viewer.getUniqueId()),
                         NamedTextColor.AQUA)

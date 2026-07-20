@@ -37,9 +37,7 @@ public final class TrustMenu extends Menu {
 
     @Override
     protected void build() {
-        for (int i = 0; i < rows() * 9; i++) {
-            set(i, Icon.filler());
-        }
+        fill();
         set(4, Icon.of(Material.OAK_HANGING_SIGN).name("Trusted Players", NamedTextColor.AQUA)
                 .lore(List.of("Left: people you trust (click to cycle level)",
                         "Right: online players to add"), NamedTextColor.GRAY).build());
@@ -94,8 +92,7 @@ public final class TrustMenu extends Menu {
             addSlot++;
         }
 
-        set(49, Icon.of(Material.NETHER_STAR).name("Main Menu", NamedTextColor.GREEN).build(),
-                e -> gui.openMainHub(viewer));
+        backToHub(gui);
     }
 
     private TrustLevel cycle(TrustLevel level) {

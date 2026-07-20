@@ -32,11 +32,8 @@ public final class LeaderboardMenu extends Menu {
 
     @Override
     protected void build() {
-        for (int i = 0; i < rows() * 9; i++) {
-            set(i, Icon.filler());
-        }
-        set(31, Icon.of(Material.NETHER_STAR).name("Main Menu", NamedTextColor.GREEN).build(),
-                e -> gui.openMainHub(viewer));
+        fill();
+        backToHub(gui);
 
         if (top == null) {
             set(13, Icon.of(Material.CLOCK).name("Loading…", NamedTextColor.GRAY).build());

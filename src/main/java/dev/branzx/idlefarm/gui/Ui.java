@@ -23,6 +23,14 @@ public final class Ui {
         return line("────────────────", NamedTextColor.DARK_GRAY);
     }
 
+    public static Component click(String action) {
+        return line("คลิก: " + action, NamedTextColor.YELLOW);
+    }
+
+    public static Component status(String label, NamedTextColor color) {
+        return line("● " + label, color);
+    }
+
     /** "█████░░░░░" bar, colored fill + gray remainder, with label suffix. */
     public static Component bar(String label, double fraction, NamedTextColor fillColor, String suffix) {
         int width = 10;

@@ -76,7 +76,7 @@ public final class AdminCommands {
 
     public boolean handle(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            return usage(sender);
+            return dashboard(sender);
         }
         try {
             return handleInner(sender, args);
@@ -88,7 +88,17 @@ public final class AdminCommands {
 
     private boolean handleInner(CommandSender sender, String[] args) {
         String sub = args[1].toLowerCase(Locale.ROOT);
+        if (sub.equals("help")) {
+            return help(sender, args);
+        }
+        CommandCatalog.Entry entry = CommandCatalog.findAdmin(sub);
+        if (entry != null && !sender.hasPermission(entry.permission())) {
+            sender.sendMessage(Component.text("คุณไม่มีสิทธิ์ " + entry.permission(),
+                    NamedTextColor.RED));
+            return true;
+        }
         return switch (sub) {
+            case "dashboard" -> dashboard(sender);
             case "reload" -> reload(sender);
             case "schem" -> schem(sender, args);
             case "npc" -> npc(sender, args);
@@ -109,24 +119,48 @@ public final class AdminCommands {
     }
 
     private boolean usage(CommandSender sender) {
-        sender.sendMessage(Component.text("""
-                /idle admin reload
-                /idle admin schem capture <id> [baseY] [height]  (captures your whole chunk)
-                /idle admin schem edit <id> | setspawn <slot> | setwork | setwander <r> | setanim <state> <profile> | save | rebuild
-                /idle admin npc refresh | list | state <state|clear>
-                /idle admin node
-                /idle admin pool [type[.bracket-N]]   (no arg = GUI browser)
-                /idle admin event spawn [type] | cancel | list   (stand in a node)
-                /idle admin explevel <level> <reason>   (stand in a node)
-                /idle admin give money <player> <amount> <reason>
-                /idle admin give item <player> <material> <count> <reason>
-                /idle admin setcap <player> <base> <bonus> <reason>
-                /idle admin credits <player> <amount> <reason>
-                /idle admin validate
-                /idle admin metrics
-                /idle admin claims <player>
-                /idle admin forceunclaim <world> <chunkX> <chunkZ> <reason>
-                /idle admin audit [player]""", NamedTextColor.YELLOW));
+        return help(sender, new String[]{"admin", "help"});
+    }
+
+    private boolean dashboard(CommandSender sender) {
+        if (sender instanceof Player player) {
+            guiManager.openAdminHub(player);
+            return true;
+        }
+        return help(sender, new String[]{"admin", "help"});
+    }
+
+    private boolean help(CommandSender sender, String[] args) {
+        String filter = args.length >= 3 ? args[2].toLowerCase(Locale.ROOT) : null;
+        sender.sendMessage(Component.text("IdleFarm Admin Commands", NamedTextColor.RED));
+        if (filter == null) {
+            sender.sendMessage(Component.text("/idle admin เปิด Admin Hub | /idle admin help <หมวด>",
+                    NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("หมวด: "
+                    + String.join(", ", CommandCatalog.categories(CommandCatalog.Audience.ADMIN)),
+                    NamedTextColor.GRAY));
+            return true;
+        }
+        List<CommandCatalog.Entry> entries =
+                CommandCatalog.inCategory(CommandCatalog.Audience.ADMIN, filter);
+        if (entries.isEmpty()) {
+            CommandCatalog.Entry match = CommandCatalog.findAdmin(filter);
+            entries = match == null ? List.of() : List.of(match);
+        }
+        entries = entries.stream()
+                .filter(item -> sender.hasPermission(item.permission()))
+                .toList();
+        if (entries.isEmpty()) {
+            sender.sendMessage(Component.text("ไม่พบ command ในหมวดนี้ หรือคุณไม่มีสิทธิ์",
+                    NamedTextColor.RED));
+            return true;
+        }
+        for (CommandCatalog.Entry item : entries) {
+            String suffix = item.syntax().isBlank() ? "" : " " + item.syntax();
+            sender.sendMessage(Component.text("/idle admin " + item.name() + suffix,
+                            NamedTextColor.YELLOW)
+                    .append(Component.text(" — " + item.description(), NamedTextColor.GRAY)));
+        }
         return true;
     }
 

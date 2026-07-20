@@ -164,6 +164,24 @@ public final class GuiManager implements Listener {
         new MainHubMenu(player, this).open();
     }
 
+    public void openAdminHub(Player player) {
+        if (!hasAdminAccess(player)) {
+            player.sendMessage(net.kyori.adventure.text.Component.text(
+                    "คุณไม่มีสิทธิ์เปิด Admin Hub",
+                    net.kyori.adventure.text.format.NamedTextColor.RED));
+            return;
+        }
+        new AdminHubMenu(player, this).open();
+    }
+
+    public boolean hasAdminAccess(Player player) {
+        return player.hasPermission("idlefarm.admin")
+                || player.hasPermission("idlefarm.admin.operations")
+                || player.hasPermission("idlefarm.admin.content")
+                || player.hasPermission("idlefarm.admin.economy")
+                || player.hasPermission("idlefarm.admin.audit");
+    }
+
     public void openNodes(Player player) {
         new NodesMenu(player, this, 0).open();
     }

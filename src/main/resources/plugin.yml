@@ -9,12 +9,29 @@ description: Idle/AFK currency & EXP farming plugin
 commands:
   idle:
     description: IdleFarm main command
-    usage: /idle [balance|top|admin]
+    usage: /idle [help|command]
     aliases: [afk, idlefarm]
 
 permissions:
   idlefarm.admin:
     description: Allows use of /idle admin subcommands
+    default: op
+    children:
+      idlefarm.admin.operations: true
+      idlefarm.admin.content: true
+      idlefarm.admin.economy: true
+      idlefarm.admin.audit: true
+  idlefarm.admin.operations:
+    description: Node, event, NPC and maintenance operations
+    default: op
+  idlefarm.admin.content:
+    description: Content validation, pools and schematic authoring
+    default: op
+  idlefarm.admin.economy:
+    description: Balance, Credits and node-cap adjustments
+    default: op
+  idlefarm.admin.audit:
+    description: Audit logs and system metrics
     default: op
   idlefarm.skin:
     description: Allows changing worker skins (/idle skin) - rank perk

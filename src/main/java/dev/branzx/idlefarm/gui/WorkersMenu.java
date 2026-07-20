@@ -30,9 +30,7 @@ public final class WorkersMenu extends Menu {
 
     @Override
     protected void build() {
-        for (int i = 0; i < rows() * 9; i++) {
-            set(i, Icon.filler());
-        }
+        fill();
 
         double hireCost = gui.workerService().hireCost();
         List<String> odds = new java.util.ArrayList<>();
@@ -59,8 +57,7 @@ public final class WorkersMenu extends Menu {
                         "and see live odds before you roll."),
                         NamedTextColor.GRAY).build(), e -> gui.openFuse(viewer));
 
-        set(22, Icon.of(Material.NETHER_STAR).name("Main Menu", NamedTextColor.GREEN).build(),
-                e -> gui.openMainHub(viewer));
+        backToHub(gui);
     }
 
     private void hire() {

@@ -36,9 +36,7 @@ public final class ExpeditionMenu extends Menu {
 
     @Override
     protected void build() {
-        for (int i = 0; i < rows() * 9; i++) {
-            set(i, Icon.filler());
-        }
+        fill();
 
         // Rankings (top 10) across rows 1-2.
         List<GlobalExpeditionService.Score> top = expedition.top(10);
@@ -76,8 +74,7 @@ public final class ExpeditionMenu extends Menu {
         set(31, Icon.of(Material.CAMPFIRE).name("Send Workers!", NamedTextColor.GREEN)
                 .loreComponents(mineLore).build(), e -> commit());
 
-        set(40, Icon.of(Material.NETHER_STAR).name("Main Menu", NamedTextColor.GREEN).build(),
-                e -> gui.openMainHub(viewer));
+        backToHub(gui);
     }
 
     private void commit() {

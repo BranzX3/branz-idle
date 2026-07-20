@@ -7,6 +7,8 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.Material;
+import net.kyori.adventure.text.format.NamedTextColor;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -58,6 +60,29 @@ public abstract class Menu implements InventoryHolder {
 
     protected void set(int slot, ItemStack item) {
         set(slot, item, null);
+    }
+
+    /** Standard neutral frame used by every chest menu. */
+    protected void fill() {
+        for (int slot = 0; slot < rows() * 9; slot++) {
+            set(slot, Icon.filler());
+        }
+    }
+
+    /** Standard bottom-row route back to the player hub. */
+    protected void backToHub(GuiManager gui) {
+        set(rows() * 9 - 5, Icon.of(Material.ARROW)
+                .name("กลับหน้าหลัก", NamedTextColor.GREEN)
+                .lore("Back to IdleFarm Hub", NamedTextColor.DARK_GRAY)
+                .build(), event -> gui.openMainHub(viewer));
+    }
+
+    /** Standard close action, always at the middle of the bottom row. */
+    protected void closeButton() {
+        set(rows() * 9 - 5, Icon.of(Material.BARRIER)
+                .name("ปิดเมนู", NamedTextColor.RED)
+                .lore("Close", NamedTextColor.DARK_GRAY)
+                .build(), event -> viewer.closeInventory());
     }
 
     /** Called by the listener; returns true if the click was on a mapped slot. */
