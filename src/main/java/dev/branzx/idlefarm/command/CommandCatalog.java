@@ -42,7 +42,7 @@ public final class CommandCatalog {
             player("map", "", "เปิดแผนที่ Territory", "territory"),
             player("claim", "<type>", "ยึด chunk ที่ยืนอยู่", "territory"),
             player("unclaim", "", "ยกเลิก Node ที่ยืนอยู่", "territory"),
-            player("collect", "", "เก็บผลผลิตของ Node ปัจจุบัน", "territory"),
+            player("collect", "[nodeId]", "เก็บผลผลิตของ Node ปัจจุบันหรือตาม id", "territory"),
             player("convert", "<type>", "เปลี่ยนประเภท Node ปัจจุบัน", "territory"),
             player("visit", "<player>", "ไปเยี่ยม Residential ของผู้เล่น", "territory"),
             player("trust", "<player> [role]", "ให้สิทธิ์ใน Territory", "social"),
@@ -64,7 +64,8 @@ public final class CommandCatalog {
             player("chapter", "", "รับรางวัล Starter Chapter", "progress"),
             player("project", "<id>", "ส่งของเข้า Project", "progress"),
             player("build", "<specialization|refinement|mastery> <value>", "ปรับแต่ง Node", "progress"),
-            player("explore", "[info|prepare|start|claim]", "จัดการ Exploration ของ Node", "progress"),
+            player("explore", "[info|prepare|start|claim] [nodeId]",
+                    "จัดการ Exploration ของ Node", "progress"),
             player("expedition", "", "เปิด Global Expedition", "progress")
     );
 

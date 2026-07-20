@@ -103,7 +103,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "assign" -> assign(sender);
             case "eject" -> eject(sender, args);
             case "skin" -> skin(sender, args);
-            case "collect" -> collect(sender);
+            case "collect" -> collect(sender, args);
             case "explore" -> explore(sender, args);
             case "warehouse" -> warehouse(sender);
             case "map" -> map(sender);
@@ -492,14 +492,14 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    private boolean collect(CommandSender sender) {
+    private boolean collect(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(Component.text("Only players can collect.", NamedTextColor.RED));
             return true;
         }
-        NodeRecord node = nodeAt(player);
+        NodeRecord node = resolveNode(player, args.length >= 2 ? args[1] : null);
         if (node == null || !node.getType().isProduction()) {
-            sender.sendMessage(Component.text("Stand in a production node.", NamedTextColor.RED));
+            sender.sendMessage(noTargetNode());
             return true;
         }
         // Helper trust may collect (goes to their inventory for now;
@@ -518,7 +518,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             guiManager.gameDesignService().onBufferCollected(node, collected);
         }
         int remaining = node.storageTotal();
-        npcManager.refreshNode(node, player.getWorld());
+        refreshNodeNpc(node);
         if (remaining > 0) {
             sender.sendMessage(Component.text("Collected " + collected + " to Warehouse; "
                     + remaining + " left (warehouse full).", NamedTextColor.YELLOW));
@@ -831,13 +831,19 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(Component.text("Only players can explore.", NamedTextColor.RED));
             return true;
         }
-        NodeRecord node = nodeAt(player);
-        if (node == null || !node.getType().isProduction()) {
-            sender.sendMessage(Component.text("Stand in a production node.", NamedTextColor.RED));
-            return true;
-        }
         var exploration = plugin.getExplorationService();
         String action = args.length >= 2 ? args[1].toLowerCase(java.util.Locale.ROOT) : "info";
+        // Optional trailing node id keeps chat click actions context-free.
+        String idArg = switch (action) {
+            case "info", "claim" -> args.length >= 3 ? args[2] : null;
+            case "prepare", "start" -> args.length >= 4 ? args[3] : null;
+            default -> null;
+        };
+        NodeRecord node = resolveNode(player, idArg);
+        if (node == null || !node.getType().isProduction()) {
+            sender.sendMessage(noTargetNode());
+            return true;
+        }
 
         switch (action) {
             case "info" -> {
@@ -856,13 +862,15 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
                         case "AVAILABLE" -> Component.text("waiting — expires in "
                                         + Math.max(0, (event.getExpiresAt() - now) / 60000) + "m. ",
                                 NamedTextColor.YELLOW)
-                                .append(CommandLinks.run("[Start]", "/idle explore start"));
+                                .append(CommandLinks.run("[Start]",
+                                        "/idle explore start all " + node.getId()));
                         case "RUNNING" -> Component.text("team away — returns in "
                                 + Math.max(0, (event.getEndsAt() - now) / 60000) + "m",
                                 NamedTextColor.YELLOW);
                         default -> Component.text(event.getGrade() + " result ready! ",
                                         NamedTextColor.YELLOW)
-                                .append(CommandLinks.run("[Claim]", "/idle explore claim"));
+                                .append(CommandLinks.run("[Claim]",
+                                        "/idle explore claim " + node.getId()));
                     };
                     sender.sendMessage(Component.text(exploration.eventName(event.getEventType())
                                     + " [" + event.getState() + "] ", NamedTextColor.YELLOW)
@@ -881,12 +889,21 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
                     sender.sendMessage(Component.text("Manager trust required.", NamedTextColor.RED));
                     return true;
                 }
-                int team = args.length >= 3 ? Integer.parseInt(args[2]) : Integer.MAX_VALUE;
+                int team = Integer.MAX_VALUE;
+                if (args.length >= 3 && !"all".equalsIgnoreCase(args[2])) {
+                    try {
+                        team = Integer.parseInt(args[2]);
+                    } catch (NumberFormatException e) {
+                        sender.sendMessage(Component.text("Team must be a number or 'all'.",
+                                NamedTextColor.RED));
+                        return true;
+                    }
+                }
                 String error = exploration.start(node, team);
                 if (error != null) {
                     sender.sendMessage(Component.text(error, NamedTextColor.RED));
                 } else {
-                    npcManager.refreshNode(node, player.getWorld());
+                    refreshNodeNpc(node);
                     sender.sendMessage(Component.text("Expedition sent!", NamedTextColor.GREEN));
                 }
             }
@@ -899,11 +916,12 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(Component.text(result.message(),
                         result.success() ? NamedTextColor.GOLD : NamedTextColor.RED));
                 if (result.success()) {
-                    npcManager.refreshNode(node, player.getWorld());
+                    refreshNodeNpc(node);
                 }
             }
             default -> sender.sendMessage(Component.text(
-                    "Usage: /idle explore [info|prepare <speed|quantity|research>|start [team]|claim]",
+                    "Usage: /idle explore [info|prepare <speed|quantity|research>"
+                            + "|start [team|all]|claim] [nodeId]",
                     NamedTextColor.YELLOW));
         }
         return true;
@@ -918,6 +936,41 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         return nodeStore.getByChunk(new ChunkKey(player.getWorld().getName(),
                 player.getLocation().getBlockX() >> 4,
                 player.getLocation().getBlockZ() >> 4));
+    }
+
+    /**
+     * Resolves the acted-on node: explicit id first, then the chunk the
+     * player stands in, then the Focused Node. Keeps chat click actions
+     * usable from anywhere (context-free rule).
+     */
+    private NodeRecord resolveNode(Player player, String idArg) {
+        if (idArg != null) {
+            try {
+                return nodeStore.getById(Long.parseLong(idArg));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        NodeRecord node = nodeAt(player);
+        if (node != null) {
+            return node;
+        }
+        Long focused = guiManager.gameDesignService() == null ? null
+                : guiManager.gameDesignService().focusedNode(player.getUniqueId());
+        return focused == null ? null : nodeStore.getById(focused);
+    }
+
+    private Component noTargetNode() {
+        return Component.text("No production node targeted. Stand in one, set a Focused Node, "
+                + "or pass a node id.", NamedTextColor.RED);
+    }
+
+    /** NPC refresh must use the node's own world; chat clicks can act cross-world. */
+    private void refreshNodeNpc(NodeRecord node) {
+        var world = plugin.getServer().getWorld(node.getChunk().world());
+        if (world != null) {
+            npcManager.refreshNode(node, world);
+        }
     }
 
     private void giveOrDrop(Player player, ItemStack item) {

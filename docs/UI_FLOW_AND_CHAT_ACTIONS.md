@@ -97,13 +97,12 @@ double-confirm inside a menu the player deliberately opened.
 location and any menu state.** Chat lines outlive the moment: the player
 may click from spawn, from another node, or after relog.
 
-Current violation: `ExplorationService` sends `[Claim]` →
-`/idle explore claim`, and `IdleCommand` shows `[Start]`/`[Claim]`, but
-`collect`/`explore` resolve the node with `nodeAt(player)`
-(`IdleCommand.java:917`). Clicking away from the node fails with a
-confusing "no node here" error.
+Implemented: `/idle collect [nodeId]` and `/idle explore <action> [nodeId]`
+resolve explicit id → standing chunk → Focused Node (`resolveNode` in
+`IdleCommand`), and every exploration chat link embeds the node id. NPC
+refreshes use the node's own world, so clicks work cross-world.
 
-Fix pattern, in order of preference:
+Fix pattern for future position-dependent commands, in order of preference:
 
 1. Add an optional explicit target: `/idle explore claim [nodeId]`,
    `/idle collect [nodeId]`. Chat links always embed the id.
@@ -181,8 +180,8 @@ On login, after `StreakService.handleLogin`, send one block:
 
 ### 4.4 Exploration — 🔶
 
-- Event spawned: ✅ `[Open]` link exists (`ExplorationService.java:363`).
-- Completed: ✅ `[Claim]` exists (`:534`) — **must adopt §3.3 node-id fix**.
+- Event spawned: ✅ `[Open]` link with embedded node id.
+- Completed: ✅ `[Claim]` with embedded node id (context-free per §3.3).
 - Start from chat stays Tier B: `[Start]` should open the Node/Exploration
   screen (crew, odds, preparation preview), not fire the start verb
   blindly. Change the current `[Start]` run-link in `IdleCommand.java:859`
@@ -266,8 +265,8 @@ Rule: an error line without at least a navigation link is a copy bug.
 
 | Change | Reason | Tier impact |
 |---|---|---|
-| `/idle collect [nodeId]` | context-free `[เก็บผลผลิต]` links (§3.3) | enables Tier S |
-| `/idle explore claim [nodeId]` (+ Focused-Node fallback) | fix existing stale-link failure | fixes current 🔶 |
+| `/idle collect [nodeId]` — ✅ done | context-free `[เก็บผลผลิต]` links (§3.3) | enables Tier S |
+| `/idle explore <action> [nodeId]` (+ Focused-Node fallback) — ✅ done | fix existing stale-link failure | fixed |
 | `/idle explore info [nodeId]` deep-open of Exploration screen | `[Start]` becomes open-screen (Tier B) | safer start flow |
 | `/idle trade decline` (or make `cancel` pre-session-safe) | `[ปฏิเสธ]` on request line | enables Tier S |
 | Optional: `/idle open <screen>` internal deep-link verb | one canonical way for chat → specific GUI screen | simplifies §4 |
@@ -277,9 +276,9 @@ tab completion and help inherit them automatically.
 
 ## 7. Implementation checklist (priority order)
 
-1. **P0 — correctness**: node-id argument + Focused fallback for
-   `explore claim` / `collect`; stale-click replies per §3.4. The `[Claim]`
-   link that exists today can fail; this is a live UX bug.
+1. **P0 — correctness** ✅ done: node-id argument + Focused fallback for
+   every `explore` action and `collect`; exploration chat links embed the
+   node id.
 2. **P0 — plumbing**: small `ChatActions` helper (wraps `CommandLinks`,
    adds the `[IdleFarm]` prefix, two-action limit, per-category cooldown
    registry persisted per player session).

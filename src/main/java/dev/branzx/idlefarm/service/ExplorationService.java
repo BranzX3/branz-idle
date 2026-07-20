@@ -360,7 +360,7 @@ public final class ExplorationService {
                 .append(Component.text("[Exploration] ", NamedTextColor.GOLD))
                 .append(Component.text(eventName(eventType) + " discovered at your " + node.getType()
                         + " node! Expires in " + expiryMinutes + "m — ", NamedTextColor.YELLOW))
-                .append(CommandLinks.run("[Open]", "/idle explore"))
+                .append(CommandLinks.run("[Open]", "/idle explore info " + node.getId()))
                 .build());
     }
 
@@ -531,7 +531,7 @@ public final class ExplorationService {
                     .append(Component.text("[Exploration] ", NamedTextColor.GOLD))
                     .append(Component.text(eventName(event.eventType) + " finished — " + event.grade
                             + "! ", NamedTextColor.GREEN))
-                    .append(CommandLinks.run("[Claim]", "/idle explore claim"))
+                    .append(CommandLinks.run("[Claim]", "/idle explore claim " + node.getId()))
                     .build());
         }
     }
