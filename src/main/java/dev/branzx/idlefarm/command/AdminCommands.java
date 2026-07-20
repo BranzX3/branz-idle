@@ -35,44 +35,36 @@ public final class AdminCommands {
     private final SchematicService schematicService;
     private final WorkerNpcManager npcManager;
     private final Map<UUID, EditSession> sessions = new ConcurrentHashMap<>();
-    private dev.branzx.idlefarm.service.DropTableService dropTableService;
-    private dev.branzx.idlefarm.service.AuditService auditService;
-    private dev.branzx.idlefarm.gui.GuiManager guiManager;
-    private dev.branzx.idlefarm.storage.PlayerDataStore dataStore;
-    private dev.branzx.idlefarm.service.ExplorationService explorationService;
-    private dev.branzx.idlefarm.service.CreditService creditService;
-    private dev.branzx.idlefarm.service.ClaimService claimService;
-
-    public void setPhase8Services(dev.branzx.idlefarm.service.DropTableService dropTableService,
-                                  dev.branzx.idlefarm.service.AuditService auditService,
-                                  dev.branzx.idlefarm.gui.GuiManager guiManager,
-                                  dev.branzx.idlefarm.storage.PlayerDataStore dataStore) {
-        this.dropTableService = dropTableService;
-        this.auditService = auditService;
-        this.guiManager = guiManager;
-        this.dataStore = dataStore;
-        guiManager.setAdminTools(this, auditService);
-    }
-
-    public void setExplorationService(dev.branzx.idlefarm.service.ExplorationService explorationService) {
-        this.explorationService = explorationService;
-    }
-
-    public void setCreditService(dev.branzx.idlefarm.service.CreditService creditService) {
-        this.creditService = creditService;
-    }
-
-    public void setClaimService(dev.branzx.idlefarm.service.ClaimService claimService) {
-        this.claimService = claimService;
-    }
+    private final dev.branzx.idlefarm.service.DropTableService dropTableService;
+    private final dev.branzx.idlefarm.service.AuditService auditService;
+    private final dev.branzx.idlefarm.gui.GuiManager guiManager;
+    private final dev.branzx.idlefarm.storage.PlayerDataStore dataStore;
+    private final dev.branzx.idlefarm.service.ExplorationService explorationService;
+    private final dev.branzx.idlefarm.service.CreditService creditService;
+    private final dev.branzx.idlefarm.service.ClaimService claimService;
 
     public AdminCommands(IdleFarmPlugin plugin, NodeStore nodeStore, WorkerStore workerStore,
-                         SchematicService schematicService, WorkerNpcManager npcManager) {
+                         SchematicService schematicService, WorkerNpcManager npcManager,
+                         dev.branzx.idlefarm.service.DropTableService dropTableService,
+                         dev.branzx.idlefarm.service.AuditService auditService,
+                         dev.branzx.idlefarm.gui.GuiManager guiManager,
+                         dev.branzx.idlefarm.storage.PlayerDataStore dataStore,
+                         dev.branzx.idlefarm.service.ExplorationService explorationService,
+                         dev.branzx.idlefarm.service.CreditService creditService,
+                         dev.branzx.idlefarm.service.ClaimService claimService) {
         this.plugin = plugin;
         this.nodeStore = nodeStore;
         this.workerStore = workerStore;
         this.schematicService = schematicService;
         this.npcManager = npcManager;
+        this.dropTableService = dropTableService;
+        this.auditService = auditService;
+        this.guiManager = guiManager;
+        this.dataStore = dataStore;
+        this.explorationService = explorationService;
+        this.creditService = creditService;
+        this.claimService = claimService;
+        guiManager.setAdminTools(this, auditService);
     }
 
     public boolean handle(CommandSender sender, String[] args) {

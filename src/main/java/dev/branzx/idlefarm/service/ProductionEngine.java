@@ -30,47 +30,33 @@ public final class ProductionEngine extends BukkitRunnable {
     private final WorkerStore workerStore;
     private final WorkerService workerService;
     private final ProgressionScale scale;
-    private ExplorationService explorationService;
-    private BoosterService boosterService;
-    private PerkService perkService;
-    private WarehouseService warehouseService;
-    private GlobalExpeditionService globalExpeditionService;
-    private GameDesignService gameDesignService;
-
-    public void setExplorationService(ExplorationService explorationService) {
-        this.explorationService = explorationService;
-    }
-
-    public void setBoosterService(BoosterService boosterService) {
-        this.boosterService = boosterService;
-    }
-
-    public void setPerkServices(PerkService perkService, WarehouseService warehouseService) {
-        this.perkService = perkService;
-        this.warehouseService = warehouseService;
-    }
-
-    public void setGlobalExpeditionService(GlobalExpeditionService globalExpeditionService) {
-        this.globalExpeditionService = globalExpeditionService;
-    }
-
-    public void setGameDesignService(GameDesignService gameDesignService) {
-        this.gameDesignService = gameDesignService;
-    }
-
-    private DropTableService dropTableService;
-
-    public void setDropTableService(DropTableService dropTableService) {
-        this.dropTableService = dropTableService;
-    }
+    private final ExplorationService explorationService;
+    private final BoosterService boosterService;
+    private final PerkService perkService;
+    private final WarehouseService warehouseService;
+    private final GlobalExpeditionService globalExpeditionService;
+    private final GameDesignService gameDesignService;
+    private final DropTableService dropTableService;
 
     public ProductionEngine(IdleFarmPlugin plugin, NodeStore nodeStore,
-                            WorkerStore workerStore, WorkerService workerService) {
+                            WorkerStore workerStore, WorkerService workerService,
+                            ExplorationService explorationService, BoosterService boosterService,
+                            PerkService perkService, WarehouseService warehouseService,
+                            DropTableService dropTableService,
+                            GlobalExpeditionService globalExpeditionService,
+                            GameDesignService gameDesignService) {
         this.plugin = plugin;
         this.nodeStore = nodeStore;
         this.workerStore = workerStore;
         this.workerService = workerService;
         this.scale = new ProgressionScale(plugin);
+        this.explorationService = explorationService;
+        this.boosterService = boosterService;
+        this.perkService = perkService;
+        this.warehouseService = warehouseService;
+        this.dropTableService = dropTableService;
+        this.globalExpeditionService = globalExpeditionService;
+        this.gameDesignService = gameDesignService;
     }
 
     @Override

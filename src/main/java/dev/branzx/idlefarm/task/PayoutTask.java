@@ -13,19 +13,15 @@ public final class PayoutTask extends BukkitRunnable {
 
     private final IdleFarmPlugin plugin;
     private final PlayerDataStore dataStore;
-    private BoosterService boosterService;
-    private dev.branzx.idlefarm.service.CreditService creditService;
+    private final BoosterService boosterService;
+    private final dev.branzx.idlefarm.service.CreditService creditService;
 
-    public PayoutTask(IdleFarmPlugin plugin, PlayerDataStore dataStore) {
+    public PayoutTask(IdleFarmPlugin plugin, PlayerDataStore dataStore,
+                      BoosterService boosterService,
+                      dev.branzx.idlefarm.service.CreditService creditService) {
         this.plugin = plugin;
         this.dataStore = dataStore;
-    }
-
-    public void setBoosterService(BoosterService boosterService) {
         this.boosterService = boosterService;
-    }
-
-    public void setCreditService(dev.branzx.idlefarm.service.CreditService creditService) {
         this.creditService = creditService;
     }
 

@@ -10,12 +10,37 @@ design documents remain the authority for player-facing behavior.
 | Domain records | `node`, `worker` | Runtime state and value types |
 | Persistence | `storage` | Database schema, ordered writes, indexes and scoped state |
 | Gameplay | `service` | Validate actions, apply game rules and coordinate durable settlement |
+| Game design | `service.design` | Typed services over `GameStateStore`: focus, commissions, Chronicle, discoveries, node builds, projects, seasons, telemetry |
 | Delivery | `command`, `gui`, `listener` | Authenticate the actor, collect input and render results |
 | Scheduling | `task`, scheduled services | Production, payout, exploration and weekly lifecycle |
 
 Delivery code must not mutate durable maps or records without calling a
 gameplay service. A service must re-check ownership and state even when the GUI
-already filtered the action.
+already filtered the action (`WorkerService.eject` and
+`GlobalExpeditionService.commit` re-verify node ownership for exactly this
+reason).
+
+`GameDesignService` is a facade: delivery code keeps one entry point while
+each concern lives in its own `service.design` class sharing the scoped
+`GameStateStore`. The facade routes gameplay events (claim, collect, produce,
+expedition) to the interested services and owns the two cross-cutting reward
+sinks (node EXP via ExplorationService, Coins via PlayerDataStore). New
+design-package features get a new typed service, not a new branch in the
+facade.
+
+## Composition root
+
+`IdleFarmPlugin.onEnable` is the composition root: services are constructed
+in dependency order and receive collaborators through constructors. Exactly
+two late binds are allowed, both cycles by design:
+
+- `ExplorationService.setGameDesignService` — events grant design rewards
+  while the design service grants exploration EXP.
+- `GuiManager.setAdminTools` — AdminCommands opens admin menus through the
+  GuiManager that needs AdminCommands.
+
+Do not add new `set*` late-injection methods; extend the constructor and the
+composition root instead.
 
 ## Persistence model
 
@@ -32,12 +57,25 @@ Use:
 Never mix a direct connection write with related queued writes. Never call
 `executeTransaction` from the database writer thread.
 
+For cross-aggregate settlement, `GameStateStore.stage`/`Row` and
+`WarehouseService.prepareWithdraw`/`snapshot` mutate the runtime cache and
+hand the caller immutable rows to persist inside one transaction
+(`GameStateStore.write`, `WarehouseService.write`). Blocking flows build
+`Row`s without touching the cache and call `applyCommitted` after success.
+
 Cross-row gameplay invariants:
 
 - Exploration Warehouse deposit and event deletion commit together.
 - Credit checkout ledger, Credit wallet and Coin balance commit together.
 - Global Expedition rewards and score purge commit together.
 - Daily streak state and its Coin reward commit together.
+- Supply commission, project and Server Project contributions and expedition
+  preparation commit their Warehouse withdrawal with the state they buy.
+- A paid node respec commits the Coin charge with the new build.
+- Node convert commits its Coin cost with the type change; unclaim commits
+  the node delete with its refund.
+- A fuse consumes both materials and mints the result in one transaction.
+- Trade delivery happens only after the receipt row is durable.
 
 Player balance snapshots carry a revision. An older asynchronous save cannot
 mark or overwrite a newer in-memory mutation as clean.

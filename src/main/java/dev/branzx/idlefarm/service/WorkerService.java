@@ -59,10 +59,19 @@ public final class WorkerService {
             new java.util.concurrent.ConcurrentHashMap<>();
 
     public WorkerService(IdleFarmPlugin plugin, WorkerStore workerStore, PlayerDataStore playerDataStore,
-                         dev.branzx.idlefarm.storage.Database database) {
+                         dev.branzx.idlefarm.storage.Database database,
+                         dev.branzx.idlefarm.storage.NodeStore nodeStore, NodeAnchorStore anchorStore,
+                         AuditService auditService, GlobalExpeditionService globalExpeditionService,
+                         GameDesignService gameDesignService) {
         this(plugin, workerStore, playerDataStore, database, new NamespacedKey(plugin, "worker_uuid"));
+        this.nodeStore = nodeStore;
+        this.anchorStore = anchorStore;
+        this.auditService = auditService;
+        this.globalExpeditionService = globalExpeditionService;
+        this.gameDesignService = gameDesignService;
     }
 
+    /** Test seam: collaborators stay null and every use is null-guarded. */
     WorkerService(IdleFarmPlugin plugin, WorkerStore workerStore, PlayerDataStore playerDataStore,
                   dev.branzx.idlefarm.storage.Database database, NamespacedKey workerKey) {
         this.plugin = plugin;
@@ -77,26 +86,6 @@ public final class WorkerService {
     private dev.branzx.idlefarm.storage.NodeStore nodeStore;
     private GlobalExpeditionService globalExpeditionService;
     private GameDesignService gameDesignService;
-
-    public void setAuditService(AuditService auditService) {
-        this.auditService = auditService;
-    }
-
-    public void setAnchorStore(NodeAnchorStore anchorStore) {
-        this.anchorStore = anchorStore;
-    }
-
-    public void setNodeStore(dev.branzx.idlefarm.storage.NodeStore nodeStore) {
-        this.nodeStore = nodeStore;
-    }
-
-    public void setGlobalExpeditionService(GlobalExpeditionService globalExpeditionService) {
-        this.globalExpeditionService = globalExpeditionService;
-    }
-
-    public void setGameDesignService(GameDesignService gameDesignService) {
-        this.gameDesignService = gameDesignService;
-    }
 
     private void audit(UUID actor, String action, String detail) {
         if (auditService != null) {
@@ -485,9 +474,10 @@ public final class WorkerService {
 
     /**
      * Fuses exactly two same-rarity workers. Rolls {@link #fuseChance}:
-     * success mints the next rarity and resets pity; failure consumes both
-     * and increments pity so the next attempt is likelier. Both materials
-     * are always consumed. Caller removes the item tokens from inventory.
+     * success consumes both materials and mints the next rarity, resetting
+     * pity; failure consumes only the duplicate (slot 2), protects the base
+     * worker and increments pity so the next attempt is likelier. Caller
+     * removes the consumed item tokens from inventory.
      */
     public Result fuse(UUID owner, List<WorkerRecord> materials) {
         if (materials.size() != 2) {
@@ -527,12 +517,11 @@ public final class WorkerService {
         long trainingNotes = Math.round(materials.stream().mapToLong(WorkerRecord::getExp).sum() * 0.25);
 
         if (success) {
-            for (WorkerRecord material : materials) {
-                workerStore.delete(material);
-            }
             setPity(owner, rarity, 0);
             WorkerRecord fused = createWorker(next);
-            workerStore.insert(fused);
+            // Both consumed rows and the minted row settle in one transaction
+            // so a restart can never keep the materials and the result.
+            workerStore.fuseSettle(materials, fused);
             if (gameDesignService != null) {
                 gameDesignService.addTrainingNotes(owner, trainingNotes);
             }
@@ -541,7 +530,7 @@ public final class WorkerService {
         } else {
             // Protect the selected base worker; a failed fuse consumes only
             // the duplicate and advances pity.
-            workerStore.delete(materials.get(1));
+            workerStore.fuseSettle(List.of(materials.get(1)), null);
             if (gameDesignService != null) {
                 gameDesignService.addTrainingNotes(owner,
                         Math.round(materials.get(1).getExp() * 0.25));
@@ -686,6 +675,14 @@ public final class WorkerService {
     public Result eject(UUID actor, WorkerRecord worker) {
         if (worker.getAssignedNodeId() == null) {
             return Result.fail("This worker is not assigned.");
+        }
+        // The GUI already filters, but ownership is authoritative here: only
+        // the owner of the assigned node may recall its crew into their bag.
+        if (nodeStore != null) {
+            NodeRecord node = nodeStore.getById(worker.getAssignedNodeId());
+            if (node != null && !node.getOwnerUuid().equals(actor)) {
+                return Result.fail("That worker serves another player's node.");
+            }
         }
         if (globalExpeditionService != null
                 && globalExpeditionService.isCommitted(worker.getWorkerUuid())) {

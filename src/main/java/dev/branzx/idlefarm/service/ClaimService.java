@@ -33,46 +33,32 @@ public final class ClaimService {
     private final PlayerDataStore playerDataStore;
     private final SchematicService schematicService;
     private final WorkerNpcManager npcManager;
-    private ExplorationService explorationService;
-    private WorkerService workerService;
-    private dev.branzx.idlefarm.storage.WorkerStore workerStore;
-    private GlobalExpeditionService globalExpeditionService;
-    private GameDesignService gameDesignService;
+    private final ExplorationService explorationService;
+    private final WorkerService workerService;
+    private final dev.branzx.idlefarm.storage.WorkerStore workerStore;
+    private final GlobalExpeditionService globalExpeditionService;
+    private final GameDesignService gameDesignService;
+    private final NodeAnchorStore anchorStore;
+    private final AuditService auditService;
 
     public ClaimService(IdleFarmPlugin plugin, NodeStore nodeStore, PlayerDataStore playerDataStore,
-                        SchematicService schematicService, WorkerNpcManager npcManager) {
+                        SchematicService schematicService, WorkerNpcManager npcManager,
+                        ExplorationService explorationService, WorkerService workerService,
+                        dev.branzx.idlefarm.storage.WorkerStore workerStore,
+                        NodeAnchorStore anchorStore, GlobalExpeditionService globalExpeditionService,
+                        GameDesignService gameDesignService, AuditService auditService) {
         this.plugin = plugin;
         this.nodeStore = nodeStore;
         this.playerDataStore = playerDataStore;
         this.schematicService = schematicService;
         this.npcManager = npcManager;
-    }
-
-    private AuditService auditService;
-
-    public void setLateServices(ExplorationService explorationService, WorkerService workerService,
-                                dev.branzx.idlefarm.storage.WorkerStore workerStore) {
         this.explorationService = explorationService;
         this.workerService = workerService;
         this.workerStore = workerStore;
-    }
-
-    public void setAuditService(AuditService auditService) {
-        this.auditService = auditService;
-    }
-
-    public void setGlobalExpeditionService(GlobalExpeditionService globalExpeditionService) {
-        this.globalExpeditionService = globalExpeditionService;
-    }
-
-    public void setGameDesignService(GameDesignService gameDesignService) {
-        this.gameDesignService = gameDesignService;
-    }
-
-    private NodeAnchorStore anchorStore;
-
-    public void setAnchorStore(NodeAnchorStore anchorStore) {
         this.anchorStore = anchorStore;
+        this.globalExpeditionService = globalExpeditionService;
+        this.gameDesignService = gameDesignService;
+        this.auditService = auditService;
     }
 
     private void audit(UUID actor, String action, String detail) {
@@ -237,12 +223,19 @@ public final class ClaimService {
                 anchorStore.clearNode(record.getId());
             }
             npcManager.despawnNode(record.getId());
-            schematicService.restoreTerrain(record, world);
         }
-        nodeStore.delete(record);
+        // The node delete and its refund settle in one transaction; the world
+        // is only restored after the durable commit succeeds.
         PlayerData data = playerDataStore.getOnline(owner);
         if (data != null) {
-            data.addBalance(refund);
+            if (!nodeStore.deleteWithRefund(record, data, refund)) {
+                return Result.fail("Unclaim could not be committed; the node is unchanged.");
+            }
+        } else {
+            nodeStore.delete(record);
+        }
+        if (record.getType().isProduction()) {
+            schematicService.restoreTerrain(record, world);
         }
         audit(owner, "UNCLAIM", record.getType() + " @ " + chunk.world() + " " + chunk.x() + ","
                 + chunk.z() + " refund=" + refund);
@@ -398,18 +391,26 @@ public final class ClaimService {
         if (data == null || data.getBalance() < cost) {
             return Result.fail("Not enough money (need " + cost + ").");
         }
-        data.addBalance(-cost);
 
         if (explorationService != null) {
             explorationService.cancel(record);
         }
         ejectAllWorkers(record);
+        NodeType oldType = record.getType();
+        int oldLevel = record.getExplorationLevel();
+        long oldExp = record.getExplorationExp();
         record.setType(newType);
         // Tier kept; exploration level halved (configurable) — §8b.
         double keep = plugin.getConfig().getDouble("claims.convert-exploration-keep", 0.5);
         record.setExplorationLevel((int) Math.floor(record.getExplorationLevel() * keep));
         record.setExplorationExp(0);
-        nodeStore.updateProduction(record);
+        // The type change and its Coin cost settle in one transaction.
+        if (!nodeStore.updateProductionWithCost(record, data, cost)) {
+            record.setType(oldType);
+            record.setExplorationLevel(oldLevel);
+            record.setExplorationExp(oldExp);
+            return Result.fail("Conversion could not be committed; no Coins were charged.");
+        }
         schematicService.rebuild(record, world);
         npcManager.refreshNode(record, world);
         audit(owner, "CONVERT", "node#" + record.getId() + " -> " + newType + " cost=" + cost);

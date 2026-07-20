@@ -110,6 +110,16 @@ public final class NodeStore {
         return byChunk.get(key);
     }
 
+    /** Linear scan; use for rare authorization checks, not hot paths. */
+    public NodeRecord getById(long id) {
+        for (NodeRecord record : byChunk.values()) {
+            if (record.getId() == id) {
+                return record;
+            }
+        }
+        return null;
+    }
+
     public List<NodeRecord> getByOwner(UUID owner) {
         return List.copyOf(byOwner.getOrDefault(owner, List.of()));
     }
@@ -224,6 +234,37 @@ public final class NodeStore {
         index(record);
         player.addBalance(-cost);
         return record;
+    }
+
+    /**
+     * Deletes a node and settles its unclaim refund in one blocking
+     * transaction; the node stays claimed when the commit fails.
+     */
+    public boolean deleteWithRefund(NodeRecord record, PlayerData player, double refund) {
+        double balanceAfter = player.getBalance() + refund;
+        boolean committed = database.executeTransaction("unclaim node " + record.getId(),
+                connection -> {
+            try (PreparedStatement research = connection.prepareStatement(
+                    "DELETE FROM idlefarm_node_research WHERE node_id = ?")) {
+                research.setLong(1, record.getId());
+                research.executeUpdate();
+            }
+            try (PreparedStatement delete = connection.prepareStatement(
+                    "DELETE FROM idlefarm_nodes WHERE id = ?")) {
+                delete.setLong(1, record.getId());
+                delete.executeUpdate();
+            }
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idlefarm_players SET balance = ? WHERE uuid = ?")) {
+                update.setDouble(1, balanceAfter);
+                update.setString(2, player.getUuid().toString());
+                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
+            }
+        });
+        if (!committed) return false;
+        unindex(record);
+        player.addBalance(refund);
+        return true;
     }
 
     /** In-memory removal is immediate; durable delete is queued. */

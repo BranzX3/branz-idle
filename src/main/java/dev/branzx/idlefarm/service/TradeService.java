@@ -200,17 +200,21 @@ public final class TradeService implements Listener {
         }
         String offerA = serialize(session.aItems);
         String offerB = serialize(session.bItems);
-        try (Connection connection = database.getConnection();
-             PreparedStatement insert = connection.prepareStatement(
-                     "INSERT INTO idlefarm_trade_receipts "
-                             + "(trade_id, player_a, player_b, offer_a, offer_b) VALUES (?, ?, ?, ?, ?)")) {
-            insert.setString(1, session.id);
-            insert.setString(2, session.a.toString());
-            insert.setString(3, session.b.toString());
-            insert.setString(4, offerA);
-            insert.setString(5, offerB);
-            insert.executeUpdate();
-        } catch (SQLException e) {
+        // Ordered blocking commit: items are only delivered after the receipt
+        // row is durable, and the write queue stays the single writer.
+        boolean committed = database.executeTransaction("trade receipt " + session.id, connection -> {
+            try (PreparedStatement insert = connection.prepareStatement(
+                    "INSERT INTO idlefarm_trade_receipts "
+                            + "(trade_id, player_a, player_b, offer_a, offer_b) VALUES (?, ?, ?, ?, ?)")) {
+                insert.setString(1, session.id);
+                insert.setString(2, session.a.toString());
+                insert.setString(3, session.b.toString());
+                insert.setString(4, offerA);
+                insert.setString(5, offerB);
+                insert.executeUpdate();
+            }
+        });
+        if (!committed) {
             resetConfirmations(session);
             return Result.fail("Trade could not be committed; nothing moved.");
         }

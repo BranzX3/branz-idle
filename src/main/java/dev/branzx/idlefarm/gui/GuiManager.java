@@ -38,13 +38,16 @@ public final class GuiManager implements Listener {
     private final ExplorationService explorationService;
     private final WorkerNpcManager npcManager;
     private final ChatPrompt chatPrompt;
-    private dev.branzx.idlefarm.service.BoosterService boosterService;
-    private dev.branzx.idlefarm.service.PerkService perkService;
-    private dev.branzx.idlefarm.service.StreakService streakService;
-    private dev.branzx.idlefarm.service.GameDesignService gameDesignService;
-    private dev.branzx.idlefarm.service.CreditService creditService;
-    private dev.branzx.idlefarm.service.DropTableService dropTableService;
-    private dev.branzx.idlefarm.service.TradeService tradeService;
+    private final dev.branzx.idlefarm.service.BoosterService boosterService;
+    private final dev.branzx.idlefarm.service.PerkService perkService;
+    private final dev.branzx.idlefarm.service.StreakService streakService;
+    private final dev.branzx.idlefarm.service.GameDesignService gameDesignService;
+    private final dev.branzx.idlefarm.service.CreditService creditService;
+    private final dev.branzx.idlefarm.service.DropTableService dropTableService;
+    private final dev.branzx.idlefarm.service.TradeService tradeService;
+    private final dev.branzx.idlefarm.service.GlobalExpeditionService expeditionService;
+    // Deliberate late binding: AdminCommands needs this GuiManager to open
+    // admin menus, so the pair cannot both be constructor-injected.
     private dev.branzx.idlefarm.command.AdminCommands adminCommands;
     private dev.branzx.idlefarm.service.AuditService auditService;
 
@@ -52,7 +55,15 @@ public final class GuiManager implements Listener {
                       PlayerDataStore dataStore, WorkerService workerService,
                       WarehouseService warehouseService, ClaimService claimService,
                       TrustService trustService, ExplorationService explorationService,
-                      WorkerNpcManager npcManager) {
+                      WorkerNpcManager npcManager,
+                      dev.branzx.idlefarm.service.BoosterService boosterService,
+                      dev.branzx.idlefarm.service.PerkService perkService,
+                      dev.branzx.idlefarm.service.StreakService streakService,
+                      dev.branzx.idlefarm.service.GameDesignService gameDesignService,
+                      dev.branzx.idlefarm.service.CreditService creditService,
+                      dev.branzx.idlefarm.service.DropTableService dropTableService,
+                      dev.branzx.idlefarm.service.TradeService tradeService,
+                      dev.branzx.idlefarm.service.GlobalExpeditionService expeditionService) {
         this.plugin = plugin;
         this.nodeStore = nodeStore;
         this.workerStore = workerStore;
@@ -64,22 +75,14 @@ public final class GuiManager implements Listener {
         this.explorationService = explorationService;
         this.npcManager = npcManager;
         this.chatPrompt = new ChatPrompt(plugin);
-    }
-
-    public void setPhase7Services(dev.branzx.idlefarm.service.BoosterService boosterService,
-                                  dev.branzx.idlefarm.service.PerkService perkService,
-                                  dev.branzx.idlefarm.service.StreakService streakService) {
         this.boosterService = boosterService;
         this.perkService = perkService;
         this.streakService = streakService;
-    }
-
-    public void setGameDesignServices(dev.branzx.idlefarm.service.GameDesignService gameDesignService,
-                                      dev.branzx.idlefarm.service.CreditService creditService,
-                                      dev.branzx.idlefarm.service.DropTableService dropTableService) {
         this.gameDesignService = gameDesignService;
         this.creditService = creditService;
         this.dropTableService = dropTableService;
+        this.tradeService = tradeService;
+        this.expeditionService = expeditionService;
     }
 
     public dev.branzx.idlefarm.service.GameDesignService gameDesignService() {
@@ -92,10 +95,6 @@ public final class GuiManager implements Listener {
 
     public dev.branzx.idlefarm.service.DropTableService dropTableService() {
         return dropTableService;
-    }
-
-    public void setTradeService(dev.branzx.idlefarm.service.TradeService tradeService) {
-        this.tradeService = tradeService;
     }
 
     public dev.branzx.idlefarm.service.TradeService tradeService() {
@@ -249,12 +248,6 @@ public final class GuiManager implements Listener {
 
     public void openShop(Player player) {
         new ShopMenu(player, this).open();
-    }
-
-    private dev.branzx.idlefarm.service.GlobalExpeditionService expeditionService;
-
-    public void setExpeditionService(dev.branzx.idlefarm.service.GlobalExpeditionService expeditionService) {
-        this.expeditionService = expeditionService;
     }
 
     public dev.branzx.idlefarm.service.GlobalExpeditionService expeditionService() {

@@ -23,6 +23,15 @@ public final class GameStateStore {
     private record Key(UUID owner, String scope, String scopeId, String name) {
     }
 
+    /**
+     * Immutable staged row for cross-aggregate transactions. Build one with
+     * {@link #stage} (cache-first, for ordered async transactions) or the
+     * record constructor plus {@link #applyCommitted} (for blocking
+     * transactions that must not surface state until the commit succeeds).
+     */
+    public record Row(UUID owner, String scope, String scopeId, String name, String value) {
+    }
+
     private final IdleFarmPlugin plugin;
     private final Database database;
     private final Map<Key, String> values = new ConcurrentHashMap<>();
@@ -73,6 +82,43 @@ public final class GameStateStore {
         Key key = new Key(owner, scope, scopeId, name);
         values.put(key, value);
         persist(key, value);
+    }
+
+    /**
+     * Updates the runtime cache and returns the row without scheduling a
+     * standalone write. The caller must persist the row with {@link #write}
+     * inside the same transaction that settles the related aggregates.
+     */
+    public Row stage(UUID owner, String scope, String scopeId, String name, String value) {
+        values.put(new Key(owner, scope, scopeId, name), value);
+        return new Row(owner, scope, scopeId, name, value);
+    }
+
+    /** Cache-first staged variant of {@link #increment}. */
+    public synchronized Row stageIncrement(UUID owner, String scope, String scopeId,
+                                           String name, long amount) {
+        long next = getLong(owner, scope, scopeId, name, 0) + amount;
+        return stage(owner, scope, scopeId, name, String.valueOf(next));
+    }
+
+    /** Applies a row committed by a blocking transaction to the runtime cache. */
+    public void applyCommitted(Row row) {
+        values.put(new Key(row.owner(), row.scope(), row.scopeId(), row.name()), row.value());
+    }
+
+    /** Persists one staged row on the caller's transaction connection. */
+    public static void write(Connection connection, Row row) throws SQLException {
+        try (PreparedStatement upsert = connection.prepareStatement(
+                "REPLACE INTO idlefarm_game_state "
+                        + "(owner_uuid, scope, scope_id, state_key, value_text, updated_at) "
+                        + "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)")) {
+            upsert.setString(1, row.owner().toString());
+            upsert.setString(2, row.scope());
+            upsert.setString(3, row.scopeId());
+            upsert.setString(4, row.name());
+            upsert.setString(5, row.value());
+            upsert.executeUpdate();
+        }
     }
 
     public synchronized long increment(UUID owner, String scope, String scopeId,

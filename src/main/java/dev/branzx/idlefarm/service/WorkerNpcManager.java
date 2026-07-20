@@ -81,16 +81,12 @@ public final class WorkerNpcManager implements Listener {
     private final IdleFarmPlugin plugin;
     private final NodeStore nodeStore;
     private final SchematicService schematicService;
-    private WorkerStore workerStore;
-    private NodeAnchorStore anchorStore;
+    private final WorkerStore workerStore;
+    private final NodeAnchorStore anchorStore;
     private NPCRegistry registry;
     private final Map<Long, List<SpawnedNpc>> npcsByNode = new ConcurrentHashMap<>();
     private final Map<Long, String> overrideState = new ConcurrentHashMap<>();
     private BukkitRunnable animationTask;
-
-    public void setAnchorStore(NodeAnchorStore anchorStore) {
-        this.anchorStore = anchorStore;
-    }
 
     /** Spawn location: worker's own override → tier preset → auto-layout. */
     private org.bukkit.Location spawnLocation(NodeRecord node, World world,
@@ -118,14 +114,14 @@ public final class WorkerNpcManager implements Listener {
         return schematicService.resolve(node, world, definition.workAnchorOrFallback(slot));
     }
 
-    public WorkerNpcManager(IdleFarmPlugin plugin, NodeStore nodeStore, SchematicService schematicService) {
+    public WorkerNpcManager(IdleFarmPlugin plugin, NodeStore nodeStore,
+                            SchematicService schematicService, WorkerStore workerStore,
+                            NodeAnchorStore anchorStore) {
         this.plugin = plugin;
         this.nodeStore = nodeStore;
         this.schematicService = schematicService;
-    }
-
-    public void setWorkerStore(WorkerStore workerStore) {
         this.workerStore = workerStore;
+        this.anchorStore = anchorStore;
     }
 
     public void init() {

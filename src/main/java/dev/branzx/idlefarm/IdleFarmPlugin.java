@@ -49,50 +49,61 @@ public final class IdleFarmPlugin extends JavaPlugin {
     private TradeService tradeService;
     private GlobalExpeditionService globalExpeditionService;
 
+    /**
+     * Composition root. Services are constructed in dependency order and
+     * receive collaborators through their constructors. The two deliberate
+     * exceptions are documented where they happen: the ExplorationService ↔
+     * GameDesignService cycle and the GuiManager ↔ AdminCommands cycle.
+     */
     @Override
     public void onEnable() {
         saveDefaultConfig();
         migrateLegacyBalanceConfig();
 
+        // ---- persistence layer ----
         this.database = new Database(this);
         this.database.init();
         AuditService auditService = new AuditService(this, database);
-
         this.dataStore = new PlayerDataStore(this, database);
         this.nodeStore = new NodeStore(this, database);
         this.nodeStore.loadAllSync();
+        this.workerStore = new WorkerStore(this, database);
+        this.workerStore.loadAllSync();
+        dev.branzx.idlefarm.service.NodeAnchorStore anchorStore =
+                new dev.branzx.idlefarm.service.NodeAnchorStore(this, database);
+        anchorStore.loadAllSync();
 
+        // ---- world and content services ----
         SchematicRegistry schematicRegistry = new SchematicRegistry(this);
         schematicRegistry.loadAll();
         this.schematicService = new SchematicService(this, database, schematicRegistry);
         this.schematicService.loadAllSync();
-        this.npcManager = new WorkerNpcManager(this, nodeStore, schematicService);
-        this.workerStore = new WorkerStore(this, database);
-        this.workerStore.loadAllSync();
-        this.npcManager.setWorkerStore(workerStore);
-        this.workerService = new WorkerService(this, workerStore, dataStore, database);
-        this.workerService.setNodeStore(nodeStore);
-        this.workerService.loadPitySync();
-        this.workerService.loadBagBonusSync();
-
-        dev.branzx.idlefarm.service.NodeAnchorStore anchorStore =
-                new dev.branzx.idlefarm.service.NodeAnchorStore(this, database);
-        anchorStore.loadAllSync();
-        this.npcManager.setAnchorStore(anchorStore);
-        this.workerService.setAnchorStore(anchorStore);
-        this.claimService = new ClaimService(this, nodeStore, dataStore, schematicService, npcManager);
+        this.npcManager = new WorkerNpcManager(this, nodeStore, schematicService, workerStore, anchorStore);
         this.trustService = new TrustService(nodeStore);
         this.warehouseService = new WarehouseService(this, database);
         this.warehouseService.loadAllSync();
+        DropTableService dropTableService = new DropTableService(this);
+        dropTableService.load();
 
+        // ---- gameplay services ----
         this.explorationService = new ExplorationService(this, database, nodeStore, workerStore);
         this.explorationService.loadAllSync();
+        this.globalExpeditionService = new GlobalExpeditionService(this, database, workerStore, dataStore);
+        this.globalExpeditionService.loadAllSync();
+
+        GameDesignService gameDesignService = new GameDesignService(this, database, nodeStore,
+                dataStore, auditService, warehouseService, explorationService);
+        gameDesignService.loadAllSync();
+        // Deliberate cycle: exploration events grant design rewards while the
+        // design service grants exploration EXP. One late bind breaks it.
+        this.explorationService.setGameDesignService(gameDesignService);
         this.explorationService.start();
-        this.claimService.setLateServices(explorationService, workerService, workerStore);
-        this.claimService.setAnchorStore(anchorStore);
-        getServer().getPluginManager().registerEvents(
-                new dev.branzx.idlefarm.listener.WorkerPlacementListener(this, nodeStore, workerStore,
-                        workerService, anchorStore, npcManager, schematicService), this);
+        this.globalExpeditionService.start();
+
+        this.workerService = new WorkerService(this, workerStore, dataStore, database, nodeStore,
+                anchorStore, auditService, globalExpeditionService, gameDesignService);
+        this.workerService.loadPitySync();
+        this.workerService.loadBagBonusSync();
 
         BoosterService boosterService = new BoosterService(this, database, dataStore);
         boosterService.loadAllSync();
@@ -100,78 +111,57 @@ public final class IdleFarmPlugin extends JavaPlugin {
         perkService.loadAllSync();
         StreakService streakService = new StreakService(this, database, dataStore);
         streakService.loadAllSync();
-
-        GameDesignService gameDesignService =
-                new GameDesignService(this, database, nodeStore, dataStore, auditService);
-        gameDesignService.loadAllSync();
-        gameDesignService.setRuntimeServices(warehouseService, explorationService);
         CreditService creditService =
                 new CreditService(this, database, dataStore, auditService, gameDesignService);
         creditService.loadAllSync();
         this.tradeService =
                 new TradeService(this, database, auditService, workerService, gameDesignService);
-        getServer().getPluginManager().registerEvents(tradeService, this);
-        DropTableService dropTableService = new DropTableService(this);
-        dropTableService.load();
-        this.claimService.setGameDesignService(gameDesignService);
-        this.workerService.setGameDesignService(gameDesignService);
-        this.explorationService.setGameDesignService(gameDesignService);
-        getServer().getPluginManager().registerEvents(
-                new dev.branzx.idlefarm.listener.WorkerSafetyListener(workerService, gameDesignService), this);
 
+        this.claimService = new ClaimService(this, nodeStore, dataStore, schematicService, npcManager,
+                explorationService, workerService, workerStore, anchorStore, globalExpeditionService,
+                gameDesignService, auditService);
+
+        // ---- delivery layer ----
         this.guiManager = new GuiManager(this, nodeStore, workerStore, dataStore, workerService,
-                warehouseService, claimService, trustService, explorationService, npcManager);
-        this.guiManager.setPhase7Services(boosterService, perkService, streakService);
-        this.guiManager.setGameDesignServices(gameDesignService, creditService, dropTableService);
-        this.guiManager.setTradeService(tradeService);
+                warehouseService, claimService, trustService, explorationService, npcManager,
+                boosterService, perkService, streakService, gameDesignService, creditService,
+                dropTableService, tradeService, globalExpeditionService);
+        // Deliberate cycle: AdminCommands opens admin menus through the
+        // GuiManager; its constructor registers itself back via setAdminTools.
+        AdminCommands adminCommands = new AdminCommands(this, nodeStore, workerStore, schematicService,
+                npcManager, dropTableService, auditService, guiManager, dataStore, explorationService,
+                creditService, claimService);
+        IdleCommand idleCommand = new IdleCommand(this, dataStore, nodeStore, claimService, trustService,
+                workerService, workerStore, npcManager, warehouseService, guiManager, adminCommands,
+                tradeService);
+        getCommand("idle").setExecutor(idleCommand);
+        getCommand("idle").setTabCompleter(idleCommand);
 
-        this.globalExpeditionService = new GlobalExpeditionService(this, database, workerStore, dataStore);
-        globalExpeditionService.loadAllSync();
-        globalExpeditionService.start();
-        this.guiManager.setExpeditionService(globalExpeditionService);
-        this.workerService.setGlobalExpeditionService(globalExpeditionService);
-        this.claimService.setGlobalExpeditionService(globalExpeditionService);
-
-        PlayerConnectionListener connectionListener = new PlayerConnectionListener(this, dataStore);
-        connectionListener.setStreakService(streakService);
-        connectionListener.setGameDesignService(gameDesignService);
-        getServer().getPluginManager().registerEvents(connectionListener, this);
-        getServer().getPluginManager().registerEvents(new ProtectionListener(nodeStore, trustService), this);
-        getServer().getPluginManager().registerEvents(npcManager, this);
-        getServer().getPluginManager().registerEvents(guiManager, this);
-        getServer().getPluginManager().registerEvents(guiManager.chatPrompt(), this);
+        var pluginManager = getServer().getPluginManager();
+        pluginManager.registerEvents(tradeService, this);
+        pluginManager.registerEvents(new dev.branzx.idlefarm.listener.WorkerPlacementListener(
+                this, nodeStore, workerStore, workerService, anchorStore, npcManager, schematicService), this);
+        pluginManager.registerEvents(
+                new dev.branzx.idlefarm.listener.WorkerSafetyListener(workerService, gameDesignService), this);
+        pluginManager.registerEvents(
+                new PlayerConnectionListener(this, dataStore, streakService, gameDesignService), this);
+        pluginManager.registerEvents(new ProtectionListener(nodeStore, trustService), this);
+        pluginManager.registerEvents(npcManager, this);
+        pluginManager.registerEvents(guiManager, this);
+        pluginManager.registerEvents(guiManager.chatPrompt(), this);
 
         // Citizens is a hard dependency, so its API is ready by now.
         npcManager.init();
 
-        this.claimService.setAuditService(auditService);
-        this.workerService.setAuditService(auditService);
-
-        AdminCommands adminCommands = new AdminCommands(this, nodeStore, workerStore, schematicService, npcManager);
-        adminCommands.setPhase8Services(dropTableService, auditService, guiManager, dataStore);
-        adminCommands.setExplorationService(explorationService);
-        adminCommands.setCreditService(creditService);
-        adminCommands.setClaimService(claimService);
-        IdleCommand idleCommand = new IdleCommand(this, dataStore, nodeStore, claimService, trustService,
-                workerService, workerStore, npcManager, warehouseService, guiManager, adminCommands);
-        idleCommand.setTradeService(tradeService);
-        getCommand("idle").setExecutor(idleCommand);
-        getCommand("idle").setTabCompleter(idleCommand);
-
+        // ---- scheduled work ----
         long intervalTicks = getConfig().getLong("payout-interval-seconds", 60) * 20L;
-        this.payoutTask = new PayoutTask(this, dataStore);
-        this.payoutTask.setBoosterService(boosterService);
-        this.payoutTask.setCreditService(creditService);
+        this.payoutTask = new PayoutTask(this, dataStore, boosterService, creditService);
         this.payoutTask.runTaskTimer(this, intervalTicks, intervalTicks);
 
         long productionTicks = getConfig().getLong("production.tick-seconds", 60) * 20L;
-        this.productionEngine = new ProductionEngine(this, nodeStore, workerStore, workerService);
-        this.productionEngine.setExplorationService(explorationService);
-        this.productionEngine.setBoosterService(boosterService);
-        this.productionEngine.setPerkServices(perkService, warehouseService);
-        this.productionEngine.setDropTableService(dropTableService);
-        this.productionEngine.setGlobalExpeditionService(globalExpeditionService);
-        this.productionEngine.setGameDesignService(gameDesignService);
+        this.productionEngine = new ProductionEngine(this, nodeStore, workerStore, workerService,
+                explorationService, boosterService, perkService, warehouseService, dropTableService,
+                globalExpeditionService, gameDesignService);
         // First run settles any downtime accrued while the server was off.
         this.productionEngine.runTaskTimer(this, 100L, productionTicks);
 

@@ -199,6 +199,44 @@ public final class WorkerStore {
         });
     }
 
+    /**
+     * Consumes fuse materials and (on success) mints the result in one
+     * ordered transaction, so a restart can never observe the materials and
+     * the fused worker at the same time. Pass a null {@code minted} for a
+     * failed fuse that only consumes the duplicate.
+     */
+    public void fuseSettle(List<WorkerRecord> consumed, WorkerRecord minted) {
+        List<UUID> consumedIds = new ArrayList<>();
+        for (WorkerRecord record : consumed) {
+            byUuid.remove(record.getWorkerUuid());
+            unassignIndex(record);
+            removeFromBagIndex(record);
+            consumedIds.add(record.getWorkerUuid());
+        }
+        WorkerSnapshot mintedSnapshot = minted == null ? null : WorkerSnapshot.from(minted);
+        if (minted != null) {
+            index(minted);
+        }
+        database.submitTransaction("fuse settlement", connection -> {
+            try (PreparedStatement delete = connection.prepareStatement(
+                    "DELETE FROM idlefarm_workers WHERE worker_uuid = ?")) {
+                for (UUID id : consumedIds) {
+                    delete.setString(1, id.toString());
+                    delete.executeUpdate();
+                }
+            }
+            if (mintedSnapshot != null) {
+                try (PreparedStatement insert = connection.prepareStatement(
+                        "INSERT INTO idlefarm_workers (worker_uuid, owner_uuid, rarity, trait, stats, "
+                                + "name, skin, level, exp, assigned_node_id, state) "
+                                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    bind(insert, mintedSnapshot);
+                    insert.executeUpdate();
+                }
+            }
+        });
+    }
+
     public void delete(WorkerRecord record) {
         byUuid.remove(record.getWorkerUuid());
         unassignIndex(record);

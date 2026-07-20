@@ -46,13 +46,13 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
     private final WarehouseService warehouseService;
     private final GuiManager guiManager;
     private final AdminCommands adminCommands;
-    private TradeService tradeService;
+    private final TradeService tradeService;
 
     public IdleCommand(IdleFarmPlugin plugin, PlayerDataStore dataStore, NodeStore nodeStore,
                        ClaimService claimService, TrustService trustService,
                        WorkerService workerService, WorkerStore workerStore, WorkerNpcManager npcManager,
                        WarehouseService warehouseService, GuiManager guiManager,
-                       AdminCommands adminCommands) {
+                       AdminCommands adminCommands, TradeService tradeService) {
         this.plugin = plugin;
         this.dataStore = dataStore;
         this.nodeStore = nodeStore;
@@ -64,9 +64,6 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         this.workerStore = workerStore;
         this.npcManager = npcManager;
         this.adminCommands = adminCommands;
-    }
-
-    public void setTradeService(TradeService tradeService) {
         this.tradeService = tradeService;
     }
 

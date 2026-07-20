@@ -187,6 +187,19 @@ public final class WarehouseService {
 
     /** Removes up to {@code amount}; returns the number actually removed. */
     public int withdraw(UUID owner, String material, int amount) {
+        int removed = prepareWithdraw(owner, material, amount);
+        if (removed > 0) {
+            persist(owner);
+        }
+        return removed;
+    }
+
+    /**
+     * Removes up to {@code amount} from the runtime cache without scheduling a
+     * standalone write. The caller must persist {@link #snapshot} inside the
+     * same transaction that settles whatever consumed the items.
+     */
+    public int prepareWithdraw(UUID owner, String material, int amount) {
         Map<String, Integer> map = mutableContents(owner);
         String key = material.toUpperCase(java.util.Locale.ROOT);
         int have = map.getOrDefault(key, 0);
@@ -197,9 +210,19 @@ public final class WarehouseService {
             } else {
                 map.put(key, have - removed);
             }
-            persist(owner);
         }
         return removed;
+    }
+
+    /** Persists a warehouse snapshot on the caller's transaction connection. */
+    public static void write(Connection connection, Snapshot snapshot) throws SQLException {
+        try (PreparedStatement upsert = connection.prepareStatement(
+                "REPLACE INTO idlefarm_warehouse (owner_uuid, capacity, content_json) VALUES (?, ?, ?)")) {
+            upsert.setString(1, snapshot.owner().toString());
+            upsert.setInt(2, snapshot.capacity());
+            upsert.setString(3, snapshot.serializedContents());
+            upsert.executeUpdate();
+        }
     }
 
     public boolean expandCapacity(UUID owner, PlayerData player) {
@@ -239,13 +262,8 @@ public final class WarehouseService {
 
     private void persist(Snapshot snapshot) {
         database.submitWrite(() -> {
-            try (Connection connection = database.getConnection();
-                 PreparedStatement upsert = connection.prepareStatement(
-                         "REPLACE INTO idlefarm_warehouse (owner_uuid, capacity, content_json) VALUES (?, ?, ?)")) {
-                upsert.setString(1, snapshot.owner().toString());
-                upsert.setInt(2, snapshot.capacity());
-                upsert.setString(3, snapshot.serializedContents());
-                upsert.executeUpdate();
+            try (Connection connection = database.getConnection()) {
+                write(connection, snapshot);
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to persist warehouse for " + snapshot.owner()
                         + ": " + e.getMessage());

@@ -14,19 +14,15 @@ public final class PlayerConnectionListener implements Listener {
 
     private final IdleFarmPlugin plugin;
     private final PlayerDataStore dataStore;
-    private StreakService streakService;
-    private dev.branzx.idlefarm.service.GameDesignService gameDesignService;
+    private final StreakService streakService;
+    private final dev.branzx.idlefarm.service.GameDesignService gameDesignService;
 
-    public PlayerConnectionListener(IdleFarmPlugin plugin, PlayerDataStore dataStore) {
+    public PlayerConnectionListener(IdleFarmPlugin plugin, PlayerDataStore dataStore,
+                                    StreakService streakService,
+                                    dev.branzx.idlefarm.service.GameDesignService gameDesignService) {
         this.plugin = plugin;
         this.dataStore = dataStore;
-    }
-
-    public void setStreakService(StreakService streakService) {
         this.streakService = streakService;
-    }
-
-    public void setGameDesignService(dev.branzx.idlefarm.service.GameDesignService gameDesignService) {
         this.gameDesignService = gameDesignService;
     }
 

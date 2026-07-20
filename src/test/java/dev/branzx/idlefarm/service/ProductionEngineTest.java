@@ -37,7 +37,8 @@ class ProductionEngineTest {
         when(nodeStore.getAll()).thenReturn(List.of(node));
         when(workerStore.getAssigned(node.getId())).thenReturn(List.of());
 
-        new ProductionEngine(plugin, nodeStore, workerStore, workerService).run();
+        new ProductionEngine(plugin, nodeStore, workerStore, workerService,
+                null, null, null, null, null, null, null).run();
 
         assertEquals(NodeRecord.STATE_IDLE, node.getState());
         assertEquals(0, node.storageTotal());

@@ -1,5 +1,27 @@
 # Code and Gameplay Audit — 2026-07-20
 
+## Second pass (same day): structure and settlement refactor
+
+- `GameDesignService` was split into typed services under `service.design`
+  (focus, worker metadata, commissions, Chronicle, discoveries, node builds,
+  projects, seasons, telemetry) behind an unchanged facade API.
+- `IdleFarmPlugin.onEnable` became a composition root; every removable
+  `set*` late-injection method was replaced with constructor dependencies.
+  The two remaining late binds are documented cycles.
+- Warehouse-consuming settlements (supply commission, project and Server
+  Project contributions, expedition preparation) now commit the Warehouse
+  row and the purchased state in one transaction via staged
+  `GameStateStore.Row`s and `WarehouseService.prepareWithdraw`/`write`.
+- Paid respec, node convert cost, unclaim refund, fuse consumption/minting
+  and the trade receipt are now transactional (audit priority 2 and part of
+  3/4 closed).
+- `WorkerService.eject` and `GlobalExpeditionService.commit` now re-check
+  node ownership inside the service, closing two authorization gaps.
+- Offline exploration-event expiry no longer inflates: the remaining window
+  is frozen by the elapsed tick instead of re-derived from the spawn time.
+- Integration tests added for unclaim-refund settlement and restart-safe
+  fuse settlement.
+
 ## Corrected in this audit
 
 - Exploration loot and Warehouse persistence now share one transaction.
@@ -39,13 +61,16 @@ These are product/content work, not regressions fixed by this refactor:
 
 ## Follow-up engineering priorities
 
-1. Split commissions, achievements, projects and seasons into typed services
-   over `GameStateStore`.
-2. Move the remaining convert/unclaim refund and project/commission resource
-   settlements into cross-aggregate transactions.
-3. Add durable trade escrow/recovery for hard process termination.
-4. Add restart/fault-injection tests for claim, commission, project and fuse
-   settlement.
-5. Replace late service setters with a composition root and constructor
-   dependencies.
+1. ~~Split commissions, achievements, projects and seasons into typed
+   services over `GameStateStore`.~~ Done (second pass).
+2. ~~Move the remaining convert/unclaim refund and project/commission
+   resource settlements into cross-aggregate transactions.~~ Done (second
+   pass).
+3. Add durable trade escrow/recovery for hard process termination (the
+   receipt is transactional now, but escrow items held in memory are still
+   lost on a hard kill mid-trade).
+4. Add further restart/fault-injection tests for claim, commission and
+   project settlement (fuse and unclaim now covered).
+5. ~~Replace late service setters with a composition root and constructor
+   dependencies.~~ Done (second pass); two documented cycles remain.
 6. Add MySQL integration tests in CI.

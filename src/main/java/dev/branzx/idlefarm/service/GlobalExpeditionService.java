@@ -179,6 +179,10 @@ public final class GlobalExpeditionService {
      * Returns an error message or null on success.
      */
     public String commit(UUID owner, NodeRecord node) {
+        // Delivery already filters; ownership stays authoritative here.
+        if (node == null || !node.getOwnerUuid().equals(owner)) {
+            return "You do not own this node.";
+        }
         List<WorkerRecord> idle = workerStore.getAssigned(node.getId()).stream()
                 .filter(worker -> !isCommitted(worker.getWorkerUuid()))
                 .toList();

@@ -285,8 +285,12 @@ public final class ExplorationService {
 
     // ---- lifecycle tick ----
 
+    private long lastLifecycleTickAt = System.currentTimeMillis();
+
     private void tick() {
         long now = System.currentTimeMillis();
+        long delta = Math.max(0, now - lastLifecycleTickAt);
+        lastLifecycleTickAt = now;
         for (NodeRecord node : nodeStore.getAll()) {
             if (!node.getType().isProduction()) {
                 continue;
@@ -299,10 +303,12 @@ public final class ExplorationService {
             switch (event.state) {
                 case "AVAILABLE" -> {
                     // Expiry only counts down while the owner is online (no
-                    // FOMO for sleeping — spec §5b.2).
+                    // FOMO for sleeping — spec §5b.2). Extend by the elapsed
+                    // tick so the remaining window is frozen, not re-derived
+                    // from the spawn time (which compounded without bound).
                     Player owner = Bukkit.getPlayer(node.getOwnerUuid());
                     if (owner == null) {
-                        event.expiresAt = now + (event.expiresAt - event.spawnedAt);
+                        event.expiresAt += delta;
                         persist(event);
                     } else if (now >= event.expiresAt) {
                         remove(event);
@@ -560,14 +566,7 @@ public final class ExplorationService {
         // A restart can therefore see either an unclaimed event or the stored
         // loot, but never both and never neither.
         database.submitTransaction("exploration loot claim", connection -> {
-            try (PreparedStatement upsert = connection.prepareStatement(
-                    "REPLACE INTO idlefarm_warehouse "
-                            + "(owner_uuid, capacity, content_json) VALUES (?, ?, ?)")) {
-                upsert.setString(1, warehouseSnapshot.owner().toString());
-                upsert.setInt(2, warehouseSnapshot.capacity());
-                upsert.setString(3, warehouseSnapshot.serializedContents());
-                upsert.executeUpdate();
-            }
+            WarehouseService.write(connection, warehouseSnapshot);
             try (PreparedStatement delete = connection.prepareStatement(
                     "DELETE FROM idlefarm_exploration_events WHERE id = ?")) {
                 delete.setLong(1, event.id);
