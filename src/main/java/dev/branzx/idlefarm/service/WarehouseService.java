@@ -133,6 +133,15 @@ public final class WarehouseService {
     }
 
     /**
+     * Restores a previously captured runtime snapshot after a blocking
+     * cross-aggregate transaction is rejected.
+     */
+    public void restore(Snapshot snapshot) {
+        capacities.put(snapshot.owner(), snapshot.capacity());
+        contents.put(snapshot.owner(), deserialize(snapshot.serializedContents()));
+    }
+
+    /**
      * Atomically moves as much of a node buffer as fits. The cache changes on
      * the main thread and the two durable rows are committed in one ordered DB
      * transaction, preventing restart-time loss or duplication.

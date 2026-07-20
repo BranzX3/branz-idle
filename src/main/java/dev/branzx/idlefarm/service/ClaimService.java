@@ -263,8 +263,8 @@ public final class ClaimService {
         if (record.getType() == NodeType.RESIDENTIAL && gameDesignService != null) {
             gameDesignService.onResidentialRemoved(record.getOwnerUuid());
         }
-        audit(actor, "ADMIN_FORCE_UNCLAIM", "id=" + auditId + " node=" + record.getId()
-                + " owner=" + record.getOwnerUuid() + " reason=" + reason + " refund=0");
+        auditService.logAdmin(actor, auditId, reason, "ADMIN_FORCE_UNCLAIM",
+                "node=" + record.getId() + " owner=" + record.getOwnerUuid() + " refund=0");
         return Result.ok("Force-unclaimed node #" + record.getId() + " with no refund. Audit " + auditId);
     }
 

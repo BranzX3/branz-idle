@@ -94,11 +94,27 @@ public final class GameStateStore {
         return new Row(owner, scope, scopeId, name, value);
     }
 
+    /**
+     * Builds a row without exposing it through the runtime cache. Use this for
+     * blocking cross-aggregate transactions, then call {@link #applyCommitted}
+     * only after the database commit succeeds.
+     */
+    public Row prepare(UUID owner, String scope, String scopeId, String name, String value) {
+        return new Row(owner, scope, scopeId, name, value);
+    }
+
     /** Cache-first staged variant of {@link #increment}. */
     public synchronized Row stageIncrement(UUID owner, String scope, String scopeId,
                                            String name, long amount) {
         long next = getLong(owner, scope, scopeId, name, 0) + amount;
         return stage(owner, scope, scopeId, name, String.valueOf(next));
+    }
+
+    /** Non-mutating counterpart of {@link #stageIncrement}. */
+    public synchronized Row prepareIncrement(UUID owner, String scope, String scopeId,
+                                             String name, long amount) {
+        long next = getLong(owner, scope, scopeId, name, 0) + amount;
+        return prepare(owner, scope, scopeId, name, String.valueOf(next));
     }
 
     /** Applies a row committed by a blocking transaction to the runtime cache. */

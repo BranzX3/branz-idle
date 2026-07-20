@@ -142,6 +142,9 @@ Acceptance:
 - Supply caps and audit.
 - Feature flag and staged rollout.
 
+Implemented locally. Operator controls and the full material/sink table are in
+`FRONTIER_PHASE9.md`.
+
 Acceptance:
 
 - Every enabled material has multiple durable sinks.

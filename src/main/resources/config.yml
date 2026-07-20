@@ -320,7 +320,7 @@ production:
       bracket-5:
         ink_sac: 8
         glow_ink_sac: 4
-        scute: 2
+        turtle_scute: 2
       bracket-6:
         rabbit_foot: 5
         nautilus_shell: 2
@@ -330,7 +330,7 @@ production:
         cod: 14
       bracket-8:
         tropical_fish: 5
-        scute: 3
+        turtle_scute: 3
       bracket-9:
         nautilus_shell: 3
         rabbit_foot: 7
@@ -398,6 +398,26 @@ expedition:
   commit-duration-minutes: 60
   rewards: [5000.0, 3000.0, 1500.0]
   weekly-contribution-cap: 10000
+  # Every reached band pays out at weekly settlement; rank rewards remain
+  # modest and additive. Bands never contain exclusive production power.
+  participation-bands:
+    - id: participant
+      name: "Participant"
+      threshold: 250
+      coins: 500.0
+    - id: contributor
+      name: "Contributor"
+      threshold: 1000
+      coins: 750.0
+    - id: pathfinder
+      name: "Pathfinder"
+      threshold: 2500
+      coins: 1000.0
+    - id: vanguard
+      name: "Vanguard"
+      threshold: 5000
+      coins: 1250.0
+  # Legacy single-band fallback when the expedition-bands feature is disabled.
   participation-threshold: 250
   participation-reward: 500.0
 
@@ -531,6 +551,18 @@ exploration:
 frontier:
   enabled: false
   level-cap: 200
+  material-monthly-cap: 10000
+  profession-exp-per-material: 10
+  equipment:
+    items-per-durability: 25
+    repair-per-material: 25
+    tier-1: { craft-cost: 12, durability: 500, production-bonus: 0.02 }
+    tier-2: { craft-cost: 24, durability: 900, production-bonus: 0.04 }
+    tier-3: { craft-cost: 40, durability: 1500, production-bonus: 0.07 }
+  # Optional per-material overrides:
+  # materials:
+  #   aether_ore:
+  #     monthly-cap: 10000
   # Supply is blocked unless all durable sink gates are explicitly enabled.
   sink-gates:
     profession: false
@@ -543,9 +575,74 @@ credits:
   max-offset-percent: 15
   season-offset-cap: 30000
 
+# Admin economy-dashboard alert thresholds. Alerts are observational only;
+# they never delete inventory or alter balances automatically.
+economy:
+  alerts:
+    max-total-coins: 1000000000
+    max-player-balance: 10000000
+    min-material-sink-ratio: 0.10
+    max-rare-cap-hits-7d: 100
+    min-expedition-commits-7d: 3
+    min-season-objective-completions-7d: 2
+    max-claim-failures-7d: 10
+    max-catch-up-claims-7d: 250
+
 season:
   id: preseason
   start-date: "2026-07-20"
+  duration-weeks: 12
+  modifier-rotation:
+    - LONG_ROUTES
+    - UNSTABLE_VEINS
+    - RESEARCH_WEEK
+    - MIXED_CREWS
+    - SUPPLY_SHORTAGE
+  # Per-week entries override the rotation and provide player-facing cadence.
+  weeks:
+    1: { phase: Discovery, modifier: LONG_ROUTES, event-family: ROUTES, bonus-window: "Fri 18:00–Sun 23:59 Asia/Bangkok" }
+    2: { phase: Discovery, modifier: UNSTABLE_VEINS, event-family: VEINS, bonus-window: "Fri 18:00–Sun 23:59 Asia/Bangkok" }
+    3: { phase: Development, modifier: RESEARCH_WEEK, event-family: RESEARCH, bonus-window: "Fri 18:00–Sun 23:59 Asia/Bangkok" }
+    4: { phase: Development, modifier: MIXED_CREWS, event-family: CREWS, bonus-window: "Fri 18:00–Sun 23:59 Asia/Bangkok" }
+    5: { phase: Development, modifier: SUPPLY_SHORTAGE, event-family: SUPPLY, bonus-window: "Fri 18:00–Sun 23:59 Asia/Bangkok" }
+    6: { phase: Midseason, modifier: LONG_ROUTES, event-family: MIDSEASON, bonus-window: "Fri 18:00–Sun 23:59 Asia/Bangkok" }
+    7: { phase: Mastery, modifier: UNSTABLE_VEINS, event-family: MASTERY, bonus-window: "Fri 18:00–Sun 23:59 Asia/Bangkok" }
+    8: { phase: Mastery, modifier: RESEARCH_WEEK, event-family: MASTERY, bonus-window: "Fri 18:00–Sun 23:59 Asia/Bangkok" }
+    9: { phase: Mastery, modifier: MIXED_CREWS, event-family: MASTERY, bonus-window: "Fri 18:00–Sun 23:59 Asia/Bangkok" }
+    10: { phase: Finale, modifier: SUPPLY_SHORTAGE, event-family: FINALE, bonus-window: "Fri 18:00–Sun 23:59 Asia/Bangkok" }
+    11: { phase: Finale, modifier: LONG_ROUTES, event-family: FINALE, bonus-window: "Fri 18:00–Sun 23:59 Asia/Bangkok" }
+    12: { phase: Celebration, modifier: MIXED_CREWS, event-family: CELEBRATION, bonus-window: "Fri 18:00–Sun 23:59 Asia/Bangkok" }
+
+live-ops:
+  catch-up:
+    weekly-objectives: true
+  features:
+    # Safe kill switch: stops future Frontier rolls/crafting for the assigned
+    # cohort. Existing Warehouse materials and equipped items are retained.
+    frontier:
+      enabled: false
+      rollout-percent: 0
+      allowlist: []
+    frontier-drops:
+      enabled: false
+      rollout-percent: 0
+      allowlist: []
+    seasonal-chronicle:
+      enabled: true
+      rollout-percent: 100
+      allowlist: []
+    expedition-bands:
+      enabled: true
+      rollout-percent: 100
+      allowlist: []
+  # Experiments may change presentation only. Assignment is stable by UUID.
+  experiments:
+    chronicle-layout:
+      enabled: false
+      rollout-percent: 0
+      variants:
+        control: 50
+        objectives-first: 50
 
 projects:
   server:

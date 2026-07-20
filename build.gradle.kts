@@ -11,6 +11,7 @@ plugins {
 
 group = "dev.branzx"
 version = "1.0.0"
+val pluginVersion = version.toString()
 
 repositories {
     mavenCentral()
@@ -53,7 +54,7 @@ tasks.withType<JavaCompile> {
 
 tasks.test {
     useJUnitPlatform()
-    jvmArgs("-Dnet.bytebuddy.experimental=true")
+    jvmArgs("-Dnet.bytebuddy.experimental=true", "--enable-native-access=ALL-UNNAMED")
 }
 
 tasks.named<ShadowJar>("shadowJar") {
@@ -68,7 +69,7 @@ tasks.build {
 
 tasks.processResources {
     filesMatching("plugin.yml") {
-        expand("version" to project.version)
+        expand("version" to pluginVersion)
     }
 }
 
@@ -99,6 +100,6 @@ val downloadCitizens = tasks.register("downloadCitizens") {
 
 tasks.runServer {
     minecraftVersion("26.2")
-    jvmArgs("-Dcom.mojang.eula.agree=true")
+    jvmArgs("-Dcom.mojang.eula.agree=true", "--enable-native-access=ALL-UNNAMED")
     dependsOn(downloadCitizens)
 }

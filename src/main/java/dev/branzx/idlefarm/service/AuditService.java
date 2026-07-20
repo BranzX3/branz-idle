@@ -44,6 +44,23 @@ public final class AuditService {
         });
     }
 
+    /**
+     * Single write gate for administrator mutations. Callers must create the
+     * id before changing state so the same id can be shown to the operator.
+     */
+    public void logAdmin(UUID actor, String auditId, String reason, String action, String detail) {
+        if (actor == null || auditId == null || auditId.isBlank()
+                || reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("Admin mutation audit id and reason are required");
+        }
+        log(actor, action, "{\"auditId\":\"" + safe(auditId) + "\",\"reason\":\""
+                + safe(reason.trim()) + "\",\"detail\":\"" + safe(detail) + "\"}");
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
     /** Blocking read — call off the main thread. Filter may be null. */
     public List<Entry> recentSync(UUID actorFilter, int limit) {
         List<Entry> entries = new ArrayList<>();

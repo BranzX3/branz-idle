@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -51,8 +52,11 @@ public final class ProjectWorldService implements Listener {
         this.nodes = nodes;
         this.projectLookup = projectLookup;
         this.serverProjectLookup = serverProjectLookup;
-        this.ownerKey = new NamespacedKey(plugin, "project_owner");
-        this.projectKey = new NamespacedKey(plugin, "project_id");
+        // Stable across plugin-metadata mocks and future display migrations.
+        this.ownerKey = Objects.requireNonNull(
+                NamespacedKey.fromString("idlefarm:project_owner"));
+        this.projectKey = Objects.requireNonNull(
+                NamespacedKey.fromString("idlefarm:project_id"));
         loadDefinitions();
     }
 

@@ -511,6 +511,7 @@ public final class ExplorationService {
         java.util.Set<String> roles = team.stream().map(this::role).collect(java.util.stream.Collectors.toSet());
         event.loot = rollLoot(node, event.eventType, event.grade, team.size(),
                 roles.contains("Scout") && roles.contains("Producer"),
+                roles.size() >= 3,
                 "QUANTITY".equals(preparation));
         event.state = "COMPLETED";
         for (WorkerRecord worker : team) {
@@ -622,7 +623,8 @@ public final class ExplorationService {
     }
 
     private String rollLoot(NodeRecord node, String eventType, String grade, int teamSize,
-                            boolean treasureCrew, boolean preparedQuantity) {
+                            boolean treasureCrew, boolean diverseCrew,
+                            boolean preparedQuantity) {
         ConfigurationSection config = eventConfig(eventType);
         ConfigurationSection table = config.getConfigurationSection("loot");
         int baseCount = config.getInt("loot-count-base", 8);
@@ -634,6 +636,16 @@ public final class ExplorationService {
         int count = (int) Math.round(baseCount * gradeMultiplier * (1 + (teamSize - 1) * 0.5)
                 * (treasureCrew ? 1.10 : 1.0));
         if (preparedQuantity) count = (int) Math.round(count * 1.15);
+        if (gameDesignService != null
+                && "MIXED_CREWS".equals(gameDesignService.seasonModifier()) && diverseCrew) {
+            count = (int) Math.round(count * 1.10);
+        }
+        if (gameDesignService != null
+                && "UNSTABLE_VEINS".equals(gameDesignService.seasonModifier())) {
+            // Symmetric 0.5x/1.5x variance preserves the same expected count.
+            count = (int) Math.round(count
+                    * (ThreadLocalRandom.current().nextBoolean() ? 1.5 : 0.5));
+        }
 
         Map<String, Integer> rolled = new ConcurrentHashMap<>();
         if (table != null) {

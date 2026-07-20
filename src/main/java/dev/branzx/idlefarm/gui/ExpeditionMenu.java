@@ -66,6 +66,20 @@ public final class ExpeditionMenu extends Menu {
         long mine = expedition.contributionOf(viewer.getUniqueId());
         List<Component> mineLore = new ArrayList<>();
         mineLore.add(Ui.line("Your contribution: " + Ui.num(mine), NamedTextColor.GOLD));
+        GlobalExpeditionService.ParticipationBand next =
+                expedition.nextBand(viewer.getUniqueId());
+        if (next == null) {
+            mineLore.add(Ui.line("All participation bands reached", NamedTextColor.GREEN));
+        } else {
+            mineLore.add(Ui.line("Next: " + next.name() + " at "
+                    + Ui.num(next.threshold()) + " (+" + Ui.num(next.coins()) + " Coins)",
+                    NamedTextColor.AQUA));
+        }
+        for (GlobalExpeditionService.ParticipationBand band : expedition.participationBands()) {
+            mineLore.add(Ui.line((mine >= band.threshold() ? "✓ " : "• ")
+                    + band.name() + " — " + Ui.num(band.threshold()),
+                    mine >= band.threshold() ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY));
+        }
         mineLore.add(Ui.divider());
         mineLore.add(Ui.line("Stand in your node and click:", NamedTextColor.GRAY));
         mineLore.add(Ui.line("commits its idle workers for "
@@ -89,9 +103,6 @@ public final class ExpeditionMenu extends Menu {
         }
         String error = expedition.commit(viewer.getUniqueId(), node);
         if (error == null) {
-            if (gui.gameDesignService() != null) {
-                gui.gameDesignService().onGlobalExpeditionCommitted(viewer.getUniqueId());
-            }
             gui.npcManager().refreshNode(node, viewer.getWorld());
             viewer.sendMessage(Component.text("Workers sent to the Global Expedition!",
                     NamedTextColor.GOLD));

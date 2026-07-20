@@ -117,6 +117,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "chapter" -> chapter(sender);
             case "project" -> project(sender, args);
             case "build" -> build(sender, args);
+            case "frontier" -> frontier(sender, args);
             case "trade" -> trade(sender, args);
             case "credits" -> credits(sender);
             case "admin" -> admin(sender, args);
@@ -739,6 +740,80 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
                 player.getLocation().getBlockZ() >> 4);
         ClaimService.Result result = claimService.convert(player.getUniqueId(), player.getWorld(), chunk, type);
         sender.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    private boolean frontier(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can use Frontier.", NamedTextColor.RED));
+            return true;
+        }
+        NodeRecord node = nodeAt(player);
+        if (node == null || !node.getType().isProduction()
+                || !player.getUniqueId().equals(node.getOwnerUuid())) {
+            player.sendMessage(Component.text("Stand inside your production node.",
+                    NamedTextColor.RED));
+            return true;
+        }
+        GameDesignService design = guiManager.gameDesignService();
+        if (design == null) return true;
+        String action = args.length >= 2 ? args[1].toLowerCase(Locale.ROOT) : "info";
+        if ("info".equals(action)) {
+            var profession = design.frontierProfession(player.getUniqueId(), node.getType());
+            var equipment = design.frontierEquipment(player.getUniqueId(), node);
+            player.sendMessage(Component.text("Frontier "
+                    + (design.frontierEnabled(player.getUniqueId()) ? "READY" : "LOCKED"),
+                    NamedTextColor.GOLD));
+            player.sendMessage(Component.text(profession.id() + " Lv." + profession.level()
+                    + " | EXP " + profession.exp() + "/" + profession.nextLevelExp(),
+                    NamedTextColor.AQUA));
+            if (equipment == null) {
+                player.sendMessage(Component.text("Equipment: none", NamedTextColor.GRAY));
+            } else {
+                player.sendMessage(Component.text("Equipment: " + equipment.id()
+                        + " | durability " + equipment.durability() + "/"
+                        + equipment.maxDurability(), equipment.active()
+                        ? NamedTextColor.GREEN : NamedTextColor.RED));
+            }
+            for (var recipe : design.frontierRecipes(node.getType())) {
+                player.sendMessage(Component.text("T" + recipe.tier() + " Lv."
+                        + recipe.unlockLevel() + " — " + recipe.materials(),
+                        NamedTextColor.GRAY));
+            }
+            return true;
+        }
+        GameDesignService.Result result;
+        switch (action) {
+            case "craft" -> {
+                if (args.length < 3) {
+                    player.sendMessage(Component.text("Usage: /idle frontier craft <tier>",
+                            NamedTextColor.YELLOW));
+                    return true;
+                }
+                result = design.craftFrontierEquipment(player.getUniqueId(), node,
+                        Integer.parseInt(args[2]));
+            }
+            case "repair" -> result =
+                    design.repairFrontierEquipment(player.getUniqueId(), node);
+            case "train" -> {
+                if (args.length < 4) {
+                    player.sendMessage(Component.text(
+                            "Usage: /idle frontier train <material> <amount>",
+                            NamedTextColor.YELLOW));
+                    return true;
+                }
+                result = design.trainFrontierProfession(player.getUniqueId(), node.getType(),
+                        args[2], Integer.parseInt(args[3]));
+            }
+            default -> {
+                player.sendMessage(Component.text(
+                        "Usage: /idle frontier [info|craft <tier>|repair|train <material> <amount>]",
+                        NamedTextColor.YELLOW));
+                return true;
+            }
+        }
+        player.sendMessage(Component.text(result.message(),
                 result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
         return true;
     }

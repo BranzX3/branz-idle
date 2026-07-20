@@ -78,21 +78,22 @@ public final class AdminNodeMenu extends Menu {
                     });
             set(14, Icon.of(Material.VILLAGER_SPAWN_EGG).name("Refresh NPC", NamedTextColor.GREEN)
                     .lore("Respawn worker NPC ของ Node", NamedTextColor.GRAY).build(),
-                    click -> {
-                        gui.runAdmin(viewer, "npc", "refresh");
-                        open();
-                    });
+                    click -> AdminUiFlow.requireReason(viewer, gui, "Refresh NPCs?",
+                            List.of("Node #" + node.getId()), reason -> {
+                                gui.runAdmin(viewer, "npc", "refresh", reason);
+                                open();
+                            }, this::open));
             set(15, Icon.of(Material.LEVER).name("NPC State Override", NamedTextColor.YELLOW)
                     .lore("Working / Idle / Stop / Clear", NamedTextColor.GRAY).build(),
                     click -> openNpcStates());
             set(16, Icon.of(Material.STRUCTURE_BLOCK).name("Rebuild Schematic", NamedTextColor.AQUA)
                     .lore("วาง building ใหม่จาก schematic", NamedTextColor.GRAY).build(),
-                    click -> new ConfirmMenu(viewer, "Rebuild Node?",
+                    click -> AdminUiFlow.requireReason(viewer, gui, "Rebuild Node?",
                             List.of("Node #" + node.getId(), "Terrain snapshot is untouched"),
-                            () -> {
-                                gui.runAdmin(viewer, "schem", "rebuild");
+                            reason -> {
+                                gui.runAdmin(viewer, "schem", "rebuild", reason);
                                 open();
-                            }, this::open).open());
+                            }, this::open));
         }
 
         set(31, Icon.of(Material.TNT).name("Force Unclaim", NamedTextColor.DARK_RED)
@@ -105,12 +106,11 @@ public final class AdminNodeMenu extends Menu {
     private void openEventTypes(NodeRecord node) {
         List<String> types = gui.explorationService().eventTypes();
         new AdminOptionMenu(viewer, "เลือก Event Type", types, type ->
-                new ConfirmMenu(viewer, "Spawn " + type + "?",
-                        List.of("Node #" + node.getId()),
-                        () -> {
-                            gui.runAdmin(viewer, "event", "spawn", type);
+                AdminUiFlow.requireReason(viewer, gui, "Spawn " + type + "?",
+                        List.of("Node #" + node.getId()), reason -> {
+                            gui.runAdmin(viewer, "event", "spawn", type, reason);
                             open();
-                        }, this::open).open(), this::open).open();
+                        }, this::open), this::open).open();
     }
 
     private void cancelEvent(NodeRecord node) {
@@ -139,8 +139,11 @@ public final class AdminNodeMenu extends Menu {
     private void openNpcStates() {
         new AdminOptionMenu(viewer, "NPC State",
                 List.of("working", "idle", "stop", "clear"), state -> {
-                    gui.runAdmin(viewer, "npc", "state", state);
-                    open();
+                    AdminUiFlow.requireReason(viewer, gui, "Override NPC state?",
+                            List.of("State: " + state), reason -> {
+                                gui.runAdmin(viewer, "npc", "state", state, reason);
+                                open();
+                            }, this::open);
                 }, this::open).open();
     }
 

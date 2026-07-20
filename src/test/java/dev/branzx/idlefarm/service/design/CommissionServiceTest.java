@@ -47,7 +47,8 @@ class CommissionServiceTest {
         CommissionService commissions = new CommissionService(plugin, database, state,
                 mock(AuditService.class), mock(TelemetryService.class), rewards(),
                 focus, mock(NodeBuildService.class), mock(ChronicleService.class),
-                warehouse, (ignored, amount) -> { }, (ignored, amount) -> { });
+                mock(SeasonalChronicleService.class), warehouse,
+                (ignored, amount) -> { }, (ignored, amount) -> { });
 
         List<String> first = commissions.commissions(node.getOwnerUuid()).stream()
                 .limit(3).map(GameDesignService.Commission::description).toList();

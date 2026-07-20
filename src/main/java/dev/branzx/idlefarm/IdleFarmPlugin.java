@@ -88,12 +88,13 @@ public final class IdleFarmPlugin extends JavaPlugin {
         // ---- gameplay services ----
         this.explorationService = new ExplorationService(this, database, nodeStore, workerStore);
         this.explorationService.loadAllSync();
-        this.globalExpeditionService = new GlobalExpeditionService(this, database, workerStore, dataStore);
-        this.globalExpeditionService.loadAllSync();
 
         GameDesignService gameDesignService = new GameDesignService(this, database, nodeStore,
                 dataStore, auditService, warehouseService, explorationService);
         gameDesignService.loadAllSync();
+        this.globalExpeditionService = new GlobalExpeditionService(this, database, workerStore,
+                dataStore, gameDesignService);
+        this.globalExpeditionService.loadAllSync();
         // Deliberate cycle: exploration events grant design rewards while the
         // design service grants exploration EXP. One late bind breaks it.
         this.explorationService.setGameDesignService(gameDesignService);

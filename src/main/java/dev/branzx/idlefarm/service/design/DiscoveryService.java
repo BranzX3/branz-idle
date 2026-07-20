@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -74,6 +75,11 @@ public final class DiscoveryService {
         } else if (RareResources.WEEKLY.contains(normalized)) {
             period = GameClock.weekKey();
             cap = ("ANCIENT_DEBRIS".equals(normalized) || "NETHERITE_SCRAP".equals(normalized)) ? 2 : 1;
+        } else if (isFrontierMaterial(normalized)) {
+            period = GameClock.monthKey();
+            cap = Math.max(0, plugin.getConfig().getInt(
+                    "frontier.materials." + normalized.toLowerCase(Locale.ROOT) + ".monthly-cap",
+                    plugin.getConfig().getInt("frontier.material-monthly-cap", 10000)));
         } else {
             return true;
         }
@@ -82,12 +88,21 @@ public final class DiscoveryService {
         String key = capKey(owner, capMaterial, period);
         int used = capCounts.getOrDefault(key, 0);
         if (used >= cap) {
-            telemetry.record(owner, "RARE_CAP_HIT", "{\"material\":\"" + normalized + "\"}");
+            telemetry.record(owner, isFrontierMaterial(normalized)
+                            ? "FRONTIER_CAP_HIT" : "RARE_CAP_HIT",
+                    "{\"material\":\"" + normalized + "\",\"period\":\"" + period + "\"}");
             return false;
         }
         capCounts.put(key, used + 1);
         persistCap(owner, capMaterial, period, used + 1);
         return true;
+    }
+
+    private boolean isFrontierMaterial(String material) {
+        return Set.of("AETHER_ORE", "MANA_HERB", "SPIRITWOOD_RESIN", "MYSTIC_HIDE", "SOUL_ASH",
+                "MYTHRIL_FRAGMENT", "LIFE_SEED", "ANCIENT_BARK", "BEAST_CORE",
+                "CORRUPTED_ESSENCE", "RESONANT_CRYSTAL", "ASTRAL_POLLEN", "LIVING_FIBER",
+                "PRIMAL_BLOOD", "VOID_FANG").contains(material);
     }
 
     public Map<String, Long> discoveries(UUID owner, NodeType type) {

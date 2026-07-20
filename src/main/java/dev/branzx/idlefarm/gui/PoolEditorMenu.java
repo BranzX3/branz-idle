@@ -12,13 +12,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
+import java.util.function.BooleanSupplier;
 
 /**
  * Admin drop-pool editor. Real items in a chest grid, weight in lore.
  *  - L/R click: weight -1/+1 (shift: ±10)
  *  - Drop key (Q): remove from pool
  *  - Click an empty slot while holding an item: add it (weight 10)
- * Every change writes drops.yml immediately and applies live.
+ * Every change writes only drops-draft.yml. Publish is a separate validated
+ * and audited operation in Content Control.
  */
 public final class PoolEditorMenu extends Menu {
 
@@ -93,12 +96,8 @@ public final class PoolEditorMenu extends Menu {
 
     private void adjust(String material, double current, ClickType click) {
         if (click == ClickType.DROP || click == ClickType.CONTROL_DROP) {
-            if (!drops.setWeight(path, material, 0)) {
-                rejected();
-                return;
-            }
-            audit.log(viewer.getUniqueId(), "POOL_EDIT", path + " remove " + material);
-            redraw();
+            mutate("Remove " + Ui.pretty(material),
+                    path + " remove " + material, () -> drops.setWeight(path, material, 0));
             return;
         }
         // Middle click: type an exact weight in chat.
@@ -106,14 +105,9 @@ public final class PoolEditorMenu extends Menu {
             gui.chatPrompt().requestNumber(viewer,
                     "Enter exact weight for " + Ui.pretty(material) + " (current " + Ui.num(current) + ")",
                     value -> {
-                        if (!drops.setWeight(path, material, value)) {
-                            rejected();
-                            open();
-                            return;
-                        }
-                        audit.log(viewer.getUniqueId(), "POOL_EDIT",
-                                path + " " + material + " =" + value + " (typed)");
-                        open(); // reopen the editor
+                        mutate("Set exact weight",
+                                path + " " + material + "=" + value,
+                                () -> drops.setWeight(path, material, value));
                     },
                     this::open);
             return;
@@ -129,13 +123,9 @@ public final class PoolEditorMenu extends Menu {
             return;
         }
         double updated = Math.max(0, current + delta);
-        if (!drops.setWeight(path, material, updated)) {
-            rejected();
-            return;
-        }
-        audit.log(viewer.getUniqueId(), "POOL_EDIT",
-                path + " " + material + " " + current + "->" + updated);
-        redraw();
+        mutate("Adjust " + Ui.pretty(material),
+                path + " " + material + " " + current + "->" + updated,
+                () -> drops.setWeight(path, material, updated));
     }
 
     private void addHeld() {
@@ -146,19 +136,31 @@ public final class PoolEditorMenu extends Menu {
             return;
         }
         String material = held.getType().name().toLowerCase(Locale.ROOT);
-        if (!drops.setWeight(path, material, 10)) {
-            rejected();
-            return;
-        }
-        audit.log(viewer.getUniqueId(), "POOL_EDIT", path + " add " + material + " w=10");
-        viewer.sendMessage(Component.text("Added " + Ui.pretty(material) + " (weight 10).",
-                NamedTextColor.GREEN));
-        redraw();
+        mutate("Add " + Ui.pretty(material),
+                path + " add " + material + " w=10",
+                () -> drops.setWeight(path, material, 10));
+    }
+
+    private void mutate(String question, String detail, BooleanSupplier mutation) {
+        AdminUiFlow.requireReason(viewer, gui, question + "?",
+                List.of("Draft only", detail), reason -> {
+                    if (!mutation.getAsBoolean()) {
+                        rejected();
+                        open();
+                        return;
+                    }
+                    String auditId = UUID.randomUUID().toString();
+                    audit.logAdmin(viewer.getUniqueId(), auditId, reason,
+                            "CONTENT_DRAFT_EDIT", detail);
+                    viewer.sendMessage(Component.text("Draft updated | audit " + auditId,
+                            NamedTextColor.GREEN));
+                    open();
+                }, this::open);
     }
 
     private void rejected() {
         viewer.sendMessage(Component.text(
-                "Edit rejected: every published bracket must remain valid and non-empty.",
+                "Edit rejected: material or weight is invalid.",
                 NamedTextColor.RED));
     }
 }

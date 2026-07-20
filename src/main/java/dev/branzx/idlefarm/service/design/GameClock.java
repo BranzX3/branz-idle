@@ -30,4 +30,9 @@ public final class GameClock {
         return now.get(fields.weekBasedYear()) + "-W"
                 + String.format("%02d", now.get(fields.weekOfWeekBasedYear()));
     }
+
+    public static String monthKey() {
+        LocalDate now = today();
+        return now.getYear() + "-M" + String.format("%02d", now.getMonthValue());
+    }
 }

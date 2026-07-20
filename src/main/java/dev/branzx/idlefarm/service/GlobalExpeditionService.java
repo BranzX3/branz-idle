@@ -43,10 +43,14 @@ public final class GlobalExpeditionService {
     public record Score(UUID owner, long contribution) {
     }
 
+    public record ParticipationBand(String id, String name, long threshold, double coins) {
+    }
+
     private final IdleFarmPlugin plugin;
     private final Database database;
     private final WorkerStore workerStore;
     private final PlayerDataStore dataStore;
+    private final GameDesignService design;
     // week -> owner -> contribution (only current week is hot; past weeks settle away)
     private final Map<String, Map<UUID, Long>> scores = new ConcurrentHashMap<>();
     private final Map<UUID, Long> workerLocks = new ConcurrentHashMap<>(); // worker -> endsAt
@@ -54,11 +58,13 @@ public final class GlobalExpeditionService {
     private BukkitRunnable task;
 
     public GlobalExpeditionService(IdleFarmPlugin plugin, Database database,
-                                   WorkerStore workerStore, PlayerDataStore dataStore) {
+                                   WorkerStore workerStore, PlayerDataStore dataStore,
+                                   GameDesignService design) {
         this.plugin = plugin;
         this.database = database;
         this.workerStore = workerStore;
         this.dataStore = dataStore;
+        this.design = design;
     }
 
     public static String currentWeek() {
@@ -162,6 +168,34 @@ public final class GlobalExpeditionService {
         return plugin.getConfig().getLong("expedition.commit-duration-minutes", 60);
     }
 
+    public List<ParticipationBand> participationBands() {
+        List<ParticipationBand> bands = new ArrayList<>();
+        for (Map<?, ?> row : plugin.getConfig().getMapList("expedition.participation-bands")) {
+            Object idValue = row.get("id");
+            String id = idValue == null ? "" : String.valueOf(idValue).trim();
+            Object nameValue = row.get("name");
+            String name = nameValue == null ? id : String.valueOf(nameValue).trim();
+            long threshold = number(row.get("threshold"), 0).longValue();
+            double coins = number(row.get("coins"), 0).doubleValue();
+            if (!id.isBlank() && threshold > 0 && coins >= 0) {
+                bands.add(new ParticipationBand(id, name, threshold, coins));
+            }
+        }
+        if (bands.isEmpty()) {
+            bands.add(new ParticipationBand("participant", "Participant",
+                    plugin.getConfig().getLong("expedition.participation-threshold", 250),
+                    plugin.getConfig().getDouble("expedition.participation-reward", 500)));
+        }
+        bands.sort(Comparator.comparingLong(ParticipationBand::threshold));
+        return List.copyOf(bands);
+    }
+
+    public ParticipationBand nextBand(UUID owner) {
+        long contribution = contributionOf(owner);
+        return participationBands().stream()
+                .filter(band -> band.threshold() > contribution).findFirst().orElse(null);
+    }
+
     public boolean isCommitted(UUID workerUuid) {
         Long endsAt = workerLocks.get(workerUuid);
         return endsAt != null && endsAt > System.currentTimeMillis();
@@ -218,6 +252,10 @@ public final class GlobalExpeditionService {
             persistLock(worker.getWorkerUuid(), endsAt);
         }
         addContribution(owner, gained);
+        design.onGlobalExpeditionCommitted(owner);
+        design.telemetry(owner, "EXPEDITION_COMMIT",
+                "{\"week\":\"" + activeWeek + "\",\"amount\":" + gained
+                        + ",\"contribution\":" + (existing + gained) + "}");
         return null;
     }
 
@@ -272,14 +310,20 @@ public final class GlobalExpeditionService {
             rewards = List.of(5000.0, 3000.0, 1500.0);
         }
         StringBuilder announce = new StringBuilder("Global Expedition " + week + " results: ");
-        long participationThreshold =
-                plugin.getConfig().getLong("expedition.participation-threshold", 250);
-        double participationReward =
-                plugin.getConfig().getDouble("expedition.participation-reward", 500);
         Map<UUID, Double> payouts = new LinkedHashMap<>();
         for (Score score : ranking) {
-            if (score.contribution() >= participationThreshold) {
-                payouts.merge(score.owner(), participationReward, Double::sum);
+            if (design.featureEnabled("expedition-bands", score.owner())) {
+                for (ParticipationBand band : participationBands()) {
+                    if (score.contribution() >= band.threshold()) {
+                        payouts.merge(score.owner(), band.coins(), Double::sum);
+                    }
+                }
+            } else {
+                long threshold = plugin.getConfig().getLong("expedition.participation-threshold", 250);
+                double reward = plugin.getConfig().getDouble("expedition.participation-reward", 500);
+                if (score.contribution() >= threshold) {
+                    payouts.merge(score.owner(), reward, Double::sum);
+                }
             }
         }
         for (int i = 0; i < ranking.size() && i < rewards.size(); i++) {
@@ -324,9 +368,28 @@ public final class GlobalExpeditionService {
         payouts.forEach((owner, amount) -> {
             PlayerData online = dataStore.getOnline(owner);
             if (online != null) online.addBalance(amount);
+            long contribution = finished.getOrDefault(owner, 0L);
+            for (ParticipationBand band : participationBands()) {
+                if (contribution >= band.threshold()) {
+                    design.telemetry(owner, "EXPEDITION_BAND_REACHED",
+                            "{\"week\":\"" + week + "\",\"band\":\"" + band.id()
+                                    + "\",\"threshold\":" + band.threshold() + "}");
+                }
+            }
+            design.telemetry(owner, "EXPEDITION_WEEK_SETTLED",
+                    "{\"week\":\"" + week + "\",\"amount\":" + Math.round(amount) + "}");
         });
         scores.remove(week);
         Bukkit.broadcast(Component.text("[Expedition] " + announce, NamedTextColor.GOLD));
+    }
+
+    private Number number(Object value, Number fallback) {
+        if (value instanceof Number number) return number;
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (Exception ignored) {
+            return fallback;
+        }
     }
 
     private void persistLock(UUID worker, long endsAt) {

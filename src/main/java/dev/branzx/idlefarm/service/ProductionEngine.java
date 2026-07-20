@@ -118,6 +118,7 @@ public final class ProductionEngine extends BukkitRunnable {
             java.util.Map<String, Integer> producedItems = rollItems(node, credited);
             if (gameDesignService != null) {
                 gameDesignService.onItemsProduced(node, producedItems);
+                gameDesignService.consumeFrontierDurability(node, credited);
             }
             // Advance only by the time actually converted into items.
             node.setLastTickAt(node.getLastTickAt() + (long) (credited / ratePerHour * 3_600_000.0));
@@ -183,7 +184,8 @@ public final class ProductionEngine extends BukkitRunnable {
     private java.util.Map<String, Integer> rollItems(NodeRecord node, int count) {
         int bracket = explorationService == null ? 1 : explorationService.bracket(node);
         java.util.Map<String, Double> baseTable = dropTableService != null
-                ? dropTableService.table(node.getType(), bracket, node.getExplorationLevel())
+                ? dropTableService.table(node.getType(), bracket, node.getExplorationLevel(),
+                node.getOwnerUuid())
                 : java.util.Map.of("cobblestone", 1.0);
         if (baseTable.isEmpty()) {
             // Startup validation normally makes this unreachable. Retaining a

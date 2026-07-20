@@ -167,12 +167,12 @@ public final class ChronicleService {
 
     /** Stages a lifetime point gain for a caller-owned transaction. */
     public GameStateStore.Row stagePointsGain(UUID owner, int points) {
-        return state.stageIncrement(owner, "ACCOUNT", "-", "chronicle_points", points);
+        return state.prepareIncrement(owner, "ACCOUNT", "-", "chronicle_points", points);
     }
 
     /** Stages a seasonal point gain for a caller-owned transaction. */
     public GameStateStore.Row stageSeasonalPointsGain(UUID owner, int points) {
-        return state.stageIncrement(owner, "SEASON", seasons.id(), "chronicle_points", points);
+        return state.prepareIncrement(owner, "SEASON", seasons.id(), "chronicle_points", points);
     }
 
     public Result claim(UUID owner, String id) {

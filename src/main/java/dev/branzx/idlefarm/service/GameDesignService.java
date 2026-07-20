@@ -6,10 +6,13 @@ import dev.branzx.idlefarm.node.NodeType;
 import dev.branzx.idlefarm.service.design.ChronicleService;
 import dev.branzx.idlefarm.service.design.CommissionService;
 import dev.branzx.idlefarm.service.design.DiscoveryService;
+import dev.branzx.idlefarm.service.design.FeatureControlService;
 import dev.branzx.idlefarm.service.design.FocusService;
+import dev.branzx.idlefarm.service.design.FrontierService;
 import dev.branzx.idlefarm.service.design.NodeBuildService;
 import dev.branzx.idlefarm.service.design.ProjectService;
 import dev.branzx.idlefarm.service.design.SeasonService;
+import dev.branzx.idlefarm.service.design.SeasonalChronicleService;
 import dev.branzx.idlefarm.service.design.TelemetryService;
 import dev.branzx.idlefarm.service.design.WorkerMetaService;
 import dev.branzx.idlefarm.storage.Database;
@@ -61,14 +64,17 @@ public final class GameDesignService {
     private final ExplorationService exploration;
 
     private final TelemetryService telemetryService;
+    private final FeatureControlService controls;
     private final SeasonService seasons;
     private final ChronicleService chronicle;
+    private final SeasonalChronicleService seasonalChronicle;
     private final DiscoveryService discovery;
     private final FocusService focus;
     private final NodeBuildService builds;
     private final ProjectService projects;
     private final WorkerMetaService workerMeta;
     private final CommissionService commissions;
+    private final FrontierService frontier;
 
     public GameDesignService(IdleFarmPlugin plugin, Database database, NodeStore nodeStore,
                              PlayerDataStore dataStore, AuditService audit,
@@ -80,17 +86,22 @@ public final class GameDesignService {
         this.stateStore = new GameStateStore(plugin, database);
         this.rewards = ProgressionRewards.from(plugin);
         this.telemetryService = new TelemetryService(plugin, database);
+        this.controls = new FeatureControlService(plugin);
         this.seasons = new SeasonService(plugin);
         this.chronicle = new ChronicleService(plugin, stateStore, audit, telemetryService,
                 seasons, this::addCoins);
+        this.seasonalChronicle = new SeasonalChronicleService(plugin, stateStore, seasons,
+                controls, chronicle, telemetryService);
         this.discovery = new DiscoveryService(plugin, database, telemetryService);
         this.focus = new FocusService(stateStore, nodeStore, audit, telemetryService);
         this.builds = new NodeBuildService(database, stateStore, dataStore, audit, seasons);
         this.projects = new ProjectService(plugin, database, stateStore, audit, telemetryService,
-                seasons, chronicle, warehouse, nodeStore, this::grantNodeExp);
+                seasons, chronicle, seasonalChronicle, warehouse, nodeStore, this::grantNodeExp);
         this.workerMeta = new WorkerMetaService(stateStore, nodeStore, projects);
         this.commissions = new CommissionService(plugin, database, stateStore, audit, telemetryService,
-                rewards, focus, builds, chronicle, warehouse, this::grantNodeExp, this::addCoins);
+                rewards, focus, builds, chronicle, seasonalChronicle, warehouse,
+                this::grantNodeExp, this::addCoins);
+        this.frontier = new FrontierService(plugin, stateStore, warehouse, controls, telemetryService);
     }
 
     public ProgressionRewards progressionRewards() {
@@ -99,6 +110,7 @@ public final class GameDesignService {
 
     public void loadAllSync() {
         chronicle.loadDefinitions();
+        seasonalChronicle.loadDefinitions();
         try {
             stateStore.loadAllSync();
         } catch (SQLException e) {
@@ -220,6 +232,7 @@ public final class GameDesignService {
         if (amount <= 0) return;
         commissions.onBufferCollected(node, amount);
         chronicle.complete(node.getOwnerUuid(), "supplies_arrive");
+        seasonalChronicle.advance(node.getOwnerUuid(), "collect", amount);
         telemetry(node.getOwnerUuid(), "BUFFER_COLLECTED",
                 "{\"node\":" + node.getId() + ",\"amount\":" + amount + "}");
     }
@@ -234,6 +247,7 @@ public final class GameDesignService {
         }
         chronicle.count(owner, "produced_total", total);
         chronicle.count(owner, "produced_" + node.getType().name(), total);
+        seasonalChronicle.advance(owner, "produce", total);
         telemetry(owner, "ITEM_PRODUCED",
                 "{\"node\":" + node.getId() + ",\"amount\":" + total + "}");
     }
@@ -252,6 +266,7 @@ public final class GameDesignService {
         if ("JACKPOT".equals(grade)) {
             chronicle.count(owner, "jackpot_total", 1);
         }
+        seasonalChronicle.advance(owner, "exploration", 1);
         telemetry(owner, "EXPLORATION_COMPLETED",
                 "{\"node\":" + node.getId() + ",\"grade\":\""
                         + dev.branzx.idlefarm.service.design.DesignText.safe(grade) + "\"}");
@@ -276,6 +291,7 @@ public final class GameDesignService {
                 dev.branzx.idlefarm.service.design.GameClock.weekKey(), "global_commit")) {
             chronicle.count(owner, "global_expedition_weeks", 1);
         }
+        seasonalChronicle.advance(owner, "expedition_commit", 1);
     }
 
     public List<Commission> commissions(UUID owner) {
@@ -298,6 +314,38 @@ public final class GameDesignService {
 
     public boolean allowResource(UUID owner, String material, int nodeLevel) {
         return discovery.allowResource(owner, material, nodeLevel);
+    }
+
+    public FrontierService.Profession frontierProfession(UUID owner, NodeType type) {
+        return frontier.profession(owner, type);
+    }
+
+    public FrontierService.Equipment frontierEquipment(UUID owner, NodeRecord node) {
+        return frontier.equipment(owner, node);
+    }
+
+    public List<FrontierService.Recipe> frontierRecipes(NodeType type) {
+        return frontier.recipes(type);
+    }
+
+    public Result craftFrontierEquipment(UUID owner, NodeRecord node, int tier) {
+        return frontier.craft(owner, node, tier);
+    }
+
+    public Result trainFrontierProfession(UUID owner, NodeType type, String material, int amount) {
+        return frontier.train(owner, type, material, amount);
+    }
+
+    public Result repairFrontierEquipment(UUID owner, NodeRecord node) {
+        return frontier.repair(owner, node);
+    }
+
+    public boolean frontierEnabled(UUID owner) {
+        return frontier.enabled(owner);
+    }
+
+    public void consumeFrontierDurability(NodeRecord node, int produced) {
+        frontier.consumeDurability(node, produced);
     }
 
     public Map<String, Long> discoveries(UUID owner, NodeType type) {
@@ -327,6 +375,22 @@ public final class GameDesignService {
 
     public Result claimAchievement(UUID owner, String id) {
         return chronicle.claim(owner, id);
+    }
+
+    public List<SeasonalChronicleService.Objective> seasonalObjectives(UUID owner) {
+        return seasonalChronicle.objectives(owner);
+    }
+
+    public Result claimSeasonalObjective(UUID owner, String id) {
+        return seasonalChronicle.claim(owner, id);
+    }
+
+    public List<SeasonalChronicleService.RewardTier> seasonalRewardTrack(UUID owner) {
+        return seasonalChronicle.rewardTrack(owner);
+    }
+
+    public Result claimSeasonalReward(UUID owner, String id) {
+        return seasonalChronicle.claimReward(owner, id);
     }
 
     public void onNodeLevel(NodeRecord node) {
@@ -371,7 +435,7 @@ public final class GameDesignService {
     }
 
     public double productionMultiplier(NodeRecord node) {
-        return builds.productionMultiplier(node);
+        return builds.productionMultiplier(node) * frontier.productionMultiplier(node);
     }
 
     public double bufferMultiplier(NodeRecord node) {
@@ -446,12 +510,33 @@ public final class GameDesignService {
         return seasons.modifier();
     }
 
+    public SeasonService.WeekSchedule seasonSchedule() {
+        return seasons.schedule();
+    }
+
+    public List<String> seasonValidationErrors() {
+        return seasons.validationErrors();
+    }
+
+    public boolean featureEnabled(String key, UUID owner) {
+        return controls.enabled(key, owner);
+    }
+
+    public String experimentVariant(String key, UUID owner, String fallback) {
+        return controls.variant(key, owner, fallback);
+    }
+
     public void telemetry(UUID owner, String event, String detail) {
         telemetryService.record(owner, event, detail);
     }
 
     public Map<String, Long> telemetrySummarySync() {
         return telemetryService.summarySync();
+    }
+
+    public dev.branzx.idlefarm.service.design.TelemetryService.EconomyDashboard
+    economyDashboardSync() {
+        return telemetryService.economyDashboardSync();
     }
 
     // ---- Reward sinks --------------------------------------------------------

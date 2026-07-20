@@ -53,6 +53,7 @@ public final class CommissionService {
     private final FocusService focus;
     private final NodeBuildService builds;
     private final ChronicleService chronicle;
+    private final SeasonalChronicleService seasonalChronicle;
     private final WarehouseService warehouse;
     private final NodeExpSink nodeExp;
     private final CoinSink coins;
@@ -62,6 +63,7 @@ public final class CommissionService {
                              AuditService audit, TelemetryService telemetry,
                              ProgressionRewards rewards, FocusService focus,
                              NodeBuildService builds, ChronicleService chronicle,
+                             SeasonalChronicleService seasonalChronicle,
                              WarehouseService warehouse, NodeExpSink nodeExp, CoinSink coins) {
         this.plugin = plugin;
         this.database = database;
@@ -72,6 +74,7 @@ public final class CommissionService {
         this.focus = focus;
         this.builds = builds;
         this.chronicle = chronicle;
+        this.seasonalChronicle = seasonalChronicle;
         this.warehouse = warehouse;
         this.nodeExp = nodeExp;
         this.coins = coins;
@@ -234,6 +237,7 @@ public final class CommissionService {
         telemetry.record(owner, "COMMISSION_CLAIM",
                 "{\"template\":\"" + DesignText.safe(template.id()) + "\"}");
         chronicle.count(owner, "commissions_claimed", 1);
+        seasonalChronicle.advance(owner, "commission", 1);
         return Result.ok("Commission reward claimed.");
     }
 
@@ -284,6 +288,8 @@ public final class CommissionService {
         nodeExp.grant(focused, rewards.catchupCommissionExp());
         state.put(owner, "ACCOUNT", "-", "catchup_commissions", String.valueOf(available - 1));
         state.put(owner, "DAILY", day, "commission_catchup_claimed", "1");
+        telemetry.record(owner, "CATCH_UP_COMMISSION_CLAIMED",
+                "{\"remaining\":" + (available - 1) + "}");
         return Result.ok("Catch-up commission claimed.");
     }
 
@@ -294,6 +300,7 @@ public final class CommissionService {
         if (available < target) {
             return Result.fail("Warehouse no longer has the required resources.");
         }
+        WarehouseService.Snapshot before = warehouse.snapshot(owner);
         int remaining = target;
         for (Map.Entry<String, Integer> entry : contents.entrySet()) {
             if (remaining <= 0) break;
@@ -303,7 +310,7 @@ public final class CommissionService {
         }
         WarehouseService.Snapshot snapshot = warehouse.snapshot(owner);
         List<GameStateStore.Row> rows = new ArrayList<>();
-        rows.add(state.stage(owner, "DAILY", day, claimedKey(slot), "1"));
+        rows.add(state.prepare(owner, "DAILY", day, claimedKey(slot), "1"));
         switch (template.rewardKind()) {
             case CHRONICLE_POINTS ->
                     rows.add(chronicle.stagePointsGain(owner, template.rewardAmount()));
@@ -312,10 +319,15 @@ public final class CommissionService {
                 // after the Warehouse transaction has been accepted.
             }
         }
-        database.submitTransaction("delivery commission " + owner, connection -> {
+        boolean committed = database.executeTransaction("delivery commission " + owner, connection -> {
             WarehouseService.write(connection, snapshot);
             for (GameStateStore.Row row : rows) GameStateStore.write(connection, row);
         });
+        if (!committed) {
+            warehouse.restore(before);
+            return Result.fail("Commission settlement failed; no resources were consumed.");
+        }
+        rows.forEach(state::applyCommitted);
         if (template.rewardKind() != RewardKind.CHRONICLE_POINTS) {
             NodeRecord focused = focus.focusedRecord(owner);
             if (focused != null) grantReward(owner, focused, template);

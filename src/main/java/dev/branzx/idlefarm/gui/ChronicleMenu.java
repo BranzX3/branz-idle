@@ -92,6 +92,12 @@ public final class ChronicleMenu extends Menu {
         set(48, Icon.of(Material.ARROW).name("กลับ Progress", NamedTextColor.GREEN)
                 .lore("Back to Progress", NamedTextColor.DARK_GRAY).build(),
                 e -> gui.openProgress(viewer));
+        if (design.featureEnabled("seasonal-chronicle", viewer.getUniqueId())) {
+            set(47, Icon.of(Material.CLOCK).name("Seasonal Chronicle",
+                            NamedTextColor.LIGHT_PURPLE)
+                    .lore("Weekly objectives and seasonal rewards", NamedTextColor.GRAY).build(),
+                    e -> new SeasonalChronicleMenu(viewer, gui).open());
+        }
         if (start + PAGE_SIZE < all.size()) {
             set(53, Icon.of(Material.ARROW).name("Next", NamedTextColor.YELLOW).build(),
                     e -> new ChronicleMenu(viewer, gui, page + 1).open());

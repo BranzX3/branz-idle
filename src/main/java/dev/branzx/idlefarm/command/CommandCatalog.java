@@ -35,7 +35,7 @@ public final class CommandCatalog {
         }
     }
 
-    private static final List<Entry> PLAYER = List.of(
+    private static final List<Entry> PLAYER_BASE = List.of(
             player("balance", "", "ยอดเงิน เวลาออนไลน์ และจำนวน Node", "overview"),
             player("top", "", "อันดับผู้เล่นตาม Coins", "overview"),
             player("nodes", "", "เปิดรายการ Node", "territory"),
@@ -68,6 +68,16 @@ public final class CommandCatalog {
             player("expedition", "", "เปิด Global Expedition", "progress")
     );
 
+    private static final List<Entry> PLAYER;
+
+    static {
+        List<Entry> entries = new ArrayList<>(PLAYER_BASE);
+        entries.add(player("frontier",
+                "[info|craft <tier>|repair|train <material> <amount>]",
+                "Profession, crafting and equipment for Lv.101+", "progress"));
+        PLAYER = List.copyOf(entries);
+    }
+
     private static final List<Entry> ADMIN = List.of(
             admin("dashboard", "", "เปิด Admin Hub", "overview", "idlefarm.admin"),
             admin("node", "", "ตรวจสอบ Node ที่ยืนอยู่", "inspection", "idlefarm.admin.operations"),
@@ -75,11 +85,12 @@ public final class CommandCatalog {
             admin("audit", "[player]", "ดู audit log ล่าสุด", "inspection", "idlefarm.admin.audit"),
             admin("metrics", "", "ดู economy/telemetry summary", "system", "idlefarm.admin.audit"),
             admin("validate", "", "ตรวจสอบ content ก่อน publish", "system", "idlefarm.admin.content"),
-            admin("reload", "", "โหลด config, pools และ schematics ใหม่", "system", "idlefarm.admin.operations"),
-            admin("pool", "[type[.bracket-N]|rollback]", "เปิด/จัดการ drop pool", "content", "idlefarm.admin.content"),
+            admin("reload", "<reason>", "โหลด config, pools และ schematics ใหม่", "system", "idlefarm.admin.operations"),
+            admin("pool", "[type[.bracket-N]|publish|rollback|discard] [reason]",
+                    "เปิด/จัดการ drop pool draft", "content", "idlefarm.admin.content"),
             admin("schem", "<action> ...", "เครื่องมือสร้าง schematic", "content", "idlefarm.admin.content"),
-            admin("npc", "<refresh|list|state>", "ตรวจสอบและ refresh Worker NPC", "content", "idlefarm.admin.content"),
-            admin("event", "<spawn|cancel|list> [type]", "จัดการ Exploration event", "operations", "idlefarm.admin.operations"),
+            admin("npc", "<refresh|list|state> ... [reason]", "ตรวจสอบและ refresh Worker NPC", "content", "idlefarm.admin.content"),
+            admin("event", "<spawn|cancel|list> [type] [reason]", "จัดการ Exploration event", "operations", "idlefarm.admin.operations"),
             admin("explevel", "<level> <reason>", "ตั้ง Exploration level ของ Node", "operations", "idlefarm.admin.operations"),
             admin("setcap", "<player> <base> <bonus> <reason>", "ตั้ง Node cap", "economy", "idlefarm.admin.economy"),
             admin("give", "<money|item> ... <reason>", "ปรับ Coins หรือมอบ item", "economy", "idlefarm.admin.economy"),

@@ -92,7 +92,7 @@ public final class AdminCommands {
         }
         return switch (sub) {
             case "dashboard" -> dashboard(sender);
-            case "reload" -> reload(sender);
+            case "reload" -> reload(sender, args);
             case "schem" -> schem(sender, args);
             case "npc" -> npc(sender, args);
             case "node" -> nodeInfo(sender);
@@ -240,6 +240,10 @@ public final class AdminCommands {
         String transaction = "ADMIN:" + UUID.randomUUID();
         boolean success = creditService != null && creditService.adjust(target.getUniqueId(), amount,
                 "ADMIN_ADJUST", transaction, "{\"reason\":\"" + reason.replace("\"", "'") + "\"}");
+        if (success) {
+            auditService.logAdmin(actor(sender), transaction, reason, "ADMIN_CREDITS",
+                    "target=" + target.getUniqueId() + " amount=" + amount);
+        }
         sender.sendMessage(Component.text(success
                         ? "Credits adjusted. Audit transaction: " + transaction
                         : "Credit adjustment failed or transaction was duplicated.",
@@ -260,14 +264,44 @@ public final class AdminCommands {
                     auditService).open();
             return true;
         }
-        if ("rollback".equalsIgnoreCase(args[2])) {
-            boolean success = dropTableService.rollbackLatest();
-            sender.sendMessage(Component.text(success
-                            ? "Rolled back to the latest valid drop-table revision."
-                            : "No valid revision was available.",
-                    success ? NamedTextColor.GREEN : NamedTextColor.RED));
-            if (success) {
-                auditService.log(player.getUniqueId(), "CONTENT_ROLLBACK", "drops latest");
+        String action = args[2].toLowerCase(Locale.ROOT);
+        if (action.equals("publish") || action.equals("rollback") || action.equals("discard")) {
+            if (args.length < 4) {
+                sender.sendMessage(Component.text("Usage: /idle admin pool " + action + " <reason>",
+                        NamedTextColor.YELLOW));
+                return true;
+            }
+            String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length)).trim();
+            String auditId = UUID.randomUUID().toString();
+            if (action.equals("publish")) {
+                var result = dropTableService.publish();
+                if (!result.success()) {
+                    sender.sendMessage(Component.text("Publish rejected: " + String.join("; ", result.errors()),
+                            NamedTextColor.RED));
+                    return true;
+                }
+                auditService.logAdmin(player.getUniqueId(), auditId, reason, "CONTENT_PUBLISH",
+                        "drops previousRevision=" + result.revision());
+                sender.sendMessage(Component.text("Published drop-table draft | audit " + auditId,
+                        NamedTextColor.GREEN));
+                return true;
+            }
+            if (action.equals("discard")) {
+                dropTableService.resetDraft();
+                auditService.logAdmin(player.getUniqueId(), auditId, reason, "CONTENT_DRAFT_DISCARD",
+                        "drops");
+                sender.sendMessage(Component.text("Draft reset to published content | audit " + auditId,
+                        NamedTextColor.GREEN));
+                return true;
+            }
+            var result = dropTableService.rollback();
+            sender.sendMessage(Component.text(result.success()
+                            ? "Rolled back to revision " + result.revision() + " | audit " + auditId
+                            : result.error(),
+                    result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+            if (result.success()) {
+                auditService.logAdmin(player.getUniqueId(), auditId, reason, "CONTENT_ROLLBACK",
+                        "drops revision=" + result.revision());
             }
             return true;
         }
@@ -291,23 +325,33 @@ public final class AdminCommands {
         String action = args.length >= 3 ? args[2].toLowerCase(Locale.ROOT) : "list";
         switch (action) {
             case "spawn" -> {
-                String type = args.length >= 4 ? args[3].toLowerCase(Locale.ROOT) : null;
-                String error = explorationService.adminSpawn(node, type);
-                sender.sendMessage(Component.text(error == null ? "Event spawned at node #" + node.getId()
-                        : error, error == null ? NamedTextColor.GREEN : NamedTextColor.RED));
-                if (error == null) {
-                    auditService.log(player.getUniqueId(), "ADMIN_EVENT", "spawn " + type + " @ " + node.getId());
+                if (args.length < 5) {
+                    sender.sendMessage(Component.text(
+                            "Usage: /idle admin event spawn <type> <reason>", NamedTextColor.YELLOW));
+                    return true;
                 }
+                String type = args[3].toLowerCase(Locale.ROOT);
+                String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
+                String error = explorationService.adminSpawn(node, type);
+                String auditId = error == null ? auditAdmin(player.getUniqueId(), "ADMIN_EVENT",
+                        reason, "spawn " + type + " @ " + node.getId()) : null;
+                sender.sendMessage(Component.text(error == null ? "Event spawned at node #" + node.getId()
+                        + " | audit " + auditId
+                        : error, error == null ? NamedTextColor.GREEN : NamedTextColor.RED));
             }
             case "cancel" -> {
+                if (args.length < 4) {
+                    sender.sendMessage(Component.text(
+                            "Usage: /idle admin event cancel <reason>", NamedTextColor.YELLOW));
+                    return true;
+                }
                 explorationService.cancel(node);
+                String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length));
+                String auditId = auditAdmin(player.getUniqueId(), "ADMIN_EVENT",
+                        reason, "cancel @ " + node.getId());
                 sender.sendMessage(Component.text("Event on node #" + node.getId() + " cancelled.",
-                        NamedTextColor.GREEN));
-                String reason = args.length >= 4
-                        ? String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length))
-                        : "not supplied";
-                auditService.log(player.getUniqueId(), "ADMIN_EVENT",
-                        "cancel @ " + node.getId() + " reason=" + reason);
+                        NamedTextColor.GREEN).append(Component.text(" | audit " + auditId,
+                        NamedTextColor.GRAY)));
             }
             case "list" -> {
                 var event = explorationService.getEvent(node.getId());
@@ -349,8 +393,8 @@ public final class AdminCommands {
         sender.sendMessage(Component.text("Node #" + node.getId() + " exploration level = " + level
                 + " (bracket " + explorationService.bracket(node) + ") | audit " + auditId,
                 NamedTextColor.GREEN));
-        auditService.log(player.getUniqueId(), "ADMIN_EXPLEVEL", "id=" + auditId + " "
-                + node.getId() + " -> " + level + " reason=" + reason);
+        auditService.logAdmin(player.getUniqueId(), auditId, reason, "ADMIN_EXPLEVEL",
+                node.getId() + " -> " + level);
         return true;
     }
 
@@ -381,8 +425,8 @@ public final class AdminCommands {
             data.addBalance(amount);
             String auditId = UUID.randomUUID().toString();
             String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 5, args.length));
-            auditService.log(actor, "ADMIN_GIVE", "id=" + auditId + " money " + amount + " -> "
-                    + target.getName() + " reason=" + reason);
+            auditService.logAdmin(actor, auditId, reason, "ADMIN_GIVE",
+                    "money " + amount + " -> " + target.getName());
             sender.sendMessage(Component.text((amount >= 0 ? "Gave " : "Took ") + Math.abs(amount)
                     + " money " + (amount >= 0 ? "to " : "from ") + target.getName()
                     + " | audit " + auditId, NamedTextColor.GREEN));
@@ -407,8 +451,8 @@ public final class AdminCommands {
             }
             String auditId = UUID.randomUUID().toString();
             String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 6, args.length));
-            auditService.log(actor, "ADMIN_GIVE", "id=" + auditId + " item " + material + " x" + count
-                    + " -> " + target.getName() + " reason=" + reason);
+            auditService.logAdmin(actor, auditId, reason, "ADMIN_GIVE",
+                    "item " + material + " x" + count + " -> " + target.getName());
             sender.sendMessage(Component.text("Gave " + count + "x " + material + " to " + target.getName()
                     + " | audit " + auditId,
                     NamedTextColor.GREEN));
@@ -430,8 +474,8 @@ public final class AdminCommands {
         UUID actor = sender instanceof Player p ? p.getUniqueId() : new UUID(0, 0);
         String auditId = UUID.randomUUID().toString();
         String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 5, args.length));
-        auditService.log(actor, "ADMIN_SETCAP", "id=" + auditId + " " + args[2]
-                + " base=" + base + " bonus=" + bonus + " reason=" + reason);
+        auditService.logAdmin(actor, auditId, reason, "ADMIN_SETCAP",
+                args[2] + " base=" + base + " bonus=" + bonus);
         sender.sendMessage(Component.text("Node cap for " + args[2] + " = " + (base + bonus),
                 NamedTextColor.GREEN));
         sender.sendMessage(Component.text("Audit " + auditId, NamedTextColor.GRAY));
@@ -471,13 +515,23 @@ public final class AdminCommands {
     }
 
     private boolean reload(CommandSender sender) {
+        sender.sendMessage(Component.text(
+                "Reload requires an audit reason: /idle admin reload <reason>", NamedTextColor.YELLOW));
+        return true;
+    }
+
+    private boolean reload(CommandSender sender, String[] args) {
+        if (args.length < 3) return reload(sender);
+        String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length));
         plugin.reloadConfig();
         schematicService.getRegistry().loadAll();
         if (dropTableService != null) {
             dropTableService.load();
         }
+        String auditId = auditAdmin(actor(sender), "ADMIN_RELOAD", reason,
+                "config,published pools,schematics");
         sender.sendMessage(Component.text("IdleFarm config, pools + schematics reloaded.",
-                NamedTextColor.GREEN));
+                NamedTextColor.GREEN).append(Component.text(" | audit " + auditId, NamedTextColor.GRAY)));
         return true;
     }
 
@@ -495,7 +549,7 @@ public final class AdminCommands {
         String action = args[2].toLowerCase(Locale.ROOT);
 
         if (action.equals("edit")) {
-            if (args.length < 4) {
+            if (args.length < 5) {
                 sender.sendMessage(Component.text("Usage: /idle admin schem edit <id>  (ids: "
                         + String.join(", ", registry.ids()) + ")", NamedTextColor.YELLOW));
                 return true;
@@ -512,13 +566,17 @@ public final class AdminCommands {
             }
             sessions.put(player.getUniqueId(),
                     new EditSession(id, schematicService.origin(node, player.getWorld())));
+            String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
+            String auditId = auditAdmin(player.getUniqueId(), "SCHEMATIC_DRAFT_BEGIN", reason,
+                    "id=" + id + " node=" + node.getId());
             sender.sendMessage(Component.text("Editing schematic '" + id + "' anchored to this node. "
-                    + "Walk around and use setspawn/setwork/setanim, then save.", NamedTextColor.GREEN));
+                    + "Walk around and use setspawn/setwork/setanim, then save. | audit " + auditId,
+                    NamedTextColor.GREEN));
             return true;
         }
 
         if (action.equals("capture")) {
-            if (args.length < 4) {
+            if (args.length < 7) {
                 sender.sendMessage(Component.text(
                         "Usage: /idle admin schem capture <id> [baseY] [height] — captures the WHOLE chunk "
                                 + "you stand in, from baseY (default: your feet) up <height> blocks "
@@ -527,8 +585,9 @@ public final class AdminCommands {
                 return true;
             }
             String id = args[3].toLowerCase(Locale.ROOT);
-            int baseY = args.length >= 5 ? Integer.parseInt(args[4]) : player.getLocation().getBlockY();
-            int height = args.length >= 6 ? Integer.parseInt(args[5]) : 16;
+            int baseY = Integer.parseInt(args[4]);
+            int height = Integer.parseInt(args[5]);
+            String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 6, args.length));
             SchematicDefinition definition = registry.get(id);
             if (definition == null) {
                 definition = new SchematicDefinition(id);
@@ -573,22 +632,34 @@ public final class AdminCommands {
             // can be authored right here in the build chunk.
             sessions.put(player.getUniqueId(), new EditSession(id,
                     new Location(player.getWorld(), centerX, baseY, centerZ)));
+            String auditId = auditAdmin(player.getUniqueId(), "SCHEMATIC_CAPTURE", reason,
+                    "id=" + id + " chunk=" + chunkX + "," + chunkZ + " baseY=" + baseY
+                            + " height=" + height + " blocks=" + kept);
             sender.sendMessage(Component.text("Captured chunk " + chunkX + "," + chunkZ + " (baseY=" + baseY
                     + ", h=" + height + ", " + kept + " blocks kept, far-air skipped) into '" + id
                     + "'. Edit session started — walk to each bed and /idle admin schem setspawn <slot>, "
-                    + "then setwork/setanim/save.", NamedTextColor.GREEN));
+                    + "then setwork/setanim/save. | audit " + auditId, NamedTextColor.GREEN));
             return true;
         }
 
         if (action.equals("rebuild")) {
+            if (args.length < 4) {
+                sender.sendMessage(Component.text(
+                        "Usage: /idle admin schem rebuild <reason>", NamedTextColor.YELLOW));
+                return true;
+            }
             NodeRecord node = nodeAt(player);
             if (node == null || !node.getType().isProduction()) {
                 sender.sendMessage(Component.text("Stand in a production node.", NamedTextColor.RED));
                 return true;
             }
             schematicService.rebuild(node, player.getWorld());
+            String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length));
+            String auditId = auditAdmin(player.getUniqueId(), "SCHEMATIC_REBUILD", reason,
+                    "node=" + node.getId());
             sender.sendMessage(Component.text("Building re-pasted (terrain snapshot untouched).",
-                    NamedTextColor.GREEN));
+                    NamedTextColor.GREEN).append(Component.text(" | audit " + auditId,
+                    NamedTextColor.GRAY)));
             return true;
         }
 
@@ -601,39 +672,79 @@ public final class AdminCommands {
 
         switch (action) {
             case "setspawn" -> {
+                if (args.length < 5) {
+                    sender.sendMessage(Component.text(
+                            "Usage: /idle admin schem setspawn <slot> <reason>", NamedTextColor.YELLOW));
+                    return true;
+                }
                 int slot = args.length >= 4 ? Integer.parseInt(args[3]) : 1;
                 RelPos rel = relFeet(player, session);
                 SchematicDefinition.setSlot(definition.getSpawnAnchors(), slot - 1, rel);
+                String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
+                String auditId = auditAdmin(player.getUniqueId(), "SCHEMATIC_DRAFT_EDIT", reason,
+                        definition.getId() + " spawn." + slot + "=" + rel.serialize());
                 sender.sendMessage(Component.text("Spawn anchor " + slot + " = " + rel.serialize(),
-                        NamedTextColor.GREEN));
+                        NamedTextColor.GREEN).append(Component.text(" | audit " + auditId,
+                        NamedTextColor.GRAY)));
             }
             case "setwork" -> {
+                if (args.length < 5) {
+                    sender.sendMessage(Component.text(
+                            "Usage: /idle admin schem setwork <slot> <reason>", NamedTextColor.YELLOW));
+                    return true;
+                }
                 int slot = args.length >= 4 ? Integer.parseInt(args[3]) : 1;
                 RelPos rel = relFeet(player, session);
                 SchematicDefinition.setSlot(definition.getWorkAnchors(), slot - 1, rel);
+                String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
+                String auditId = auditAdmin(player.getUniqueId(), "SCHEMATIC_DRAFT_EDIT", reason,
+                        definition.getId() + " work." + slot + "=" + rel.serialize());
                 sender.sendMessage(Component.text("Work anchor " + slot + " = " + rel.serialize(),
-                        NamedTextColor.GREEN));
+                        NamedTextColor.GREEN).append(Component.text(" | audit " + auditId,
+                        NamedTextColor.GRAY)));
             }
             case "setwander" -> {
+                if (args.length < 5) {
+                    sender.sendMessage(Component.text(
+                            "Usage: /idle admin schem setwander <radius> <reason>", NamedTextColor.YELLOW));
+                    return true;
+                }
                 int radius = args.length >= 4 ? Integer.parseInt(args[3]) : 5;
                 definition.setWanderRadius(radius);
-                sender.sendMessage(Component.text("Wander radius = " + radius, NamedTextColor.GREEN));
+                String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
+                String auditId = auditAdmin(player.getUniqueId(), "SCHEMATIC_DRAFT_EDIT", reason,
+                        definition.getId() + " wander=" + radius);
+                sender.sendMessage(Component.text("Wander radius = " + radius + " | audit " + auditId,
+                        NamedTextColor.GREEN));
             }
             case "setanim" -> {
-                if (args.length < 5) {
+                if (args.length < 6) {
                     sender.sendMessage(Component.text("Usage: /idle admin schem setanim <state> <profile>",
                             NamedTextColor.YELLOW));
                     return true;
                 }
                 String state = args[3].toUpperCase(Locale.ROOT);
                 definition.getProfiles().put(state, args[4]);
-                sender.sendMessage(Component.text(state + " -> profile '" + args[4] + "'", NamedTextColor.GREEN));
+                String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 5, args.length));
+                String auditId = auditAdmin(player.getUniqueId(), "SCHEMATIC_DRAFT_EDIT", reason,
+                        definition.getId() + " profile." + state + "=" + args[4]);
+                sender.sendMessage(Component.text(state + " -> profile '" + args[4]
+                        + "' | audit " + auditId, NamedTextColor.GREEN));
             }
             case "save" -> {
+                if (args.length < 4) {
+                    sender.sendMessage(Component.text(
+                            "Usage: /idle admin schem save <reason>", NamedTextColor.YELLOW));
+                    return true;
+                }
                 registry.save(definition);
                 sessions.remove(player.getUniqueId());
+                String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length));
+                String auditId = auditAdmin(player.getUniqueId(), "SCHEMATIC_SAVE", reason,
+                        "id=" + definition.getId());
                 sender.sendMessage(Component.text("Schematic '" + definition.getId()
-                        + "' saved. Nodes pick it up on next NPC refresh.", NamedTextColor.GREEN));
+                        + "' saved. Nodes pick it up on next NPC refresh. | audit " + auditId,
+                        NamedTextColor.GREEN));
             }
             default -> usage(sender);
         }
@@ -679,8 +790,17 @@ public final class AdminCommands {
         String action = args.length >= 3 ? args[2].toLowerCase(Locale.ROOT) : "list";
         switch (action) {
             case "refresh" -> {
+                if (args.length < 4) {
+                    sender.sendMessage(Component.text(
+                            "Usage: /idle admin npc refresh <reason>", NamedTextColor.YELLOW));
+                    return true;
+                }
                 npcManager.refreshNode(node, player.getWorld());
-                sender.sendMessage(Component.text("NPCs respawned.", NamedTextColor.GREEN));
+                String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length));
+                String auditId = auditAdmin(player.getUniqueId(), "ADMIN_NPC_REFRESH", reason,
+                        "node=" + node.getId());
+                sender.sendMessage(Component.text("NPCs respawned. | audit " + auditId,
+                        NamedTextColor.GREEN));
             }
             case "list" -> {
                 List<String> lines = npcManager.describeNode(node.getId());
@@ -690,7 +810,14 @@ public final class AdminCommands {
                 }
             }
             case "state" -> {
+                if (args.length < 5) {
+                    sender.sendMessage(Component.text(
+                            "Usage: /idle admin npc state <state|clear> <reason>",
+                            NamedTextColor.YELLOW));
+                    return true;
+                }
                 String state = args.length >= 4 ? args[3] : "clear";
+                String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
                 if (state.equalsIgnoreCase("clear")) {
                     npcManager.setStateOverride(node.getId(), null);
                     sender.sendMessage(Component.text("State override cleared.", NamedTextColor.GREEN));
@@ -699,6 +826,9 @@ public final class AdminCommands {
                     sender.sendMessage(Component.text("Previewing state " + state.toUpperCase(Locale.ROOT)
                             + " (clear with /idle admin npc state clear).", NamedTextColor.GREEN));
                 }
+                String auditId = auditAdmin(player.getUniqueId(), "ADMIN_NPC_STATE", reason,
+                        "node=" + node.getId() + " state=" + state);
+                sender.sendMessage(Component.text("Audit " + auditId, NamedTextColor.GRAY));
             }
             default -> usage(sender);
         }
@@ -733,5 +863,15 @@ public final class AdminCommands {
         return nodeStore.getByChunk(new ChunkKey(player.getWorld().getName(),
                 player.getLocation().getBlockX() >> 4,
                 player.getLocation().getBlockZ() >> 4));
+    }
+
+    private UUID actor(CommandSender sender) {
+        return sender instanceof Player player ? player.getUniqueId() : new UUID(0, 0);
+    }
+
+    private String auditAdmin(UUID actor, String action, String reason, String detail) {
+        String auditId = UUID.randomUUID().toString();
+        auditService.logAdmin(actor, auditId, reason, action, detail);
+        return auditId;
     }
 }
