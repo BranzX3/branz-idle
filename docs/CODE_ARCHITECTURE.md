@@ -120,6 +120,22 @@ Flexible commission, achievement and season progress belongs in
 service or definition catalog over it; do not add unrelated branches to
 `GameDesignService`.
 
+Daily commissions are authored in `commissions.yml`. `CommissionService`
+selects three eligible templates from the Focused Node level with a stable
+owner/day seed; server restarts must not change an active board. One free
+reroll is tracked per Bangkok game day.
+
+Chronicle definitions are authored in `achievements.yml`. Threshold
+requirements reference account counters fed by gameplay hooks; adding a
+threshold achievement must not require another claim-time code branch.
+
+World-construction visuals are authored in `project-stages.yml`.
+`ProjectWorldService` renders 25/50/75/100% stages as tagged persistent Block
+Displays, so visuals never overwrite terrain. Personal structures anchor to
+the owner's oldest Residential Node; the Server Project monument anchors near
+world spawn. Chunk-load reconciliation restores the authoritative stage after
+a restart and removes stale displays before replacing them.
+
 Balance values belong in config-backed catalogs such as
 `ProgressionRewards`. UI text must read the same catalog used by settlement.
 

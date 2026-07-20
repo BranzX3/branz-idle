@@ -578,7 +578,7 @@ public final class ExplorationService {
                 gameDesignService.discover(node.getOwnerUuid(), node.getType(),
                         entry.getKey(), entry.getValue());
             }
-            gameDesignService.onExplorationClaimed(node, event.grade);
+            gameDesignService.onExplorationClaimed(node, event.grade, teamOf(event).size());
         }
         eventsByNode.remove(event.nodeId, event);
         return new WarehouseClaimResult(true, total,

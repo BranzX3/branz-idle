@@ -1,5 +1,6 @@
 package dev.branzx.idlefarm.service.design;
 
+import dev.branzx.idlefarm.IdleFarmPlugin;
 import dev.branzx.idlefarm.node.NodeRecord;
 import dev.branzx.idlefarm.service.AuditService;
 import dev.branzx.idlefarm.service.GameDesignService.Commission;
@@ -9,21 +10,41 @@ import dev.branzx.idlefarm.service.WarehouseService;
 import dev.branzx.idlefarm.storage.Database;
 import dev.branzx.idlefarm.storage.GameStateStore;
 import org.bukkit.Material;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 
+import java.io.File;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 /**
- * The daily commission cadence for the Focused Node, the Weekly Chapter and
- * the returning-player catch-up slot. Also records the per-node lifetime
- * counters used by the daily reward gates.
+ * Config-driven daily commissions for the Focused Node. Three eligible
+ * templates are selected deterministically from owner, date, node family and
+ * level bracket, so restarts cannot change a player's board.
  */
 public final class CommissionService {
 
+    private enum RewardKind { NODE_EXP, COINS, CHRONICLE_POINTS }
+
+    private record Template(String id, String action, int unlockLevel, int target,
+                            int targetPerBracket, String description,
+                            RewardKind rewardKind, int rewardAmount) {
+        int targetAt(int bracket) {
+            return Math.max(1, target + Math.max(0, bracket - 1) * targetPerBracket);
+        }
+    }
+
+    private static final int DAILY_SLOTS = 3;
+
+    private final IdleFarmPlugin plugin;
     private final Database database;
     private final GameStateStore state;
     private final AuditService audit;
@@ -35,11 +56,14 @@ public final class CommissionService {
     private final WarehouseService warehouse;
     private final NodeExpSink nodeExp;
     private final CoinSink coins;
+    private final List<Template> templates = new ArrayList<>();
 
-    public CommissionService(Database database, GameStateStore state, AuditService audit,
-                             TelemetryService telemetry, ProgressionRewards rewards,
-                             FocusService focus, NodeBuildService builds, ChronicleService chronicle,
+    public CommissionService(IdleFarmPlugin plugin, Database database, GameStateStore state,
+                             AuditService audit, TelemetryService telemetry,
+                             ProgressionRewards rewards, FocusService focus,
+                             NodeBuildService builds, ChronicleService chronicle,
                              WarehouseService warehouse, NodeExpSink nodeExp, CoinSink coins) {
+        this.plugin = plugin;
         this.database = database;
         this.state = state;
         this.audit = audit;
@@ -51,6 +75,39 @@ public final class CommissionService {
         this.warehouse = warehouse;
         this.nodeExp = nodeExp;
         this.coins = coins;
+        loadTemplates();
+    }
+
+    private void loadTemplates() {
+        File file = new File(plugin.getDataFolder(), "commissions.yml");
+        if (!file.exists()) plugin.saveResource("commissions.yml", false);
+        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+        templates.clear();
+        ConfigurationSection root = yaml.getConfigurationSection("templates");
+        if (root == null) {
+            plugin.getLogger().severe("Commission catalog has no templates section.");
+            return;
+        }
+        for (String id : root.getKeys(false)) {
+            ConfigurationSection section = root.getConfigurationSection(id);
+            if (section == null) continue;
+            try {
+                templates.add(new Template(
+                        id.toLowerCase(Locale.ROOT),
+                        section.getString("action", "produce").toLowerCase(Locale.ROOT),
+                        Math.max(1, section.getInt("unlock-level", 3)),
+                        Math.max(1, section.getInt("target", 1)),
+                        Math.max(0, section.getInt("target-per-bracket", 0)),
+                        section.getString("description", DesignText.pretty(id)),
+                        RewardKind.valueOf(section.getString("reward.kind", "COINS")
+                                .toUpperCase(Locale.ROOT)),
+                        Math.max(1, section.getInt("reward.amount", 1))));
+            } catch (IllegalArgumentException exception) {
+                plugin.getLogger().warning("Skipping invalid commission template " + id
+                        + ": " + exception.getMessage());
+            }
+        }
+        plugin.getLogger().info("Commissions: loaded " + templates.size() + " templates.");
     }
 
     /** Tracks missed days into simplified catch-up commissions. */
@@ -59,10 +116,11 @@ public final class CommissionService {
         LocalDate today = GameClock.today();
         if (previous != null) {
             try {
-                long missed = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.parse(previous), today) - 1;
+                long missed = java.time.temporal.ChronoUnit.DAYS
+                        .between(LocalDate.parse(previous), today) - 1;
                 if (missed > 0) {
-                    int simplified = (int) Math.min(3, missed);
-                    state.put(owner, "ACCOUNT", "-", "catchup_commissions", String.valueOf(simplified));
+                    state.put(owner, "ACCOUNT", "-", "catchup_commissions",
+                            String.valueOf(Math.min(3, missed)));
                 }
             } catch (Exception ignored) {
                 // A malformed legacy date should never block login.
@@ -70,8 +128,6 @@ public final class CommissionService {
         }
         state.put(owner, "ACCOUNT", "-", "last_login_day", today.toString());
     }
-
-    // ---- reward cadence hooks -------------------------------------------------
 
     public void onBufferCollected(NodeRecord node, int amount) {
         UUID owner = node.getOwnerUuid();
@@ -97,8 +153,7 @@ public final class CommissionService {
             exp = rewards.firstExpeditionExp();
         } else {
             int extra = state.getInt(owner, "DAILY", day, "extra_expeditions", 0);
-            exp = extra < rewards.extraExpeditionsPerDay()
-                    ? rewards.extraExpeditionExp() : 0;
+            exp = extra < rewards.extraExpeditionsPerDay() ? rewards.extraExpeditionExp() : 0;
             if (extra < rewards.extraExpeditionsPerDay()) {
                 state.put(owner, "DAILY", day, "extra_expeditions", String.valueOf(extra + 1));
             }
@@ -112,16 +167,20 @@ public final class CommissionService {
     }
 
     public void advance(NodeRecord node, String action, int amount) {
-        if (!focus.isFocused(node)) return;
+        if (!focus.isFocused(node) || amount <= 0) return;
         UUID owner = node.getOwnerUuid();
         String day = GameClock.dayKey();
         ensureDailyCommissions(owner, node, day);
-        if ("expedition".equals(action) || "crew".equals(action)) {
-            state.put(owner, "DAILY", day, "commission_behavior_progress", "1");
+        for (int slot = 1; slot <= DAILY_SLOTS; slot++) {
+            Template template = assigned(owner, day, slot);
+            if (template != null && template.action().equals(action)) {
+                String key = progressKey(slot);
+                int target = template.targetAt(bracket(node));
+                int current = state.getInt(owner, "DAILY", day, key, 0);
+                state.put(owner, "DAILY", day, key,
+                        String.valueOf(Math.min(target, current + amount)));
+            }
         }
-        state.put(owner, "DAILY", day, "commission_focus_progress", "1");
-        // A Weekly Chapter asks for activity across five distinct days, not
-        // five rapid actions in one session.
         if (state.claimOnce(owner, "DAILY", day, "weekly_chapter_action")) {
             int weekly = state.getInt(owner, "WEEKLY", GameClock.weekKey(), "chapter_progress", 0);
             state.put(owner, "WEEKLY", GameClock.weekKey(), "chapter_progress",
@@ -129,20 +188,16 @@ public final class CommissionService {
         }
     }
 
-    // ---- queries and claims ---------------------------------------------------
-
     public List<Commission> commissions(UUID owner) {
         NodeRecord focused = focus.focusedRecord(owner);
         if (focused == null) return List.of();
         String day = GameClock.dayKey();
         ensureDailyCommissions(owner, focused, day);
-        List<Commission> result = new ArrayList<>(List.of(
-                commission(owner, day, "focus", "Advance your Focused Node", 1,
-                        rewards.focusCommissionExp() + " Node EXP"),
-                commission(owner, day, "behavior", "Complete a worker or expedition action", 1,
-                        rewards.behaviorCommissionCoins() + " Coins"),
-                commission(owner, day, "supply", "Deliver 64 mixed unlocked resources", 64,
-                        rewards.supplyCommissionChroniclePoints() + " Chronicle Points")));
+        List<Commission> result = new ArrayList<>();
+        for (int slot = 1; slot <= DAILY_SLOTS; slot++) {
+            Template template = assigned(owner, day, slot);
+            if (template != null) result.add(toCommission(owner, day, focused, slot, template));
+        }
         int catchup = state.getInt(owner, "ACCOUNT", "-", "catchup_commissions", 0);
         if (catchup > 0) {
             result.add(new Commission("catchup", "Returning-player simplified commission",
@@ -152,58 +207,94 @@ public final class CommissionService {
         return List.copyOf(result);
     }
 
-    public Result claimCommission(UUID owner, String slot) {
+    public Result claimCommission(UUID owner, String id) {
         NodeRecord focused = focus.focusedRecord(owner);
         if (focused == null) return Result.fail("Select a Focused Node first.");
         String day = GameClock.dayKey();
         ensureDailyCommissions(owner, focused, day);
-        Commission commission = commissions(owner).stream()
-                .filter(candidate -> candidate.id().equalsIgnoreCase(slot)).findFirst().orElse(null);
-        if (commission == null) return Result.fail("Unknown commission slot.");
+        if ("catchup".equalsIgnoreCase(id)) return claimCatchup(owner, day, focused);
+        int slot = parseSlot(id);
+        if (slot < 1 || slot > DAILY_SLOTS) return Result.fail("Unknown commission slot.");
+        Template template = assigned(owner, day, slot);
+        if (template == null) return Result.fail("Commission template is unavailable.");
+        Commission commission = toCommission(owner, day, focused, slot, template);
         if (commission.claimed()) return Result.fail("That commission was already claimed.");
-        if (commission.current() < commission.target()) return Result.fail("Commission is not complete yet.");
-        switch (slot.toLowerCase(Locale.ROOT)) {
-            case "focus" -> {
-                nodeExp.grant(focused, rewards.focusCommissionExp());
-                state.put(owner, "DAILY", day, "commission_focus_claimed", "1");
-            }
-            case "behavior" -> {
-                coins.add(owner, rewards.behaviorCommissionCoins());
-                state.put(owner, "DAILY", day, "commission_behavior_claimed", "1");
-            }
-            case "supply" -> {
-                Result supply = settleSupply(owner, day);
-                if (supply != null) return supply;
-            }
-            case "catchup" -> {
-                int available = state.getInt(owner, "ACCOUNT", "-", "catchup_commissions", 0);
-                if (available <= 0) return Result.fail("No catch-up commission is available.");
-                nodeExp.grant(focused, rewards.catchupCommissionExp());
-                state.put(owner, "ACCOUNT", "-", "catchup_commissions", String.valueOf(available - 1));
-                state.put(owner, "DAILY", day, "commission_catchup_claimed", "1");
-            }
-            default -> { return Result.fail("Unknown commission slot."); }
+        if (commission.current() < commission.target()) {
+            return Result.fail("Commission is not complete yet.");
         }
-        audit.log(owner, "COMMISSION_CLAIM", "{\"slot\":\"" + DesignText.safe(slot)
-                + "\",\"day\":\"" + day + "\"}");
-        telemetry.record(owner, "COMMISSION_CLAIM", "{\"slot\":\"" + DesignText.safe(slot) + "\"}");
+        if ("delivery".equals(template.action())) {
+            Result failure = settleDelivery(owner, day, slot, template, commission.target());
+            if (failure != null) return failure;
+        } else {
+            grantReward(owner, focused, template);
+            state.put(owner, "DAILY", day, claimedKey(slot), "1");
+        }
+        audit.log(owner, "COMMISSION_CLAIM", "{\"slot\":" + slot + ",\"template\":\""
+                + DesignText.safe(template.id()) + "\",\"day\":\"" + day + "\"}");
+        telemetry.record(owner, "COMMISSION_CLAIM",
+                "{\"template\":\"" + DesignText.safe(template.id()) + "\"}");
+        chronicle.count(owner, "commissions_claimed", 1);
         return Result.ok("Commission reward claimed.");
     }
 
-    /**
-     * Consumes 64 mixed resources and grants the Chronicle Points; the
-     * Warehouse row, claim flag and point gain commit in one transaction.
-     * Returns a failure Result, or null when the settlement was queued.
-     */
-    private Result settleSupply(UUID owner, String day) {
-        Map<String, Integer> contents = warehouse.getContents(owner);
-        int available = contents.entrySet().stream()
-                .filter(entry -> isCommissionSupply(entry.getKey()))
-                .mapToInt(Map.Entry::getValue).sum();
-        if (available < 64) {
-            return Result.fail("Warehouse no longer has the required 64 resources.");
+    /** Replaces one unclaimed slot. Exactly one reroll is free each game day. */
+    public Result reroll(UUID owner, String id) {
+        NodeRecord focused = focus.focusedRecord(owner);
+        if (focused == null) return Result.fail("Select a Focused Node first.");
+        String day = GameClock.dayKey();
+        ensureDailyCommissions(owner, focused, day);
+        if ("1".equals(state.get(owner, "DAILY", day, "commission_reroll_used"))) {
+            return Result.fail("Today's free commission reroll was already used.");
         }
-        int remaining = 64;
+        int slot = parseSlot(id);
+        if (slot < 1 || slot > DAILY_SLOTS) return Result.fail("Choose slot_1, slot_2, or slot_3.");
+        if ("1".equals(state.get(owner, "DAILY", day, claimedKey(slot)))) {
+            return Result.fail("A claimed commission cannot be rerolled.");
+        }
+        Set<String> selected = new LinkedHashSet<>();
+        for (int index = 1; index <= DAILY_SLOTS; index++) {
+            if (index != slot) {
+                Template current = assigned(owner, day, index);
+                if (current != null) selected.add(current.id());
+            }
+        }
+        List<Template> candidates = eligible(focused).stream()
+                .filter(template -> !selected.contains(template.id()))
+                .filter(template -> {
+                    Template old = assigned(owner, day, slot);
+                    return old == null || !old.id().equals(template.id());
+                }).toList();
+        if (candidates.isEmpty()) return Result.fail("No alternative commission is available.");
+        long seed = seed(owner, day, focused) ^ (slot * 31L) ^ 0x5DEECE66DL;
+        Template replacement = candidates.get(new Random(seed).nextInt(candidates.size()));
+        state.put(owner, "DAILY", day, assignmentKey(slot), replacement.id());
+        state.put(owner, "DAILY", day, progressKey(slot), "0");
+        state.put(owner, "DAILY", day, "commission_reroll_used", "1");
+        audit.log(owner, "COMMISSION_REROLL", "{\"slot\":" + slot + ",\"template\":\""
+                + DesignText.safe(replacement.id()) + "\"}");
+        return Result.ok("Commission rerolled to " + replacement.description() + ".");
+    }
+
+    private Result claimCatchup(UUID owner, String day, NodeRecord focused) {
+        if ("1".equals(state.get(owner, "DAILY", day, "commission_catchup_claimed"))) {
+            return Result.fail("That commission was already claimed.");
+        }
+        int available = state.getInt(owner, "ACCOUNT", "-", "catchup_commissions", 0);
+        if (available <= 0) return Result.fail("No catch-up commission is available.");
+        nodeExp.grant(focused, rewards.catchupCommissionExp());
+        state.put(owner, "ACCOUNT", "-", "catchup_commissions", String.valueOf(available - 1));
+        state.put(owner, "DAILY", day, "commission_catchup_claimed", "1");
+        return Result.ok("Catch-up commission claimed.");
+    }
+
+    private Result settleDelivery(UUID owner, String day, int slot,
+                                  Template template, int target) {
+        Map<String, Integer> contents = warehouse.getContents(owner);
+        int available = supplyTotal(contents);
+        if (available < target) {
+            return Result.fail("Warehouse no longer has the required resources.");
+        }
+        int remaining = target;
         for (Map.Entry<String, Integer> entry : contents.entrySet()) {
             if (remaining <= 0) break;
             if (!isCommissionSupply(entry.getKey())) continue;
@@ -211,15 +302,24 @@ public final class CommissionService {
                     Math.min(remaining, entry.getValue()));
         }
         WarehouseService.Snapshot snapshot = warehouse.snapshot(owner);
-        List<GameStateStore.Row> rows = List.of(
-                state.stage(owner, "DAILY", day, "commission_supply_claimed", "1"),
-                chronicle.stagePointsGain(owner, rewards.supplyCommissionChroniclePoints()));
-        database.submitTransaction("supply commission " + owner, connection -> {
-            WarehouseService.write(connection, snapshot);
-            for (GameStateStore.Row row : rows) {
-                GameStateStore.write(connection, row);
+        List<GameStateStore.Row> rows = new ArrayList<>();
+        rows.add(state.stage(owner, "DAILY", day, claimedKey(slot), "1"));
+        switch (template.rewardKind()) {
+            case CHRONICLE_POINTS ->
+                    rows.add(chronicle.stagePointsGain(owner, template.rewardAmount()));
+            case NODE_EXP, COINS -> {
+                // These reward kinds use their authoritative aggregate sink
+                // after the Warehouse transaction has been accepted.
             }
+        }
+        database.submitTransaction("delivery commission " + owner, connection -> {
+            WarehouseService.write(connection, snapshot);
+            for (GameStateStore.Row row : rows) GameStateStore.write(connection, row);
         });
+        if (template.rewardKind() != RewardKind.CHRONICLE_POINTS) {
+            NodeRecord focused = focus.focusedRecord(owner);
+            if (focused != null) grantReward(owner, focused, template);
+        }
         return null;
     }
 
@@ -228,36 +328,103 @@ public final class CommissionService {
         if (focused == null) return Result.fail("Select a Focused Node first.");
         String week = GameClock.weekKey();
         int progress = state.getInt(owner, "WEEKLY", week, "chapter_progress", 0);
-        if (progress < 5) return Result.fail("Weekly Chapter needs 5 daily actions (" + progress + "/5).");
+        if (progress < 5) {
+            return Result.fail("Weekly Chapter needs 5 daily actions (" + progress + "/5).");
+        }
         if (!state.claimOnce(owner, "WEEKLY", week, "chapter_claimed")) {
             return Result.fail("Weekly Chapter already claimed.");
         }
         nodeExp.grant(focused, rewards.weeklyChapterExp());
         coins.add(owner, rewards.weeklyChapterCoins());
+        chronicle.count(owner, "weekly_chapters", 1);
         audit.log(owner, "CHAPTER_CLAIM", "{\"week\":\"" + week + "\"}");
         return Result.ok("Weekly Node Chapter claimed: +" + rewards.weeklyChapterExp()
                 + " Node EXP and +" + rewards.weeklyChapterCoins() + " Coins.");
     }
 
     private void ensureDailyCommissions(UUID owner, NodeRecord focused, String day) {
-        if (state.get(owner, "DAILY", day, "commission_seed") != null) return;
+        if (state.get(owner, "DAILY", day, assignmentKey(1)) != null) return;
+        List<Template> eligible = new ArrayList<>(eligible(focused));
+        eligible.sort(Comparator.comparing(Template::id));
+        java.util.Collections.shuffle(eligible, new Random(seed(owner, day, focused)));
+        if (eligible.size() < DAILY_SLOTS) {
+            plugin.getLogger().warning("Only " + eligible.size()
+                    + " commission templates are eligible at level "
+                    + focused.getExplorationLevel() + ".");
+        }
+        for (int slot = 1; slot <= Math.min(DAILY_SLOTS, eligible.size()); slot++) {
+            state.put(owner, "DAILY", day, assignmentKey(slot), eligible.get(slot - 1).id());
+            state.put(owner, "DAILY", day, progressKey(slot), "0");
+        }
         state.put(owner, "DAILY", day, "commission_seed",
-                focused.getType().name() + ":" + Math.max(1, focused.getExplorationLevel() / 10 + 1));
-        state.put(owner, "DAILY", day, "commission_focus_progress", "0");
-        state.put(owner, "DAILY", day, "commission_behavior_progress", "0");
-        state.put(owner, "DAILY", day, "commission_supply_progress", "0");
+                focused.getType().name() + ":" + bracket(focused));
     }
 
-    private Commission commission(UUID owner, String day, String slot, String description,
-                                  int defaultTarget, String reward) {
-        int target = "supply".equals(slot) ? 64 : defaultTarget;
-        int progress = "supply".equals(slot)
-                ? Math.min(target, warehouse.getContents(owner).entrySet().stream()
-                        .filter(entry -> isCommissionSupply(entry.getKey()))
-                        .mapToInt(Map.Entry::getValue).sum())
-                : state.getInt(owner, "DAILY", day, "commission_" + slot + "_progress", 0);
-        boolean claimed = "1".equals(state.get(owner, "DAILY", day, "commission_" + slot + "_claimed"));
-        return new Commission(slot, description, progress, target, reward, claimed);
+    private List<Template> eligible(NodeRecord node) {
+        return templates.stream()
+                .filter(template -> node.getExplorationLevel() >= template.unlockLevel())
+                .toList();
+    }
+
+    private Commission toCommission(UUID owner, String day, NodeRecord node,
+                                    int slot, Template template) {
+        int target = template.targetAt(bracket(node));
+        int progress = "delivery".equals(template.action())
+                ? Math.min(target, supplyTotal(warehouse.getContents(owner)))
+                : state.getInt(owner, "DAILY", day, progressKey(slot), 0);
+        return new Commission("slot_" + slot,
+                template.description().replace("{node}", DesignText.pretty(node.getType().name())),
+                progress, target, rewardText(template),
+                "1".equals(state.get(owner, "DAILY", day, claimedKey(slot))));
+    }
+
+    private void grantReward(UUID owner, NodeRecord focused, Template template) {
+        switch (template.rewardKind()) {
+            case NODE_EXP -> nodeExp.grant(focused, template.rewardAmount());
+            case COINS -> coins.add(owner, template.rewardAmount());
+            case CHRONICLE_POINTS -> chronicle.addPoints(owner, template.rewardAmount());
+        }
+    }
+
+    private String rewardText(Template template) {
+        return switch (template.rewardKind()) {
+            case NODE_EXP -> template.rewardAmount() + " Node EXP";
+            case COINS -> template.rewardAmount() + " Coins";
+            case CHRONICLE_POINTS -> template.rewardAmount() + " Chronicle Points";
+        };
+    }
+
+    private Template assigned(UUID owner, String day, int slot) {
+        String id = state.get(owner, "DAILY", day, assignmentKey(slot));
+        if (id == null) return null;
+        return templates.stream().filter(template -> template.id().equals(id)).findFirst().orElse(null);
+    }
+
+    private int parseSlot(String id) {
+        if (id == null || !id.toLowerCase(Locale.ROOT).startsWith("slot_")) return -1;
+        try {
+            return Integer.parseInt(id.substring(5));
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
+    }
+
+    private int bracket(NodeRecord node) {
+        return Math.max(1, Math.min(10, node.getExplorationLevel() / 10 + 1));
+    }
+
+    private long seed(UUID owner, String day, NodeRecord node) {
+        return owner.getMostSignificantBits() ^ owner.getLeastSignificantBits()
+                ^ day.hashCode() ^ ((long) node.getType().ordinal() << 32) ^ bracket(node);
+    }
+
+    private String assignmentKey(int slot) { return "commission_slot_" + slot; }
+    private String progressKey(int slot) { return "commission_slot_" + slot + "_progress"; }
+    private String claimedKey(int slot) { return "commission_slot_" + slot + "_claimed"; }
+
+    private int supplyTotal(Map<String, Integer> contents) {
+        return contents.entrySet().stream().filter(entry -> isCommissionSupply(entry.getKey()))
+                .mapToInt(Map.Entry::getValue).sum();
     }
 
     private boolean isCommissionSupply(String material) {

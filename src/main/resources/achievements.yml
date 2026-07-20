@@ -1,41 +1,492 @@
+# Pioneer Chronicle achievement catalog.
+#
+# category: JOURNEY | MASTERY | DISCOVERY | WORKER | TERRITORY | EXPEDITION | SOCIAL | FEAT
+# hidden: true -> a Feat that stays invisible until earned.
+# requires: account counters that auto-complete the achievement when every
+#   threshold is reached. Achievements without requires are completed directly
+#   by a gameplay event in code.
+# reward-coins: optional one-time Coin grant on claim (never Credits).
+#
+# Counter reference (fed by GameDesignService):
+#   produced_total, produced_<TYPE>          items produced
+#   events_total, events_<TYPE>              expeditions claimed
+#   great_total, great_<TYPE>, jackpot_total Great-or-better / Jackpot results
+#   node_level_<TYPE>, node_level_max        highest exploration level reached
+#   unique_discoveries, discoveries_<TYPE>   distinct resources discovered
+#   workers_assigned_total                   worker assignments
+#   fuse_success_total                       successful fuses
+#   trades_completed                         protected trades settled
+#   global_expedition_weeks                  distinct weeks committed
+#   nodes_owned_max, production_types_distinct  territory size / variety
+#   warehouse_withdrawals                    manual Warehouse withdrawals
+#   expedition_team_max                      largest expedition team
+
+# ---- Journey ---------------------------------------------------------------
+
 place_to_begin:
   category: JOURNEY
-  scope: ACCOUNT
   name: "A Place to Begin"
   description: "Claim the first Residential Node"
   chronicle-points: 2
 
 first_camp:
   category: JOURNEY
-  scope: NODE
   name: "First Camp"
   description: "Construct the first Production Node"
   chronicle-points: 3
 
 first_shift:
   category: JOURNEY
-  scope: WORKER
   name: "First Shift"
   description: "Assign a worker"
   chronicle-points: 2
 
 supplies_arrive:
   category: JOURNEY
-  scope: ACCOUNT
   name: "Supplies Arrive"
   description: "Collect the first node buffer"
   chronicle-points: 2
+  reward-coins: 250
+
+organized_storage:
+  category: JOURNEY
+  name: "Organized Storage"
+  description: "Withdraw items from your Warehouse"
+  chronicle-points: 2
+  requires:
+    warehouse_withdrawals: 1
 
 beyond_fence:
   category: JOURNEY
-  scope: NODE
   name: "Beyond the Fence"
   description: "Complete and claim the first expedition"
   chronicle-points: 4
 
+growing_crew:
+  category: JOURNEY
+  name: "Growing Crew"
+  description: "Fill every worker slot on a node"
+  chronicle-points: 3
+
+a_real_settlement:
+  category: JOURNEY
+  name: "A Real Settlement"
+  description: "Own three different production node types"
+  chronicle-points: 5
+  requires:
+    production_types_distinct: 3
+
+# ---- Mining Mastery --------------------------------------------------------
+
+mining_bronze:
+  category: MASTERY
+  name: "Bronze Surveyor"
+  description: "Mining Lv.10, 500 items mined, one Mining expedition"
+  chronicle-points: 4
+  requires:
+    node_level_MINING: 10
+    produced_MINING: 500
+    events_MINING: 1
+
+mining_silver:
+  category: MASTERY
+  name: "Silver Prospector"
+  description: "Mining Lv.35 and 8 mining resources discovered"
+  chronicle-points: 6
+  reward-coins: 1000
+  requires:
+    node_level_MINING: 35
+    discoveries_MINING: 8
+
+mining_gold:
+  category: MASTERY
+  name: "Gold Deep Delver"
+  description: "Mining Lv.70 and a Great-or-better Mining expedition"
+  chronicle-points: 8
+  requires:
+    node_level_MINING: 70
+    great_MINING: 1
+
+mining_platinum:
+  category: MASTERY
+  name: "Platinum Earthbreaker"
+  description: "Raise a Mining node to Lv.100"
+  chronicle-points: 12
+  requires:
+    node_level_MINING: 100
+
+# ---- Farming Mastery -------------------------------------------------------
+
+farming_bronze:
+  category: MASTERY
+  name: "Bronze Cultivator"
+  description: "Farming Lv.10, 500 items harvested, one Farming expedition"
+  chronicle-points: 4
+  requires:
+    node_level_FARMING: 10
+    produced_FARMING: 500
+    events_FARMING: 1
+
+farming_silver:
+  category: MASTERY
+  name: "Silver Botanist"
+  description: "Farming Lv.35 and 8 farming resources discovered"
+  chronicle-points: 6
+  reward-coins: 1000
+  requires:
+    node_level_FARMING: 35
+    discoveries_FARMING: 8
+
+farming_gold:
+  category: MASTERY
+  name: "Gold Harvest Sage"
+  description: "Farming Lv.70 and a Great-or-better Farming expedition"
+  chronicle-points: 8
+  requires:
+    node_level_FARMING: 70
+    great_FARMING: 1
+
+farming_platinum:
+  category: MASTERY
+  name: "Platinum Lifebringer"
+  description: "Raise a Farming node to Lv.100"
+  chronicle-points: 12
+  requires:
+    node_level_FARMING: 100
+
+# ---- Woodcutting Mastery ---------------------------------------------------
+
+woodcutting_bronze:
+  category: MASTERY
+  name: "Bronze Forester"
+  description: "Woodcutting Lv.10, 500 items felled, one Woodcutting expedition"
+  chronicle-points: 4
+  requires:
+    node_level_WOODCUTTING: 10
+    produced_WOODCUTTING: 500
+    events_WOODCUTTING: 1
+
+woodcutting_silver:
+  category: MASTERY
+  name: "Silver Arborist"
+  description: "Woodcutting Lv.35 and 8 forestry resources discovered"
+  chronicle-points: 6
+  reward-coins: 1000
+  requires:
+    node_level_WOODCUTTING: 35
+    discoveries_WOODCUTTING: 8
+
+woodcutting_gold:
+  category: MASTERY
+  name: "Gold Grove Keeper"
+  description: "Woodcutting Lv.70 and a Great-or-better Woodcutting expedition"
+  chronicle-points: 8
+  requires:
+    node_level_WOODCUTTING: 70
+    great_WOODCUTTING: 1
+
+woodcutting_platinum:
+  category: MASTERY
+  name: "Platinum Spirit of the Woods"
+  description: "Raise a Woodcutting node to Lv.100"
+  chronicle-points: 12
+  requires:
+    node_level_WOODCUTTING: 100
+
+# ---- Livestock Mastery -----------------------------------------------------
+
+livestock_bronze:
+  category: MASTERY
+  name: "Bronze Rancher"
+  description: "Livestock Lv.10, 500 products raised, one Livestock expedition"
+  chronicle-points: 4
+  requires:
+    node_level_LIVESTOCK: 10
+    produced_LIVESTOCK: 500
+    events_LIVESTOCK: 1
+
+livestock_silver:
+  category: MASTERY
+  name: "Silver Breeder"
+  description: "Livestock Lv.35 and 8 ranch resources discovered"
+  chronicle-points: 6
+  reward-coins: 1000
+  requires:
+    node_level_LIVESTOCK: 35
+    discoveries_LIVESTOCK: 8
+
+livestock_gold:
+  category: MASTERY
+  name: "Gold Beast Keeper"
+  description: "Livestock Lv.70 and a Great-or-better Livestock expedition"
+  chronicle-points: 8
+  requires:
+    node_level_LIVESTOCK: 70
+    great_LIVESTOCK: 1
+
+livestock_platinum:
+  category: MASTERY
+  name: "Platinum Wildheart"
+  description: "Raise a Livestock node to Lv.100"
+  chronicle-points: 12
+  requires:
+    node_level_LIVESTOCK: 100
+
+# ---- Hunter Mastery --------------------------------------------------------
+
+hunter_bronze:
+  category: MASTERY
+  name: "Bronze Tracker"
+  description: "Hunter Lv.10, 500 trophies taken, one Hunter expedition"
+  chronicle-points: 4
+  requires:
+    node_level_HUNTER: 10
+    produced_HUNTER: 500
+    events_HUNTER: 1
+
+hunter_silver:
+  category: MASTERY
+  name: "Silver Slayer"
+  description: "Hunter Lv.35 and 8 hunting resources discovered"
+  chronicle-points: 6
+  reward-coins: 1000
+  requires:
+    node_level_HUNTER: 35
+    discoveries_HUNTER: 8
+
+hunter_gold:
+  category: MASTERY
+  name: "Gold Night Warden"
+  description: "Hunter Lv.70 and a Great-or-better Hunter expedition"
+  chronicle-points: 8
+  requires:
+    node_level_HUNTER: 70
+    great_HUNTER: 1
+
+hunter_platinum:
+  category: MASTERY
+  name: "Platinum Dreadhunter"
+  description: "Raise a Hunter node to Lv.100"
+  chronicle-points: 12
+  requires:
+    node_level_HUNTER: 100
+
 node_master_100:
   category: MASTERY
-  scope: NODE
   name: "Vanilla Master"
   description: "Raise any node to Exploration Lv.100"
   chronicle-points: 10
+
+# ---- Discovery Journal -----------------------------------------------------
+
+discover_5:
+  category: DISCOVERY
+  name: "Field Notes"
+  description: "Discover 5 unique resources"
+  chronicle-points: 2
+  requires:
+    unique_discoveries: 5
+
+discover_15:
+  category: DISCOVERY
+  name: "Growing Journal"
+  description: "Discover 15 unique resources"
+  chronicle-points: 4
+  requires:
+    unique_discoveries: 15
+
+discover_30:
+  category: DISCOVERY
+  name: "Regional Compendium"
+  description: "Discover 30 unique resources"
+  chronicle-points: 6
+  requires:
+    unique_discoveries: 30
+
+discover_60:
+  category: DISCOVERY
+  name: "Pioneer Encyclopedia"
+  description: "Discover 60 unique resources"
+  chronicle-points: 10
+  requires:
+    unique_discoveries: 60
+
+journal_mining:
+  category: DISCOVERY
+  name: "Mining Journal"
+  description: "Discover 10 mining resources"
+  chronicle-points: 3
+  requires:
+    discoveries_MINING: 10
+
+journal_farming:
+  category: DISCOVERY
+  name: "Farming Journal"
+  description: "Discover 10 farming resources"
+  chronicle-points: 3
+  requires:
+    discoveries_FARMING: 10
+
+journal_woodcutting:
+  category: DISCOVERY
+  name: "Woodcutting Journal"
+  description: "Discover 10 forestry resources"
+  chronicle-points: 3
+  requires:
+    discoveries_WOODCUTTING: 10
+
+journal_livestock:
+  category: DISCOVERY
+  name: "Livestock Journal"
+  description: "Discover 10 ranch resources"
+  chronicle-points: 3
+  requires:
+    discoveries_LIVESTOCK: 10
+
+journal_hunter:
+  category: DISCOVERY
+  name: "Hunter Journal"
+  description: "Discover 10 hunting resources"
+  chronicle-points: 3
+  requires:
+    discoveries_HUNTER: 10
+
+# ---- Workers ---------------------------------------------------------------
+
+steady_hands:
+  category: WORKER
+  name: "Steady Hands"
+  description: "Assign workers 10 times"
+  chronicle-points: 3
+  requires:
+    workers_assigned_total: 10
+
+first_fuse:
+  category: WORKER
+  name: "Two Become One"
+  description: "Successfully fuse two workers"
+  chronicle-points: 3
+  requires:
+    fuse_success_total: 1
+
+master_recruiter:
+  category: WORKER
+  name: "Master Recruiter"
+  description: "Complete 5 successful fuses"
+  chronicle-points: 6
+  requires:
+    fuse_success_total: 5
+
+full_expedition_team:
+  category: WORKER
+  name: "Full House"
+  description: "Send a 4-worker expedition team"
+  chronicle-points: 4
+  requires:
+    expedition_team_max: 4
+
+# ---- Territory -------------------------------------------------------------
+
+five_node_territory:
+  category: TERRITORY
+  name: "Connected Frontier"
+  description: "Maintain a five-node connected territory"
+  chronicle-points: 5
+  requires:
+    nodes_owned_max: 5
+
+sprawling_estate:
+  category: TERRITORY
+  name: "Sprawling Estate"
+  description: "Grow your territory to eight nodes"
+  chronicle-points: 8
+  requires:
+    nodes_owned_max: 8
+
+# ---- Expeditions -----------------------------------------------------------
+
+first_great:
+  category: EXPEDITION
+  name: "A Great Return"
+  description: "Claim a Great expedition result"
+  chronicle-points: 3
+  requires:
+    great_total: 1
+
+first_jackpot:
+  category: EXPEDITION
+  name: "Jackpot!"
+  description: "Claim a Jackpot expedition result"
+  chronicle-points: 5
+  requires:
+    jackpot_total: 1
+
+seasoned_explorer:
+  category: EXPEDITION
+  name: "Seasoned Explorer"
+  description: "Claim 10 expeditions"
+  chronicle-points: 4
+  requires:
+    events_total: 10
+
+expedition_veteran:
+  category: EXPEDITION
+  name: "Expedition Veteran"
+  description: "Claim 50 expeditions"
+  chronicle-points: 8
+  requires:
+    events_total: 50
+
+global_first_commit:
+  category: EXPEDITION
+  name: "Answering the Call"
+  description: "Commit workers to the Global Expedition"
+  chronicle-points: 3
+  requires:
+    global_expedition_weeks: 1
+
+global_four_weeks:
+  category: EXPEDITION
+  name: "Standing Contract"
+  description: "Commit to the Global Expedition in four different weeks"
+  chronicle-points: 8
+  requires:
+    global_expedition_weeks: 4
+
+# ---- Social ----------------------------------------------------------------
+
+first_trade:
+  category: SOCIAL
+  name: "Fair Exchange"
+  description: "Complete a protected trade"
+  chronicle-points: 3
+  requires:
+    trades_completed: 1
+
+trusted_trader:
+  category: SOCIAL
+  name: "Trusted Trader"
+  description: "Complete 10 protected trades"
+  chronicle-points: 6
+  requires:
+    trades_completed: 10
+
+# ---- Hidden Feats ----------------------------------------------------------
+
+tireless_pioneer:
+  category: FEAT
+  hidden: true
+  name: "Tireless Pioneer"
+  description: "Claim 100 expeditions"
+  chronicle-points: 10
+  requires:
+    events_total: 100
+
+industrial_legend:
+  category: FEAT
+  hidden: true
+  name: "Industrial Legend"
+  description: "Produce 100,000 items across your territory"
+  chronicle-points: 10
+  requires:
+    produced_total: 100000

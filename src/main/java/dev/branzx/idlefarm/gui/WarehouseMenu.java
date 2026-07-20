@@ -124,6 +124,9 @@ public final class WarehouseMenu extends Menu {
 
     private void deliver(String key, Material material, int removed) {
         if (removed > 0) {
+            if (gui.gameDesignService() != null) {
+                gui.gameDesignService().onWarehouseWithdrawn(owner);
+            }
             int give = removed;
             while (give > 0) {
                 int maxStack = material == null ? 64 : material.getMaxStackSize();

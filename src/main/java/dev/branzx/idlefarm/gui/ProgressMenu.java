@@ -68,12 +68,15 @@ public final class ProgressMenu extends Menu {
                                             done ? NamedTextColor.GREEN : NamedTextColor.YELLOW,
                                             commission.current() + "/" + commission.target()),
                                     Ui.line("Reward: " + commission.reward(), NamedTextColor.GOLD),
-                                    Ui.line(commission.claimed() ? "Claimed" : done ? "Click to claim" : "In progress",
+                                    Ui.line(commission.claimed() ? "Claimed"
+                                                    : done ? "Left-click to claim"
+                                                    : "Right-click to use today's free reroll",
                                             commission.claimed() ? NamedTextColor.DARK_GREEN : NamedTextColor.DARK_GRAY)))
                             .build(),
                     event -> {
-                        GameDesignService.Result result =
-                                design.claimCommission(viewer.getUniqueId(), commission.id());
+                        GameDesignService.Result result = event.isRightClick()
+                                ? design.rerollCommission(viewer.getUniqueId(), commission.id())
+                                : design.claimCommission(viewer.getUniqueId(), commission.id());
                         message(result);
                         redraw();
                     });
@@ -89,14 +92,23 @@ public final class ProgressMenu extends Menu {
                     redraw();
                 });
 
+        // Highlight reel: claimable first, then nearest goals; the full
+        // paginated Chronicle lives in its own menu.
+        List<GameDesignService.Achievement> achievements =
+                new ArrayList<>(design.achievements(viewer.getUniqueId()));
+        achievements.sort(java.util.Comparator
+                .comparing((GameDesignService.Achievement a) -> !(a.completed() && !a.claimed()))
+                .thenComparing(GameDesignService.Achievement::claimed));
         int achievementSlot = 18;
-        for (GameDesignService.Achievement achievement : design.achievements(viewer.getUniqueId())) {
+        for (GameDesignService.Achievement achievement : achievements) {
+            if (achievementSlot >= 26) break;
             Material material = achievement.claimed() ? Material.LIME_DYE
                     : achievement.completed() ? Material.FIREWORK_STAR : Material.GRAY_DYE;
             set(achievementSlot++, Icon.of(material)
                     .name(achievement.name(), achievement.completed()
                             ? NamedTextColor.GREEN : NamedTextColor.GRAY)
                     .loreComponents(List.of(
+                            Ui.line(pretty(achievement.category()) + " track", NamedTextColor.LIGHT_PURPLE),
                             Ui.line(achievement.description(), NamedTextColor.GRAY),
                             Ui.line("+" + achievement.points() + " Chronicle Points", NamedTextColor.AQUA),
                             Ui.line(achievement.claimed() ? "Claimed"
@@ -108,6 +120,14 @@ public final class ProgressMenu extends Menu {
                 redraw();
             });
         }
+        long claimable = achievements.stream().filter(a -> a.completed() && !a.claimed()).count();
+        set(26, Icon.of(Material.WRITTEN_BOOK).name("Full Chronicle", NamedTextColor.GOLD)
+                .loreComponents(List.of(
+                        Ui.line(achievements.size() + " achievements across all tracks",
+                                NamedTextColor.GRAY),
+                        Ui.line(claimable + " ready to claim", NamedTextColor.AQUA),
+                        Ui.line("Click to browse", NamedTextColor.DARK_GRAY))).build(),
+                event -> new ChronicleMenu(viewer, gui, 0).open());
 
         int projectSlot = 27;
         for (GameDesignService.Project project : design.projects(viewer.getUniqueId())) {
@@ -115,10 +135,13 @@ public final class ProgressMenu extends Menu {
                     .name(project.name(), project.completed() ? NamedTextColor.GREEN : NamedTextColor.GOLD)
                     .loreComponents(List.of(
                             Ui.line("Input: " + pretty(project.material()), NamedTextColor.GRAY),
+                            Ui.line("World construction: Stage " + projectStage(project) + "/4",
+                                    NamedTextColor.AQUA),
                             Ui.bar("Construction", project.current() / (double) project.target(),
                                     NamedTextColor.GOLD, project.current() + "/" + project.target()),
-                            Ui.line(project.completed() ? "Completed"
-                                            : "Click: contribute up to 64 from Warehouse",
+                            Ui.line(project.completed() ? "Completed beside your Residential Node"
+                                            : "Next stage at " + nextProjectThreshold(project)
+                                                    + " • click to contribute up to 64",
                                     NamedTextColor.DARK_GRAY))).build(), event -> {
                 GameDesignService.Result result =
                         design.contributeProject(viewer.getUniqueId(), project.id(), 64);
@@ -131,6 +154,8 @@ public final class ProgressMenu extends Menu {
                 .name(serverProject.name(), NamedTextColor.YELLOW)
                 .loreComponents(List.of(
                         Ui.line("Server-wide seven-day resource sink", NamedTextColor.GRAY),
+                        Ui.line("World monument: Stage " + projectStage(serverProject) + "/4",
+                                NamedTextColor.AQUA),
                         Ui.bar("Community", serverProject.current() / (double) serverProject.target(),
                                 NamedTextColor.YELLOW,
                                 serverProject.current() + "/" + serverProject.target()),
@@ -192,6 +217,27 @@ public final class ProgressMenu extends Menu {
             case HUNTER -> Material.BOW;
             default -> Material.BOOK;
         };
+    }
+
+    private int projectStage(GameDesignService.Project project) {
+        if (project.current() <= 0 || project.target() <= 0) return 0;
+        double ratio = project.current() / (double) project.target();
+        if (ratio >= 1.0) return 4;
+        if (ratio >= 0.75) return 3;
+        if (ratio >= 0.50) return 2;
+        if (ratio >= 0.25) return 1;
+        return 0;
+    }
+
+    private int nextProjectThreshold(GameDesignService.Project project) {
+        int stage = projectStage(project);
+        double ratio = switch (stage) {
+            case 0 -> 0.25;
+            case 1 -> 0.50;
+            case 2 -> 0.75;
+            default -> 1.0;
+        };
+        return (int) Math.ceil(project.target() * ratio);
     }
 
     private String pretty(String value) {

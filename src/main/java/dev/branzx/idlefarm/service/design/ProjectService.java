@@ -8,6 +8,7 @@ import dev.branzx.idlefarm.service.GameDesignService.Result;
 import dev.branzx.idlefarm.service.WarehouseService;
 import dev.branzx.idlefarm.storage.Database;
 import dev.branzx.idlefarm.storage.GameStateStore;
+import dev.branzx.idlefarm.storage.NodeStore;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,10 +36,12 @@ public final class ProjectService {
     private final ChronicleService chronicle;
     private final WarehouseService warehouse;
     private final NodeExpSink nodeExp;
+    private final ProjectWorldService world;
 
     public ProjectService(IdleFarmPlugin plugin, Database database, GameStateStore state,
                           AuditService audit, TelemetryService telemetry, SeasonService seasons,
-                          ChronicleService chronicle, WarehouseService warehouse, NodeExpSink nodeExp) {
+                          ChronicleService chronicle, WarehouseService warehouse,
+                          NodeStore nodeStore, NodeExpSink nodeExp) {
         this.plugin = plugin;
         this.database = database;
         this.state = state;
@@ -48,6 +51,15 @@ public final class ProjectService {
         this.chronicle = chronicle;
         this.warehouse = warehouse;
         this.nodeExp = nodeExp;
+        this.world = new ProjectWorldService(plugin, nodeStore, this::projects, this::serverProject);
+    }
+
+    public void startWorldRendering() {
+        world.start();
+    }
+
+    public void onResidentialRemoved(UUID owner) {
+        world.relocateAfterResidentialRemoved(owner);
     }
 
     public List<Project> projects(UUID owner) {
@@ -74,6 +86,12 @@ public final class ProjectService {
             rows.add(chronicle.stagePointsGain(owner, 5));
         }
         commitWithWarehouse("project contribution " + project.id(), warehouse.snapshot(owner), rows);
+        Project updated = new Project(project.id(), project.name(), project.material(),
+                next, project.target(), next >= project.target());
+        if (ProjectWorldService.constructionStage(updated)
+                != ProjectWorldService.constructionStage(project)) {
+            world.render(owner, project.id(), ProjectWorldService.constructionStage(updated));
+        }
         audit.log(owner, "PROJECT_CONTRIBUTE", "{\"id\":\"" + project.id() + "\",\"amount\":" + removed + "}");
         telemetry.record(owner, "PROJECT_CONTRIBUTED", "{\"id\":\"" + project.id() + "\",\"amount\":" + removed + "}");
         return Result.ok("Contributed " + removed + " " + DesignText.pretty(project.material()) + " ("
@@ -110,6 +128,12 @@ public final class ProjectService {
             rows.add(chronicle.stageSeasonalPointsGain(owner, 2));
         }
         commitWithWarehouse("server project contribution", warehouse.snapshot(owner), rows);
+        Project updated = new Project(project.id(), project.name(), project.material(),
+                next, project.target(), next >= project.target());
+        if (ProjectWorldService.constructionStage(updated)
+                != ProjectWorldService.constructionStage(project)) {
+            world.renderServer(updated);
+        }
         audit.log(owner, "SERVER_PROJECT", "{\"amount\":" + removed + ",\"season\":\""
                 + DesignText.safe(seasons.id()) + "\"}");
         telemetry.record(owner, "SERVER_PROJECT_CONTRIBUTED", "{\"amount\":" + removed + "}");

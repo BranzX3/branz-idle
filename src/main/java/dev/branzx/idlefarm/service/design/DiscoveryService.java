@@ -3,7 +3,6 @@ package dev.branzx.idlefarm.service.design;
 import dev.branzx.idlefarm.IdleFarmPlugin;
 import dev.branzx.idlefarm.node.NodeType;
 import dev.branzx.idlefarm.storage.Database;
-import dev.branzx.idlefarm.storage.GameStateStore;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -23,16 +22,13 @@ public final class DiscoveryService {
 
     private final IdleFarmPlugin plugin;
     private final Database database;
-    private final GameStateStore state;
     private final TelemetryService telemetry;
     private final Map<String, Integer> capCounts = new ConcurrentHashMap<>();
     private final Map<String, Long> discoveries = new ConcurrentHashMap<>();
 
-    public DiscoveryService(IdleFarmPlugin plugin, Database database, GameStateStore state,
-                            TelemetryService telemetry) {
+    public DiscoveryService(IdleFarmPlugin plugin, Database database, TelemetryService telemetry) {
         this.plugin = plugin;
         this.database = database;
-        this.state = state;
         this.telemetry = telemetry;
     }
 
@@ -103,8 +99,9 @@ public final class DiscoveryService {
         return result;
     }
 
-    public void discover(UUID owner, NodeType type, String material, int amount) {
-        if (amount <= 0) return;
+    /** Records production; returns true when the resource is newly discovered. */
+    public boolean discover(UUID owner, NodeType type, String material, int amount) {
+        if (amount <= 0) return false;
         String normalized = material.toUpperCase(Locale.ROOT);
         String key = discoveryKey(owner, type.name(), normalized);
         boolean fresh = !discoveries.containsKey(key);
@@ -137,10 +134,12 @@ public final class DiscoveryService {
             }
         });
         if (fresh) {
-            state.increment(owner, "ACCOUNT", "-", "unique_discoveries", 1);
+            // The unique_discoveries counter is fed by the facade so the
+            // Chronicle can react to it; only telemetry stays here.
             telemetry.record(owner, "RESOURCE_DISCOVERED",
                     "{\"type\":\"" + type + "\",\"material\":\"" + normalized + "\"}");
         }
+        return fresh;
     }
 
     private void persistCap(UUID owner, String material, String period, int amount) {

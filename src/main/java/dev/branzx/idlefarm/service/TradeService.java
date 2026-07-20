@@ -227,6 +227,8 @@ public final class TradeService implements Listener {
                 + "\",\"partner\":\"" + session.a + "\"}");
         design.telemetry(session.a, "TRADE_COMPLETED", "{\"trade\":\"" + session.id + "\"}");
         design.telemetry(session.b, "TRADE_COMPLETED", "{\"trade\":\"" + session.id + "\"}");
+        design.onTradeCompleted(session.a);
+        design.onTradeCompleted(session.b);
         notifyBoth(session, "§aProtected trade completed. Receipt: " + session.id);
         return Result.ok("Trade completed. Receipt: " + session.id);
     }

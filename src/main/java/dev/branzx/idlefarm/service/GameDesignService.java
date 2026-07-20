@@ -45,8 +45,8 @@ public final class GameDesignService {
                              String reward, boolean claimed) {
     }
 
-    public record Achievement(String id, String name, String description, int points,
-                              boolean completed, boolean claimed) {
+    public record Achievement(String id, String category, String name, String description,
+                              int points, boolean completed, boolean claimed) {
     }
 
     public record Project(String id, String name, String material, int current, int target,
@@ -83,13 +83,13 @@ public final class GameDesignService {
         this.seasons = new SeasonService(plugin);
         this.chronicle = new ChronicleService(plugin, stateStore, audit, telemetryService,
                 seasons, this::addCoins);
-        this.discovery = new DiscoveryService(plugin, database, stateStore, telemetryService);
+        this.discovery = new DiscoveryService(plugin, database, telemetryService);
         this.focus = new FocusService(stateStore, nodeStore, audit, telemetryService);
         this.builds = new NodeBuildService(database, stateStore, dataStore, audit, seasons);
         this.projects = new ProjectService(plugin, database, stateStore, audit, telemetryService,
-                seasons, chronicle, warehouse, this::grantNodeExp);
+                seasons, chronicle, warehouse, nodeStore, this::grantNodeExp);
         this.workerMeta = new WorkerMetaService(stateStore, nodeStore, projects);
-        this.commissions = new CommissionService(database, stateStore, audit, telemetryService,
+        this.commissions = new CommissionService(plugin, database, stateStore, audit, telemetryService,
                 rewards, focus, builds, chronicle, warehouse, this::grantNodeExp, this::addCoins);
     }
 
@@ -105,6 +105,7 @@ public final class GameDesignService {
             plugin.getLogger().severe("Failed to load scoped game state: " + e.getMessage());
         }
         discovery.loadSync();
+        projects.startWorldRendering();
     }
 
     // ---- Focus and onboarding -------------------------------------------------
@@ -143,6 +144,10 @@ public final class GameDesignService {
         }
         boolean first = !focus.isStarterProductionClaimed(owner);
         focus.incrementProductionType(node);
+        chronicle.countMax(owner, "nodes_owned_max", nodeStore.getByOwner(owner).size());
+        chronicle.countMax(owner, "production_types_distinct", nodeStore.getByOwner(owner).stream()
+                .filter(owned -> owned.getType().isProduction())
+                .map(NodeRecord::getType).distinct().count());
         if (first) {
             focus.markStarterProduction(owner);
             focus.setFocus(owner, node, true);
@@ -200,10 +205,15 @@ public final class GameDesignService {
 
     // ---- Reward cadence and commissions --------------------------------------
 
-    public void onWorkerAssigned(NodeRecord node) {
-        chronicle.complete(node.getOwnerUuid(), "first_shift");
+    public void onWorkerAssigned(NodeRecord node, int crewSize) {
+        UUID owner = node.getOwnerUuid();
+        chronicle.complete(owner, "first_shift");
+        chronicle.count(owner, "workers_assigned_total", 1);
+        if (crewSize >= node.getTier()) {
+            chronicle.complete(owner, "growing_crew");
+        }
         commissions.advance(node, "crew", 1);
-        telemetry(node.getOwnerUuid(), "WORKER_ASSIGNED", "{\"node\":" + node.getId() + "}");
+        telemetry(owner, "WORKER_ASSIGNED", "{\"node\":" + node.getId() + "}");
     }
 
     public void onBufferCollected(NodeRecord node, int amount) {
@@ -220,18 +230,52 @@ public final class GameDesignService {
         UUID owner = node.getOwnerUuid();
         commissions.onItemsProduced(node, total);
         for (Map.Entry<String, Integer> entry : produced.entrySet()) {
-            discovery.discover(owner, node.getType(), entry.getKey(), entry.getValue());
+            discover(owner, node.getType(), entry.getKey(), entry.getValue());
         }
+        chronicle.count(owner, "produced_total", total);
+        chronicle.count(owner, "produced_" + node.getType().name(), total);
         telemetry(owner, "ITEM_PRODUCED",
                 "{\"node\":" + node.getId() + ",\"amount\":" + total + "}");
     }
 
-    public void onExplorationClaimed(NodeRecord node, String grade) {
+    public void onExplorationClaimed(NodeRecord node, String grade, int teamSize) {
+        UUID owner = node.getOwnerUuid();
         commissions.onExplorationClaimed(node, grade);
-        chronicle.complete(node.getOwnerUuid(), "beyond_fence");
-        telemetry(node.getOwnerUuid(), "EXPLORATION_COMPLETED",
+        chronicle.complete(owner, "beyond_fence");
+        chronicle.count(owner, "events_total", 1);
+        chronicle.count(owner, "events_" + node.getType().name(), 1);
+        chronicle.countMax(owner, "expedition_team_max", teamSize);
+        if ("GREAT".equals(grade) || "JACKPOT".equals(grade)) {
+            chronicle.count(owner, "great_total", 1);
+            chronicle.count(owner, "great_" + node.getType().name(), 1);
+        }
+        if ("JACKPOT".equals(grade)) {
+            chronicle.count(owner, "jackpot_total", 1);
+        }
+        telemetry(owner, "EXPLORATION_COMPLETED",
                 "{\"node\":" + node.getId() + ",\"grade\":\""
                         + dev.branzx.idlefarm.service.design.DesignText.safe(grade) + "\"}");
+    }
+
+    /** Manual Warehouse withdrawals only, not settlement-driven consumption. */
+    public void onWarehouseWithdrawn(UUID owner) {
+        chronicle.count(owner, "warehouse_withdrawals", 1);
+    }
+
+    public void onWorkerFused(UUID owner) {
+        chronicle.count(owner, "fuse_success_total", 1);
+    }
+
+    public void onTradeCompleted(UUID owner) {
+        chronicle.count(owner, "trades_completed", 1);
+    }
+
+    /** Counts distinct weeks with at least one Global Expedition commitment. */
+    public void onGlobalExpeditionCommitted(UUID owner) {
+        if (stateStore.claimOnce(owner, "WEEKLY",
+                dev.branzx.idlefarm.service.design.GameClock.weekKey(), "global_commit")) {
+            chronicle.count(owner, "global_expedition_weeks", 1);
+        }
     }
 
     public List<Commission> commissions(UUID owner) {
@@ -240,6 +284,10 @@ public final class GameDesignService {
 
     public Result claimCommission(UUID owner, String slot) {
         return commissions.claimCommission(owner, slot);
+    }
+
+    public Result rerollCommission(UUID owner, String slot) {
+        return commissions.reroll(owner, slot);
     }
 
     public Result claimWeeklyChapter(UUID owner) {
@@ -257,7 +305,10 @@ public final class GameDesignService {
     }
 
     public void discover(UUID owner, NodeType type, String material, int amount) {
-        discovery.discover(owner, type, material, amount);
+        if (discovery.discover(owner, type, material, amount)) {
+            chronicle.count(owner, "unique_discoveries", 1);
+            chronicle.count(owner, "discoveries_" + type.name(), 1);
+        }
     }
 
     // ---- Chronicle -----------------------------------------------------------
@@ -279,10 +330,13 @@ public final class GameDesignService {
     }
 
     public void onNodeLevel(NodeRecord node) {
+        UUID owner = node.getOwnerUuid();
+        chronicle.countMax(owner, "node_level_" + node.getType().name(), node.getExplorationLevel());
+        chronicle.countMax(owner, "node_level_max", node.getExplorationLevel());
         if (node.getExplorationLevel() >= 100) {
             builds.markFrontierEligible(node);
-            chronicle.complete(node.getOwnerUuid(), "node_master_100");
-            telemetry(node.getOwnerUuid(), "NODE_LEVEL_100", "{\"node\":" + node.getId() + "}");
+            chronicle.complete(owner, "node_master_100");
+            telemetry(owner, "NODE_LEVEL_100", "{\"node\":" + node.getId() + "}");
         }
     }
 
@@ -344,6 +398,10 @@ public final class GameDesignService {
 
     public Result contributeProject(UUID owner, String id, int requested) {
         return projects.contributeProject(owner, id, requested);
+    }
+
+    public void onResidentialRemoved(UUID owner) {
+        projects.onResidentialRemoved(owner);
     }
 
     public Project serverProject() {

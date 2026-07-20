@@ -591,11 +591,15 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
 
     private boolean commission(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player) || args.length < 2) {
-            sender.sendMessage(Component.text("Usage: /idle commission <focus|behavior|supply>",
+            sender.sendMessage(Component.text(
+                    "Usage: /idle commission <slot_1|slot_2|slot_3|catchup> "
+                            + "or /idle commission reroll <slot>",
                     NamedTextColor.YELLOW));
             return true;
         }
-        var result = guiManager.gameDesignService().claimCommission(player.getUniqueId(), args[1]);
+        var result = args[1].equalsIgnoreCase("reroll") && args.length >= 3
+                ? guiManager.gameDesignService().rerollCommission(player.getUniqueId(), args[2])
+                : guiManager.gameDesignService().claimCommission(player.getUniqueId(), args[1]);
         sender.sendMessage(Component.text(result.message(),
                 result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
         return true;
@@ -965,7 +969,11 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             return List.of("mining", "farming", "woodcutting", "livestock", "hunter", "rollback");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("commission")) {
-            return List.of("focus", "behavior", "supply", "catchup");
+            return List.of("slot_1", "slot_2", "slot_3", "catchup", "reroll");
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("commission")
+                && args[1].equalsIgnoreCase("reroll")) {
+            return List.of("slot_1", "slot_2", "slot_3");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("project")) {
             return List.of("storehouse", "expedition_dock", "chronicle_hall", "server");

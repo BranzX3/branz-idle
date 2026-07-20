@@ -21,6 +21,13 @@
   is frozen by the elapsed tick instead of re-derived from the spawn time.
 - Integration tests added for unclaim-refund settlement and restart-safe
   fuse settlement.
+- Chronicle now includes Journey, per-node Mastery, Discovery, Worker,
+  Territory, Expedition, Social and hidden Feat tracks backed by gameplay
+  counters.
+- Daily commissions now use a config-driven catalog, stable Focused
+  Node/level-aware selection and one free reroll per Bangkok day.
+- Personal and Server Projects now render non-destructive physical stages at
+  25%, 50%, 75% and completion, with restart/chunk-load reconciliation.
 
 ## Corrected in this audit
 
@@ -49,10 +56,6 @@
 
 These are product/content work, not regressions fixed by this refactor:
 
-- The Chronicle contains only the initial achievement subset; full Mastery,
-  Discovery, Worker, Territory, Expedition, Social and Feat tracks remain.
-- Dynamic commissions still use a small fixed template set.
-- World-construction project stages are not represented in the world.
 - Seasonal Chronicle, analytics alerts and experiment controls are partial.
 - Frontier profession/crafting/equipment/repair sinks are intentionally gated
   off.

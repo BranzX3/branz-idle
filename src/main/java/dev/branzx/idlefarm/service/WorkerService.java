@@ -524,6 +524,7 @@ public final class WorkerService {
             workerStore.fuseSettle(materials, fused);
             if (gameDesignService != null) {
                 gameDesignService.addTrainingNotes(owner, trainingNotes);
+                gameDesignService.onWorkerFused(owner);
             }
             audit(owner, "FUSE", rarity + " SUCCESS -> " + next + " chance=" + Math.round(chance * 100) + "%");
             return deposit(owner, fused, "SUCCESS! Fused into " + fused.getName() + " (" + next + ")!");
@@ -663,7 +664,7 @@ public final class WorkerService {
         worker.setState(WorkerRecord.STATE_WORKING);
         workerStore.reindexAssignment(worker, null);
         if (gameDesignService != null) {
-            gameDesignService.onWorkerAssigned(node);
+            gameDesignService.onWorkerAssigned(node, workerStore.getAssigned(node.getId()).size());
         }
         return Result.ok(worker.getName() + " assigned to " + node.getType() + " node.");
     }

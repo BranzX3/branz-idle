@@ -1,0 +1,89 @@
+# Daily commission catalog. The board selects three eligible entries from the
+# player's Focused Node level using a deterministic daily seed.
+templates:
+  produce_basic:
+    action: produce
+    unlock-level: 3
+    target: 64
+    target-per-bracket: 16
+    description: "Produce resources at your Focused {node} Node"
+    reward:
+      kind: NODE_EXP
+      amount: 400
+
+  collect_safe:
+    action: collect
+    unlock-level: 3
+    target: 64
+    target-per-bracket: 16
+    description: "Collect output from your Focused {node} Node"
+    reward:
+      kind: COINS
+      amount: 600
+
+  quick_shift:
+    action: produce
+    unlock-level: 3
+    target: 32
+    target-per-bracket: 8
+    description: "Complete a quick production shift at your Focused Node"
+    reward:
+      kind: COINS
+      amount: 450
+
+  collect_large:
+    action: collect
+    unlock-level: 10
+    target: 128
+    target-per-bracket: 24
+    description: "Complete a large collection from your Focused Node"
+    reward:
+      kind: NODE_EXP
+      amount: 500
+
+  crew_action:
+    action: crew
+    unlock-level: 10
+    target: 1
+    description: "Assign or rearrange the Focused Node crew"
+    reward:
+      kind: COINS
+      amount: 650
+
+  expedition:
+    action: expedition
+    unlock-level: 10
+    target: 1
+    description: "Complete an exploration event at your Focused Node"
+    reward:
+      kind: NODE_EXP
+      amount: 500
+
+  expedition_veteran:
+    action: expedition
+    unlock-level: 40
+    target: 2
+    description: "Complete two exploration events at your Focused Node"
+    reward:
+      kind: COINS
+      amount: 900
+
+  delivery:
+    action: delivery
+    unlock-level: 20
+    target: 64
+    target-per-bracket: 8
+    description: "Deliver a mixed unlocked-resource bundle"
+    reward:
+      kind: CHRONICLE_POINTS
+      amount: 3
+
+  production_push:
+    action: produce
+    unlock-level: 30
+    target: 256
+    target-per-bracket: 32
+    description: "Run an extended production shift at your Focused Node"
+    reward:
+      kind: COINS
+      amount: 850

@@ -89,6 +89,9 @@ public final class ExpeditionMenu extends Menu {
         }
         String error = expedition.commit(viewer.getUniqueId(), node);
         if (error == null) {
+            if (gui.gameDesignService() != null) {
+                gui.gameDesignService().onGlobalExpeditionCommitted(viewer.getUniqueId());
+            }
             gui.npcManager().refreshNode(node, viewer.getWorld());
             viewer.sendMessage(Component.text("Workers sent to the Global Expedition!",
                     NamedTextColor.GOLD));

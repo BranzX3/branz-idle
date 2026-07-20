@@ -234,6 +234,9 @@ public final class ClaimService {
         } else {
             nodeStore.delete(record);
         }
+        if (record.getType() == NodeType.RESIDENTIAL && gameDesignService != null) {
+            gameDesignService.onResidentialRemoved(owner);
+        }
         if (record.getType().isProduction()) {
             schematicService.restoreTerrain(record, world);
         }
@@ -257,6 +260,9 @@ public final class ClaimService {
             schematicService.restoreTerrain(record, world);
         }
         nodeStore.delete(record);
+        if (record.getType() == NodeType.RESIDENTIAL && gameDesignService != null) {
+            gameDesignService.onResidentialRemoved(record.getOwnerUuid());
+        }
         audit(actor, "ADMIN_FORCE_UNCLAIM", "id=" + auditId + " node=" + record.getId()
                 + " owner=" + record.getOwnerUuid() + " reason=" + reason + " refund=0");
         return Result.ok("Force-unclaimed node #" + record.getId() + " with no refund. Audit " + auditId);
