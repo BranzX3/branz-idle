@@ -4,6 +4,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
@@ -63,8 +64,15 @@ public final class WarehouseMenu extends Menu {
                     .loreComponents(List.of(
                             Ui.line("Stored ×" + Ui.num(entry.getValue()), NamedTextColor.GOLD),
                             Ui.divider(),
-                            Ui.line("Open withdrawal options", NamedTextColor.AQUA))).build(),
-                    e -> new ItemActionsMenu(entry.getKey(), material).open());
+                            Ui.line("Click: withdrawal options", NamedTextColor.AQUA),
+                            Ui.line("Shift-click: withdraw 1 stack", NamedTextColor.DARK_AQUA))).build(),
+                    e -> {
+                        if (e != null && e.isShiftClick()) {
+                            withdraw(entry.getKey(), material, false);
+                        } else {
+                            new ItemActionsMenu(entry.getKey(), material).open();
+                        }
+                    });
         }
 
         for (int i = 45; i < 54; i++) {
@@ -82,6 +90,25 @@ public final class WarehouseMenu extends Menu {
                         Ui.line("Choose an inventory stack", NamedTextColor.GRAY),
                         Ui.line("Works with touch and controller", NamedTextColor.DARK_GRAY)))
                 .build(), e -> new DepositMenu().open());
+        set(47, Icon.of(Material.HOPPER_MINECART)
+                .name("Deposit All", NamedTextColor.GREEN)
+                .loreComponents(List.of(
+                        Ui.line("Deposit every eligible stack", NamedTextColor.GRAY),
+                        Ui.line("Custom items stay in your inventory", NamedTextColor.DARK_GRAY)))
+                .build(), e -> {
+                    depositAll();
+                    redraw();
+                });
+        int stored = gui.warehouseService().total(owner);
+        int capacity = gui.warehouseService().getCapacity(owner);
+        set(50, Icon.of(Material.BOOK)
+                .name("Storage", stored >= capacity ? NamedTextColor.RED : NamedTextColor.GOLD)
+                .loreComponents(List.of(
+                        Ui.bar("Storage", capacity == 0 ? 0 : stored / (double) capacity,
+                                stored >= capacity ? NamedTextColor.RED : NamedTextColor.GOLD,
+                                Ui.num(stored) + "/" + Ui.num(capacity)),
+                        Ui.line("Click items in your inventory to deposit", NamedTextColor.GRAY)))
+                .build());
         double expandCost = gui.plugin().getConfig().getDouble("warehouse.expand-cost", 5000);
         int expandStep = gui.plugin().getConfig().getInt("warehouse.expand-step", 1000);
         set(48, Icon.of(Material.ENDER_CHEST).name("Expand +" + expandStep, NamedTextColor.AQUA)
@@ -151,8 +178,90 @@ public final class WarehouseMenu extends Menu {
                 && gui.warehouseService().expandCapacity(owner, data);
         viewer.sendMessage(Component.text(ok ? "Warehouse expanded!" : "Not enough money to expand.",
                 ok ? NamedTextColor.GREEN : NamedTextColor.RED));
-        if (ok) {
-            redraw();
+        // ConfirmMenu closed the inventory; reopen either way.
+        open();
+    }
+
+    @Override
+    public boolean clickPlayerInventory(InventoryClickEvent event) {
+        return depositClicked(event, this);
+    }
+
+    /** Deposits the clicked player-inventory stack; shared by Warehouse and Deposit screens. */
+    private boolean depositClicked(InventoryClickEvent event, Menu toRefresh) {
+        if (event == null || !owner.equals(viewer.getUniqueId())) {
+            return false;
+        }
+        ItemStack item = viewer.getInventory().getItem(event.getSlot());
+        if (item == null || item.getType().isAir()) {
+            return false;
+        }
+        if (isCustom(item)) {
+            viewer.sendMessage(Component.text("Custom items stay in your inventory.",
+                    NamedTextColor.GRAY));
+            return true;
+        }
+        depositSlot(event.getSlot(), true);
+        toRefresh.redraw();
+        return true;
+    }
+
+    private boolean isCustom(ItemStack item) {
+        return item.hasItemMeta()
+                && !item.getItemMeta().getPersistentDataContainer().isEmpty();
+    }
+
+    /** @return amount stored, or -1 when the Warehouse rejected the stack (full). */
+    private int depositSlot(int inventorySlot, boolean announce) {
+        ItemStack item = viewer.getInventory().getItem(inventorySlot);
+        if (item == null || item.getType().isAir() || isCustom(item)) {
+            return 0;
+        }
+        int requested = item.getAmount();
+        int stored = gui.warehouseService().deposit(owner, item.getType().name(), requested);
+        if (stored <= 0) {
+            if (announce) {
+                viewer.sendMessage(Component.text(
+                        "Warehouse is full. Withdraw items or expand capacity.",
+                        NamedTextColor.RED));
+            }
+            return -1;
+        }
+        if (stored >= requested) {
+            viewer.getInventory().setItem(inventorySlot, null);
+        } else {
+            item.setAmount(requested - stored);
+        }
+        if (announce) {
+            viewer.sendMessage(Component.text("Deposited " + stored + " "
+                    + Ui.pretty(item.getType().name()) + ".", NamedTextColor.GREEN));
+        }
+        return stored;
+    }
+
+    private void depositAll() {
+        int total = 0;
+        boolean full = false;
+        // Main storage and hotbar only; never touch armor or offhand slots.
+        for (int slot = 0; slot < 36; slot++) {
+            int stored = depositSlot(slot, false);
+            if (stored < 0) {
+                full = true;
+                break;
+            }
+            total += stored;
+        }
+        if (total > 0) {
+            viewer.sendMessage(Component.text("Deposited " + total + " item(s)."
+                    + (full ? " Warehouse is now full." : ""),
+                    full ? NamedTextColor.YELLOW : NamedTextColor.GREEN));
+        } else if (full) {
+            viewer.sendMessage(Component.text(
+                    "Warehouse is full. Withdraw items or expand capacity.",
+                    NamedTextColor.RED));
+        } else {
+            viewer.sendMessage(Component.text("No eligible items to deposit.",
+                    NamedTextColor.GRAY));
         }
     }
 
@@ -236,7 +345,10 @@ public final class WarehouseMenu extends Menu {
                 set(shown++, Icon.of(item.getType()).amount(item.getAmount())
                         .name(Ui.pretty(item.getType().name()), NamedTextColor.WHITE)
                         .lore("Deposit this stack ×" + item.getAmount(), NamedTextColor.GREEN)
-                        .build(), e -> deposit(sourceSlot));
+                        .build(), e -> {
+                            depositSlot(sourceSlot, true);
+                            redraw();
+                        });
             }
             if (shown == 0) {
                 set(22, Icon.of(Material.BARRIER).name("No eligible items",
@@ -244,35 +356,18 @@ public final class WarehouseMenu extends Menu {
                         NamedTextColor.DARK_GRAY).build());
             }
             backButton(49, "Warehouse", WarehouseMenu.this::open);
+            set(53, Icon.of(Material.HOPPER_MINECART)
+                    .name("Deposit All", NamedTextColor.GREEN)
+                    .lore("Deposit every eligible stack", NamedTextColor.GRAY).build(),
+                    e -> {
+                        depositAll();
+                        redraw();
+                    });
         }
 
-        private boolean isCustom(ItemStack item) {
-            return item.hasItemMeta()
-                    && !item.getItemMeta().getPersistentDataContainer().isEmpty();
-        }
-
-        private void deposit(int sourceSlot) {
-            ItemStack item = viewer.getInventory().getItem(sourceSlot);
-            if (item == null || item.getType().isAir() || isCustom(item)) {
-                open();
-                return;
-            }
-            int requested = item.getAmount();
-            int stored = gui.warehouseService().deposit(owner, item.getType().name(), requested);
-            if (stored <= 0) {
-                viewer.sendMessage(Component.text(
-                        "Warehouse is full. Withdraw items or expand capacity.",
-                        NamedTextColor.RED));
-            } else {
-                if (stored >= requested) {
-                    viewer.getInventory().setItem(sourceSlot, null);
-                } else {
-                    item.setAmount(requested - stored);
-                }
-                viewer.sendMessage(Component.text("Deposited " + stored + " "
-                        + Ui.pretty(item.getType().name()) + ".", NamedTextColor.GREEN));
-            }
-            open();
+        @Override
+        public boolean clickPlayerInventory(InventoryClickEvent event) {
+            return depositClicked(event, this);
         }
     }
 }

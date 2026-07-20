@@ -134,6 +134,7 @@ public final class WorkerBagMenu extends Menu {
         String error = gui.workerService().expandBag(viewer.getUniqueId());
         viewer.sendMessage(Component.text(error == null ? "Worker bag expanded!" : error,
                 error == null ? NamedTextColor.GREEN : NamedTextColor.RED));
-        redraw();
+        // ConfirmMenu closed the inventory; reopen either way.
+        open();
     }
 }

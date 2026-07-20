@@ -183,7 +183,8 @@ public final class FuseMenu extends Menu {
                 result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
         pickedA = null;
         pickedB = null;
-        redraw();
+        // ConfirmMenu closed the inventory; reopen so the player can fuse again.
+        open();
     }
 
     private WorkerRecord resolve(UUID uuid) {

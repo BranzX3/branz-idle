@@ -13,6 +13,9 @@
   usable by Java players.
 - No required action relies on shift-click, right-click, middle-click,
   double-click, drag, or chat input.
+- Java-only accelerators may exist on top of that baseline (Warehouse:
+  shift-click an item to withdraw one stack; click a stack in your own
+  inventory to deposit it; Deposit All), but never as the only path.
 - Every mutation is validated by the same service regardless of renderer.
 
 ## 1. UX principles

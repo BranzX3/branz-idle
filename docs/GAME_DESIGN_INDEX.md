@@ -26,6 +26,7 @@ the discrepancy must be resolved explicitly before coding.
 | `NODE_TYPE_PERKS.md` | Unique Mining/Farming/Wood/Livestock/Hunter perk choices |
 | `RESOURCE_ECONOMY.md` | Resource sinks, projects, orders, trading |
 | `UX_FLOWS.md` | Complete Player and Admin journeys |
+| `UI_FLOW_AND_CHAT_ACTIONS.md` | Surface routing and clickable chat action spec |
 | `LIVE_OPS_AND_SEASONS.md` | Rotations, post-100 releases, telemetry |
 | `IMPLEMENTATION_ROADMAP.md` | Delivery phases and acceptance criteria |
 | `IdleFarm_Balance_Bible.xlsx` | Tunable source numbers and simulations |

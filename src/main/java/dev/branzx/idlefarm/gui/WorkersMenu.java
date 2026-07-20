@@ -73,7 +73,8 @@ public final class WorkersMenu extends Menu {
         }
         viewer.sendMessage(Component.text(result.message(),
                 result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-        redraw();
+        // ConfirmMenu closed the inventory; reopen so the player can roll again.
+        open();
     }
 
     private void giveOrDrop(ItemStack item) {
