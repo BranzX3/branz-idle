@@ -47,6 +47,7 @@ public final class IdleFarmPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        migrateLegacyBalanceConfig();
 
         this.database = new Database(this);
         this.database.init();
@@ -146,6 +147,30 @@ public final class IdleFarmPlugin extends JavaPlugin {
 
         // Complete due tier upgrades once per second (needs the chunk loaded).
         getServer().getScheduler().runTaskTimer(this, () -> claimService.tickUpgrades(), 40L, 20L);
+    }
+
+    /**
+     * Existing installations keep their copied config.yml across upgrades.
+     * Move only known legacy defaults so deliberate admin tuning is preserved.
+     */
+    private void migrateLegacyBalanceConfig() {
+        boolean changed = false;
+        if (getConfig().getInt("production.buffer-capacity-per-tier", 256) == 64) {
+            getConfig().set("production.buffer-capacity-per-tier", 256);
+            changed = true;
+        }
+        if (getConfig().isSet("exploration.exp-per-level-base")) {
+            getConfig().set("exploration.exp-per-level-base", null);
+            changed = true;
+        }
+        if (getConfig().isSet("exploration.passive-exp-per-item")) {
+            getConfig().set("exploration.passive-exp-per-item", null);
+            changed = true;
+        }
+        if (changed) {
+            saveConfig();
+            getLogger().info("Migrated legacy progression balance to the game-design scale.");
+        }
     }
 
     @Override
