@@ -36,6 +36,7 @@ public final class ClaimService {
     private ExplorationService explorationService;
     private WorkerService workerService;
     private dev.branzx.idlefarm.storage.WorkerStore workerStore;
+    private GlobalExpeditionService globalExpeditionService;
 
     public ClaimService(IdleFarmPlugin plugin, NodeStore nodeStore, PlayerDataStore playerDataStore,
                         SchematicService schematicService, WorkerNpcManager npcManager) {
@@ -57,6 +58,10 @@ public final class ClaimService {
 
     public void setAuditService(AuditService auditService) {
         this.auditService = auditService;
+    }
+
+    public void setGlobalExpeditionService(GlobalExpeditionService globalExpeditionService) {
+        this.globalExpeditionService = globalExpeditionService;
     }
 
     private NodeAnchorStore anchorStore;
@@ -194,6 +199,10 @@ public final class ClaimService {
         // Spec §6b: buffer must be collected first — no dupe/loss edge cases.
         if (record.getType().isProduction() && record.storageTotal() > 0) {
             return Result.fail("Collect this node's buffer before unclaiming.");
+        }
+        if (record.getType().isProduction() && globalExpeditionService != null
+                && globalExpeditionService.hasCommitments(record.getId())) {
+            return Result.fail("Wait for this node's Global Expedition commitment to finish.");
         }
 
         double refund = claimCost(record.getType())
@@ -337,6 +346,9 @@ public final class ClaimService {
         }
         if (record.storageTotal() > 0) {
             return Result.fail("Collect this node's buffer before converting.");
+        }
+        if (globalExpeditionService != null && globalExpeditionService.hasCommitments(record.getId())) {
+            return Result.fail("Wait for this node's Global Expedition commitment to finish.");
         }
         double cost = plugin.getConfig().getDouble("claims.convert-cost", 750.0);
         PlayerData data = playerDataStore.getOnline(owner);

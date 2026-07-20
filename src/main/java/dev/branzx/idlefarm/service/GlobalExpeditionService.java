@@ -82,12 +82,38 @@ public final class GlobalExpeditionService {
                     "SELECT worker_uuid, ends_at FROM idlefarm_expedition_locks");
                  ResultSet rs = select.executeQuery()) {
                 while (rs.next()) {
-                    workerLocks.put(UUID.fromString(rs.getString("worker_uuid")),
-                            rs.getTimestamp("ends_at").getTime());
+                    UUID workerUuid = UUID.fromString(rs.getString("worker_uuid"));
+                    workerLocks.put(workerUuid, rs.getTimestamp("ends_at").getTime());
+                    migrateLegacyWorkerState(connection, workerUuid);
                 }
             }
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to load expedition data: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Older releases represented a global commitment by overwriting the
+     * worker's shared state with EXPLORING. Clear that legacy state only when
+     * the worker is not part of a persisted regular exploration event.
+     */
+    private void migrateLegacyWorkerState(Connection connection, UUID workerUuid) throws SQLException {
+        WorkerRecord worker = workerStore.get(workerUuid);
+        if (worker == null || !WorkerRecord.STATE_EXPLORING.equals(worker.getState())) {
+            return;
+        }
+        boolean regular;
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT 1 FROM idlefarm_exploration_events "
+                        + "WHERE state = 'RUNNING' AND worker_uuids LIKE ?")) {
+            select.setString(1, "%" + workerUuid + "%");
+            try (ResultSet rs = select.executeQuery()) {
+                regular = rs.next();
+            }
+        }
+        if (!regular) {
+            worker.setState(WorkerRecord.STATE_WORKING);
+            workerStore.update(worker);
         }
     }
 
@@ -126,13 +152,25 @@ public final class GlobalExpeditionService {
         return plugin.getConfig().getLong("expedition.commit-duration-minutes", 60);
     }
 
+    public boolean isCommitted(UUID workerUuid) {
+        Long endsAt = workerLocks.get(workerUuid);
+        return endsAt != null && endsAt > System.currentTimeMillis();
+    }
+
+    public boolean hasCommitments(long nodeId) {
+        return workerStore.getAssigned(nodeId).stream()
+                .anyMatch(worker -> isCommitted(worker.getWorkerUuid()));
+    }
+
     /**
-     * Commits all currently idle (non-EXPLORING) workers of the node.
+     * Commits all workers not already committed to the Global Expedition.
+     * This lock is independent from regular exploration state, so the two
+     * expedition systems can coexist as specified.
      * Returns an error message or null on success.
      */
     public String commit(UUID owner, NodeRecord node) {
         List<WorkerRecord> idle = workerStore.getAssigned(node.getId()).stream()
-                .filter(w -> !WorkerRecord.STATE_EXPLORING.equals(w.getState()))
+                .filter(worker -> !isCommitted(worker.getWorkerUuid()))
                 .toList();
         if (idle.isEmpty()) {
             return "No available workers at this node.";
@@ -143,8 +181,6 @@ public final class GlobalExpeditionService {
             var stats = worker.getStats();
             gained += stats.diligence() + stats.luck() + stats.stamina() + stats.speed()
                     + (long) worker.getLevel() * 2;
-            worker.setState(WorkerRecord.STATE_EXPLORING);
-            workerStore.update(worker);
             workerLocks.put(worker.getWorkerUuid(), endsAt);
             persistLock(worker.getWorkerUuid(), endsAt);
         }
@@ -179,12 +215,6 @@ public final class GlobalExpeditionService {
             if (entry.getValue() <= now) {
                 workerLocks.remove(entry.getKey());
                 removeLock(entry.getKey());
-                WorkerRecord worker = workerStore.get(entry.getKey());
-                if (worker != null && WorkerRecord.STATE_EXPLORING.equals(worker.getState())
-                        && worker.getAssignedNodeId() != null) {
-                    worker.setState(WorkerRecord.STATE_WORKING);
-                    workerStore.update(worker);
-                }
             }
         }
         // Week rollover: settle the finished week.

@@ -33,6 +33,7 @@ public final class ProductionEngine extends BukkitRunnable {
     private BoosterService boosterService;
     private PerkService perkService;
     private WarehouseService warehouseService;
+    private GlobalExpeditionService globalExpeditionService;
 
     public void setExplorationService(ExplorationService explorationService) {
         this.explorationService = explorationService;
@@ -45,6 +46,10 @@ public final class ProductionEngine extends BukkitRunnable {
     public void setPerkServices(PerkService perkService, WarehouseService warehouseService) {
         this.perkService = perkService;
         this.warehouseService = warehouseService;
+    }
+
+    public void setGlobalExpeditionService(GlobalExpeditionService globalExpeditionService) {
+        this.globalExpeditionService = globalExpeditionService;
     }
 
     private DropTableService dropTableService;
@@ -74,6 +79,8 @@ public final class ProductionEngine extends BukkitRunnable {
     private void tickNode(NodeRecord node, long now) {
         List<WorkerRecord> crew = workerStore.getAssigned(node.getId()).stream()
                 .filter(w -> !WorkerRecord.STATE_EXPLORING.equals(w.getState()))
+                .filter(w -> globalExpeditionService == null
+                        || !globalExpeditionService.isCommitted(w.getWorkerUuid()))
                 .toList();
 
         // No workers = no production (spec: workers are the engine). The

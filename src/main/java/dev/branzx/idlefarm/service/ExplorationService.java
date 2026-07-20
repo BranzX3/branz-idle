@@ -36,6 +36,9 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class ExplorationService {
 
+    public record WarehouseClaimResult(boolean success, int total, String message) {
+    }
+
     public static final class EventRecord {
         final long id;
         final long nodeId;
@@ -363,17 +366,31 @@ public final class ExplorationService {
         if (event == null || !"COMPLETED".equals(event.state)) {
             return null;
         }
-        Map<String, Integer> loot = new ConcurrentHashMap<>();
-        if (event.loot != null && !event.loot.isBlank()) {
-            for (String entry : event.loot.split(";")) {
-                int colon = entry.indexOf(':');
-                if (colon > 0) {
-                    loot.put(entry.substring(0, colon), Integer.parseInt(entry.substring(colon + 1)));
-                }
-            }
-        }
+        Map<String, Integer> loot = parseLoot(event.loot);
         remove(event);
         return loot;
+    }
+
+    /**
+     * Claims a completed event directly to the owner's Warehouse. The event
+     * remains claimable when the full bundle does not fit, preventing partial
+     * deposits and lost rewards.
+     */
+    public WarehouseClaimResult claimToWarehouse(NodeRecord node, WarehouseService warehouse) {
+        EventRecord event = eventsByNode.get(node.getId());
+        if (event == null || !"COMPLETED".equals(event.state)) {
+            return new WarehouseClaimResult(false, 0, "No completed expedition to claim.");
+        }
+        Map<String, Integer> loot = parseLoot(event.loot);
+        int total = loot.values().stream().mapToInt(Integer::intValue).sum();
+        int free = warehouse.freeSpace(node.getOwnerUuid());
+        if (!warehouse.depositAll(node.getOwnerUuid(), loot)) {
+            return new WarehouseClaimResult(false, 0,
+                    "Warehouse needs " + Math.max(0, total - free) + " more free space.");
+        }
+        remove(event);
+        return new WarehouseClaimResult(true, total,
+                "Expedition loot → Warehouse: " + total + " items!");
     }
 
     /** Cancels any event on unclaim/convert: workers return, no loot. */
@@ -458,6 +475,20 @@ public final class ExplorationService {
             }
         }
         return team;
+    }
+
+    private Map<String, Integer> parseLoot(String serialized) {
+        Map<String, Integer> loot = new ConcurrentHashMap<>();
+        if (serialized == null || serialized.isBlank()) {
+            return loot;
+        }
+        for (String entry : serialized.split(";")) {
+            int colon = entry.indexOf(':');
+            if (colon > 0) {
+                loot.put(entry.substring(0, colon), Integer.parseInt(entry.substring(colon + 1)));
+            }
+        }
+        return loot;
     }
 
     public String eventName(String eventType) {

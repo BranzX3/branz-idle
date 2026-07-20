@@ -35,6 +35,12 @@ dependencies {
     // Not relocated: the native-library loader resolves resources by the
     // original org.sqlite package path.
     implementation("org.xerial:sqlite-jdbc:3.47.1.0")
+
+    testImplementation(platform("org.junit:junit-bom:5.12.2"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("org.mockito:mockito-core:5.17.0")
+    testImplementation("io.papermc.paper:paper-api:26.2.build.+")
 }
 
 java {
@@ -43,6 +49,11 @@ java {
 
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
+}
+
+tasks.test {
+    useJUnitPlatform()
+    jvmArgs("-Dnet.bytebuddy.experimental=true")
 }
 
 tasks.named<ShadowJar>("shadowJar") {

@@ -60,15 +60,21 @@ public final class WorkerService {
 
     public WorkerService(IdleFarmPlugin plugin, WorkerStore workerStore, PlayerDataStore playerDataStore,
                          dev.branzx.idlefarm.storage.Database database) {
+        this(plugin, workerStore, playerDataStore, database, new NamespacedKey(plugin, "worker_uuid"));
+    }
+
+    WorkerService(IdleFarmPlugin plugin, WorkerStore workerStore, PlayerDataStore playerDataStore,
+                  dev.branzx.idlefarm.storage.Database database, NamespacedKey workerKey) {
         this.plugin = plugin;
         this.workerStore = workerStore;
         this.playerDataStore = playerDataStore;
         this.database = database;
-        this.workerKey = new NamespacedKey(plugin, "worker_uuid");
+        this.workerKey = workerKey;
     }
 
     private AuditService auditService;
     private NodeAnchorStore anchorStore;
+    private GlobalExpeditionService globalExpeditionService;
 
     public void setAuditService(AuditService auditService) {
         this.auditService = auditService;
@@ -76,6 +82,10 @@ public final class WorkerService {
 
     public void setAnchorStore(NodeAnchorStore anchorStore) {
         this.anchorStore = anchorStore;
+    }
+
+    public void setGlobalExpeditionService(GlobalExpeditionService globalExpeditionService) {
+        this.globalExpeditionService = globalExpeditionService;
     }
 
     private void audit(UUID actor, String action, String detail) {
@@ -480,17 +490,15 @@ public final class WorkerService {
             return;
         }
         worker.setExp(worker.getExp() + amount);
-        boolean changed = false;
         while (worker.getLevel() < worker.getRarity().levelCap()
                 && worker.getExp() >= expForNextLevel(worker.getLevel())) {
             worker.setExp(worker.getExp() - expForNextLevel(worker.getLevel()));
             worker.setLevel(worker.getLevel() + 1);
             allocateStatPoints(worker);
-            changed = true;
         }
-        if (changed) {
-            workerStore.update(worker);
-        }
+        // EXP below the next level is progression too. Persist every credited
+        // grant so a restart cannot roll a worker back to its previous value.
+        workerStore.update(worker);
     }
 
     public long expForNextLevel(int level) {
@@ -561,6 +569,10 @@ public final class WorkerService {
     public Result eject(UUID actor, WorkerRecord worker) {
         if (worker.getAssignedNodeId() == null) {
             return Result.fail("This worker is not assigned.");
+        }
+        if (globalExpeditionService != null
+                && globalExpeditionService.isCommitted(worker.getWorkerUuid())) {
+            return Result.fail("This worker is committed to the Global Expedition.");
         }
         if (WorkerRecord.STATE_EXPLORING.equals(worker.getState())) {
             return Result.fail("This worker is away exploring.");

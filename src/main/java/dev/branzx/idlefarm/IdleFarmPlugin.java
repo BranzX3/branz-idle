@@ -101,6 +101,8 @@ public final class IdleFarmPlugin extends JavaPlugin {
         expeditionService.loadAllSync();
         expeditionService.start();
         this.guiManager.setExpeditionService(expeditionService);
+        this.workerService.setGlobalExpeditionService(expeditionService);
+        this.claimService.setGlobalExpeditionService(expeditionService);
 
         PlayerConnectionListener connectionListener = new PlayerConnectionListener(this, dataStore);
         connectionListener.setStreakService(streakService);
@@ -138,6 +140,7 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.productionEngine.setBoosterService(boosterService);
         this.productionEngine.setPerkServices(perkService, warehouseService);
         this.productionEngine.setDropTableService(dropTableService);
+        this.productionEngine.setGlobalExpeditionService(expeditionService);
         // First run settles any downtime accrued while the server was off.
         this.productionEngine.runTaskTimer(this, 100L, productionTicks);
 

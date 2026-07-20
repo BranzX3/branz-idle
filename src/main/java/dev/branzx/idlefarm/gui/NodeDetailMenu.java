@@ -270,17 +270,12 @@ public final class NodeDetailMenu extends Menu {
                 gui.npcManager().refreshNode(node, viewer.getWorld());
             }
         } else if ("COMPLETED".equals(event.getState())) {
-            var loot = gui.explorationService().claim(node);
-            int total = 0;
-            if (loot != null) {
-                for (var entry : loot.entrySet()) {
-                    int stored = gui.warehouseService().deposit(node.getOwnerUuid(), entry.getKey(), entry.getValue());
-                    total += stored;
-                }
+            var result = gui.explorationService().claimToWarehouse(node, gui.warehouseService());
+            viewer.sendMessage(Component.text(result.message(),
+                    result.success() ? NamedTextColor.GOLD : NamedTextColor.RED));
+            if (result.success()) {
+                gui.npcManager().refreshNode(node, viewer.getWorld());
             }
-            viewer.sendMessage(Component.text("Expedition loot → Warehouse: " + total + " items!",
-                    NamedTextColor.GOLD));
-            gui.npcManager().refreshNode(node, viewer.getWorld());
         } else {
             viewer.sendMessage(Component.text("Expedition still in progress.", NamedTextColor.YELLOW));
         }

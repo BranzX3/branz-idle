@@ -76,6 +76,31 @@ public final class WarehouseService {
         return stored;
     }
 
+    /**
+     * Atomically deposits an entire loot bundle into the in-memory warehouse.
+     * Returns false without changing anything when the bundle does not fit.
+     */
+    public boolean depositAll(UUID owner, Map<String, Integer> items) {
+        long requested = items.values().stream()
+                .filter(amount -> amount != null && amount > 0)
+                .mapToLong(Integer::longValue)
+                .sum();
+        if (requested > freeSpace(owner)) {
+            return false;
+        }
+        Map<String, Integer> warehouse = getContents(owner);
+        for (Map.Entry<String, Integer> entry : items.entrySet()) {
+            int amount = entry.getValue() == null ? 0 : entry.getValue();
+            if (amount > 0) {
+                warehouse.merge(entry.getKey().toUpperCase(java.util.Locale.ROOT), amount, Integer::sum);
+            }
+        }
+        if (requested > 0) {
+            persist(owner);
+        }
+        return true;
+    }
+
     /** Removes up to {@code amount}; returns the number actually removed. */
     public int withdraw(UUID owner, String material, int amount) {
         Map<String, Integer> map = getContents(owner);

@@ -645,22 +645,12 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
                     sender.sendMessage(Component.text("Manager trust required.", NamedTextColor.RED));
                     return true;
                 }
-                var loot = exploration.claim(node);
-                if (loot == null) {
-                    sender.sendMessage(Component.text("No completed expedition to claim.", NamedTextColor.RED));
-                    return true;
+                var result = exploration.claimToWarehouse(node, warehouseService);
+                sender.sendMessage(Component.text(result.message(),
+                        result.success() ? NamedTextColor.GOLD : NamedTextColor.RED));
+                if (result.success()) {
+                    npcManager.refreshNode(node, player.getWorld());
                 }
-                int total = 0;
-                for (var entry : loot.entrySet()) {
-                    org.bukkit.Material material = org.bukkit.Material.matchMaterial(entry.getKey());
-                    if (material != null) {
-                        giveOrDrop(player, new ItemStack(material, entry.getValue()));
-                        total += entry.getValue();
-                    }
-                }
-                npcManager.refreshNode(node, player.getWorld());
-                sender.sendMessage(Component.text("Expedition loot claimed: " + total + " items!",
-                        NamedTextColor.GOLD));
             }
             default -> sender.sendMessage(Component.text("Usage: /idle explore [info|start [team]|claim]",
                     NamedTextColor.YELLOW));
