@@ -59,7 +59,7 @@ public final class NodeStore {
                                     ? rs.getTimestamp("last_tick_at").getTime()
                                     : System.currentTimeMillis(),
                             rs.getString("storage_json"));
-                    record.setExplorationLevel(rs.getInt("exploration_level"));
+                    record.setExplorationLevel(Math.max(1, rs.getInt("exploration_level")));
                     record.setExplorationExp(rs.getLong("exploration_exp"));
                     record.setUpgradeEndsAt(rs.getLong("upgrade_ends_at"));
                     index(record);
@@ -154,12 +154,13 @@ public final class NodeStore {
     public NodeRecord insert(UUID owner, ChunkKey chunk, NodeType type, int originY) {
         NodeRecord record = new NodeRecord(nextNodeId.getAndIncrement(), owner, chunk, type, 1, "ACTIVE",
                 originY, System.currentTimeMillis(), null);
+        record.setExplorationLevel(1);
         index(record);
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection();
                  PreparedStatement insert = connection.prepareStatement(
-                         "INSERT INTO idlefarm_nodes (id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state, origin_y) "
-                                 + "VALUES (?, ?, ?, ?, ?, ?, 1, 'ACTIVE', ?)")) {
+                         "INSERT INTO idlefarm_nodes (id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state, origin_y, exploration_level) "
+                                 + "VALUES (?, ?, ?, ?, ?, ?, 1, 'ACTIVE', ?, 1)")) {
                 insert.setLong(1, record.getId());
                 insert.setString(2, owner.toString());
                 insert.setString(3, chunk.world());
@@ -179,11 +180,17 @@ public final class NodeStore {
     public void delete(NodeRecord record) {
         unindex(record);
         database.submitWrite(() -> {
-            try (Connection connection = database.getConnection();
-                 PreparedStatement delete = connection.prepareStatement(
-                         "DELETE FROM idlefarm_nodes WHERE id = ?")) {
-                delete.setLong(1, record.getId());
-                delete.executeUpdate();
+            try (Connection connection = database.getConnection()) {
+                try (PreparedStatement research = connection.prepareStatement(
+                        "DELETE FROM idlefarm_node_research WHERE node_id = ?")) {
+                    research.setLong(1, record.getId());
+                    research.executeUpdate();
+                }
+                try (PreparedStatement delete = connection.prepareStatement(
+                        "DELETE FROM idlefarm_nodes WHERE id = ?")) {
+                    delete.setLong(1, record.getId());
+                    delete.executeUpdate();
+                }
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to delete node " + record.getId() + ": " + e.getMessage());
             }

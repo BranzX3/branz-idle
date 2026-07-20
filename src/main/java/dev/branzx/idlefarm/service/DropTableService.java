@@ -66,14 +66,22 @@ public final class DropTableService {
                 }
             }
         }
-        result.sort(null);
+        result.sort(java.util.Comparator.comparingInt(this::bracketNumber));
         return result;
     }
 
+    private int bracketNumber(String key) {
+        try {
+            return Integer.parseInt(key.substring("bracket-".length()));
+        } catch (NumberFormatException e) {
+            return Integer.MAX_VALUE;
+        }
+    }
+
     /**
-     * Effective weighted table for a node type at a bracket. If the type has
-     * bracket-N subsections, the highest unlocked one wins; a flat section
-     * applies to every bracket.
+     * Effective weighted table for a node type at a bracket. Bracket sections
+     * are additive: later brackets override weights they explicitly tune and
+     * retain every earlier resource. A flat section applies to every bracket.
      */
     public Map<String, Double> table(NodeType type, int bracket) {
         String typeKey = type.name().toLowerCase(Locale.ROOT);
@@ -82,16 +90,23 @@ public final class DropTableService {
             return Map.of("cobblestone", 1.0);
         }
         if (section.getConfigurationSection("bracket-1") != null) {
-            ConfigurationSection best = null;
+            Map<String, Double> cumulative = new LinkedHashMap<>();
             for (int i = 1; i <= bracket; i++) {
                 ConfigurationSection candidate = section.getConfigurationSection("bracket-" + i);
                 if (candidate != null) {
-                    best = candidate;
+                    for (String key : candidate.getKeys(false)) {
+                        if (!candidate.isConfigurationSection(key)) {
+                            double weight = candidate.getDouble(key);
+                            if (weight > 0) {
+                                cumulative.put(key, weight);
+                            } else {
+                                cumulative.remove(key);
+                            }
+                        }
+                    }
                 }
             }
-            if (best != null) {
-                section = best;
-            }
+            return cumulative.isEmpty() ? Map.of("cobblestone", 1.0) : cumulative;
         }
         Map<String, Double> table = new LinkedHashMap<>();
         for (String key : section.getKeys(false)) {

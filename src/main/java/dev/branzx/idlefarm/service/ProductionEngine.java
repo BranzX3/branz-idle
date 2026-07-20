@@ -29,6 +29,7 @@ public final class ProductionEngine extends BukkitRunnable {
     private final NodeStore nodeStore;
     private final WorkerStore workerStore;
     private final WorkerService workerService;
+    private final ProgressionScale scale;
     private ExplorationService explorationService;
     private BoosterService boosterService;
     private PerkService perkService;
@@ -64,6 +65,7 @@ public final class ProductionEngine extends BukkitRunnable {
         this.nodeStore = nodeStore;
         this.workerStore = workerStore;
         this.workerService = workerService;
+        this.scale = new ProgressionScale(plugin);
     }
 
     @Override
@@ -86,6 +88,10 @@ public final class ProductionEngine extends BukkitRunnable {
         // No workers = no production (spec: workers are the engine). The
         // anchor still advances so hiring later doesn't backfill idle time.
         if (crew.isEmpty()) {
+            if (explorationService != null) {
+                explorationService.advancePassiveResearch(node, crew, now,
+                        node.storageTotal() >= bufferCapacity(node));
+            }
             node.setLastTickAt(now);
             return;
         }
@@ -94,12 +100,17 @@ public final class ProductionEngine extends BukkitRunnable {
                 : boosterService.multiplier(node.getOwnerUuid(), BoosterService.PRODUCTION);
         double ratePerHour = baseRate(node) * crewPower(crew) * boost;
         if (ratePerHour <= 0) {
+            if (explorationService != null) {
+                explorationService.advancePassiveResearch(node, crew, now,
+                        node.storageTotal() >= bufferCapacity(node));
+            }
             node.setLastTickAt(now);
             return;
         }
 
         int capacity = bufferCapacity(node);
         int space = capacity - node.storageTotal();
+        boolean wasFull = space <= 0;
         double elapsedHours = (now - node.getLastTickAt()) / 3_600_000.0;
         int produced = (int) Math.floor(ratePerHour * elapsedHours);
         int credited = Math.min(produced, Math.max(0, space));
@@ -110,11 +121,13 @@ public final class ProductionEngine extends BukkitRunnable {
             // Advance only by the time actually converted into items.
             node.setLastTickAt(node.getLastTickAt() + (long) (credited / ratePerHour * 3_600_000.0));
             grantCrewExp(crew, credited);
-            // Passive exploration EXP: working *is* exploring, thematically.
-            if (explorationService != null) {
-                double perItem = plugin.getConfig().getDouble("exploration.passive-exp-per-item", 1.0);
-                explorationService.grantExplorationExp(node, (long) Math.ceil(credited * perItem));
-            }
+            dirty = true;
+        }
+
+        // Research scales with staffed time, not item count. This keeps slow
+        // Hunter nodes aligned with fast Farming nodes and ignores boosters.
+        if (explorationService != null
+                && explorationService.advancePassiveResearch(node, crew, now, wasFull) > 0) {
             dirty = true;
         }
 
@@ -165,8 +178,7 @@ public final class ProductionEngine extends BukkitRunnable {
     }
 
     public int bufferCapacity(NodeRecord node) {
-        int base = plugin.getConfig().getInt("production.buffer-capacity-per-tier", 64);
-        return base * node.getTier();
+        return scale.bufferCapacity(node);
     }
 
     private void rollItems(NodeRecord node, int count) {

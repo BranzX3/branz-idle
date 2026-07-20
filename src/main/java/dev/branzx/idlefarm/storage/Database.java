@@ -235,6 +235,14 @@ public final class Database {
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS idlefarm_node_research (
+                node_id BIGINT NOT NULL PRIMARY KEY,
+                last_research_at BIGINT NOT NULL,
+                research_day VARCHAR(10) NOT NULL,
+                earned_today INT NOT NULL DEFAULT 0
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS idlefarm_audit_log (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 actor_uuid VARCHAR(36) NOT NULL,
@@ -397,6 +405,14 @@ public final class Database {
             )
             """,
             "CREATE INDEX IF NOT EXISTS idx_events_node ON idlefarm_exploration_events (node_id)",
+            """
+            CREATE TABLE IF NOT EXISTS idlefarm_node_research (
+                node_id INTEGER NOT NULL PRIMARY KEY,
+                last_research_at INTEGER NOT NULL,
+                research_day TEXT NOT NULL,
+                earned_today INTEGER NOT NULL DEFAULT 0
+            )
+            """,
             """
             CREATE TABLE IF NOT EXISTS idlefarm_audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -126,7 +126,7 @@ production:
   # timestamp math, so this only affects update granularity, not totals.
   tick-seconds: 60
   # Buffer capacity = this × node tier. Full buffer stops production.
-  buffer-capacity-per-tier: 64
+  buffer-capacity-per-tier: 256
   # Items per hour per node type, before worker power multipliers.
   base-items-per-hour:
     mining: 40
@@ -307,11 +307,26 @@ exploration:
   spawn-chance-per-check: 0.05
   # Levels per bracket: bracket = level/size + 1.
   bracket-size: 10
+  vanilla-brackets: 10
   level-cap: 100
   # Exploration EXP needed for next level = base × (level + 1).
-  exp-per-level-base: 500
+  exp-curve:
+    base: 120
+    per-level: 12
   # Passive exploration EXP per produced item.
-  passive-exp-per-item: 1.0
+  passive-research:
+    base-per-hour: 75.0
+    extra-worker-bonus: 0.15
+    level-power-per-level: 0.005
+    full-buffer-multiplier: 0.25
+    daily-cap: 900
+    rested-hours: 48
+    rarity-factor:
+      common: 1.00
+      uncommon: 1.05
+      rare: 1.10
+      epic: 1.15
+      legendary: 1.20
   # Lump exploration EXP for completing an event.
   event-exp-bonus: 2000
   # Outcome grade odds (percent) shifted by team Luck.
@@ -361,7 +376,6 @@ exploration:
         amethyst_shard: 20
         experience_bottle: 15
         golden_apple: 8
-        enchanted_golden_apple: 2
     ancient_vault:
       name: "Ancient Vault"
       min-bracket: 4
@@ -372,9 +386,11 @@ exploration:
         diamond: 35
         netherite_scrap: 15
         golden_apple: 20
-        enchanted_golden_apple: 5
-        heavy_core: 1
         emerald_block: 24
+
+frontier:
+  enabled: false
+  level-cap: 200
 
 # Schematic capture: air blocks farther than this many blocks (chebyshev)
 # from any solid block are NOT captured, so pasting a building never

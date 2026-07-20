@@ -17,6 +17,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -94,7 +95,9 @@ public final class ExplorationService {
     private final Database database;
     private final NodeStore nodeStore;
     private final WorkerStore workerStore;
+    private final ProgressionScale scale;
     private final Map<Long, EventRecord> eventsByNode = new ConcurrentHashMap<>();
+    private final Map<Long, PassiveResearchRecord> passiveResearch = new ConcurrentHashMap<>();
     private final AtomicLong nextEventId = new AtomicLong(1);
     private BukkitRunnable task;
 
@@ -104,6 +107,19 @@ public final class ExplorationService {
         this.database = database;
         this.nodeStore = nodeStore;
         this.workerStore = workerStore;
+        this.scale = new ProgressionScale(plugin);
+    }
+
+    private static final class PassiveResearchRecord {
+        volatile long lastAt;
+        volatile String day;
+        volatile int earnedToday;
+
+        PassiveResearchRecord(long lastAt, String day, int earnedToday) {
+            this.lastAt = lastAt;
+            this.day = day;
+            this.earnedToday = earnedToday;
+        }
     }
 
     public void loadAllSync() {
@@ -135,6 +151,20 @@ public final class ExplorationService {
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to load exploration events: " + e.getMessage());
         }
+        try (Connection connection = database.getConnection();
+             PreparedStatement select = connection.prepareStatement(
+                     "SELECT node_id, last_research_at, research_day, earned_today "
+                             + "FROM idlefarm_node_research");
+             ResultSet rs = select.executeQuery()) {
+            while (rs.next()) {
+                passiveResearch.put(rs.getLong("node_id"), new PassiveResearchRecord(
+                        rs.getLong("last_research_at"),
+                        rs.getString("research_day"),
+                        rs.getInt("earned_today")));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to load passive research: " + e.getMessage());
+        }
     }
 
     public void start() {
@@ -161,18 +191,16 @@ public final class ExplorationService {
     // ---- brackets ----
 
     public int bracket(NodeRecord node) {
-        int size = plugin.getConfig().getInt("exploration.bracket-size", 10);
-        return node.getExplorationLevel() / size + 1;
+        return scale.bracket(node.getExplorationLevel());
     }
 
     public long expForNextExplorationLevel(int level) {
-        long base = plugin.getConfig().getLong("exploration.exp-per-level-base", 500);
-        return base * (level + 1);
+        return scale.expForNextLevel(level);
     }
 
     /** Grants exploration EXP to a node, applying level-ups. Caller persists. */
     public void grantExplorationExp(NodeRecord node, long amount) {
-        int cap = plugin.getConfig().getInt("exploration.level-cap", 100);
+        int cap = scale.levelCap();
         if (amount <= 0 || node.getExplorationLevel() >= cap) {
             return;
         }
@@ -183,6 +211,40 @@ public final class ExplorationService {
                     - expForNextExplorationLevel(node.getExplorationLevel()));
             node.setExplorationLevel(node.getExplorationLevel() + 1);
         }
+    }
+
+    /**
+     * Grants time-based passive research independently of item throughput.
+     * Progress is capped per node/day and downtime is limited by Rested
+     * Research, so fast node types and production boosters cannot level faster.
+     */
+    public long advancePassiveResearch(NodeRecord node, List<WorkerRecord> crew,
+                                       long now, boolean bufferFull) {
+        PassiveResearchRecord progress = passiveResearch.computeIfAbsent(node.getId(),
+                ignored -> new PassiveResearchRecord(node.getLastTickAt(),
+                        LocalDate.now().toString(), 0));
+        long previous = progress.lastAt > 0 ? progress.lastAt : now;
+        long elapsed = Math.max(0, Math.min(now - previous, scale.restedResearchMillis()));
+        progress.lastAt = now;
+
+        String today = LocalDate.now().toString();
+        if (!today.equals(progress.day)) {
+            progress.day = today;
+            progress.earnedToday = 0;
+        }
+
+        int remaining = Math.max(0, scale.passiveResearchDailyCap() - progress.earnedToday);
+        long earned = 0;
+        if (remaining > 0 && elapsed > 0 && node.getExplorationLevel() < scale.levelCap()) {
+            double rate = scale.passiveResearchPerHour(crew, bufferFull);
+            earned = Math.min(remaining, (long) Math.floor(rate * elapsed / 3_600_000.0));
+            if (earned > 0) {
+                progress.earnedToday += (int) earned;
+                grantExplorationExp(node, earned);
+            }
+        }
+        persistPassiveResearch(node.getId(), progress);
+        return earned;
     }
 
     // ---- lifecycle tick ----
@@ -279,7 +341,7 @@ public final class ExplorationService {
 
     /** Force-set a node's exploration level. Admin. Caller persists the node. */
     public void adminSetLevel(NodeRecord node, int level) {
-        node.setExplorationLevel(Math.max(0, level));
+        node.setExplorationLevel(Math.max(1, Math.min(scale.levelCap(), level)));
         node.setExplorationExp(0);
     }
 
@@ -552,6 +614,34 @@ public final class ExplorationService {
                 delete.executeUpdate();
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to delete exploration event: " + e.getMessage());
+            }
+        });
+    }
+
+    private void persistPassiveResearch(long nodeId, PassiveResearchRecord progress) {
+        long lastAt = progress.lastAt;
+        String day = progress.day;
+        int earnedToday = progress.earnedToday;
+        database.submitWrite(() -> {
+            String sql = database.isSqlite()
+                    ? "INSERT INTO idlefarm_node_research "
+                    + "(node_id, last_research_at, research_day, earned_today) VALUES (?, ?, ?, ?) "
+                    + "ON CONFLICT(node_id) DO UPDATE SET last_research_at=excluded.last_research_at, "
+                    + "research_day=excluded.research_day, earned_today=excluded.earned_today"
+                    : "INSERT INTO idlefarm_node_research "
+                    + "(node_id, last_research_at, research_day, earned_today) VALUES (?, ?, ?, ?) "
+                    + "ON DUPLICATE KEY UPDATE last_research_at=VALUES(last_research_at), "
+                    + "research_day=VALUES(research_day), earned_today=VALUES(earned_today)";
+            try (Connection connection = database.getConnection();
+                 PreparedStatement upsert = connection.prepareStatement(sql)) {
+                upsert.setLong(1, nodeId);
+                upsert.setLong(2, lastAt);
+                upsert.setString(3, day);
+                upsert.setInt(4, earnedToday);
+                upsert.executeUpdate();
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to persist passive research for node "
+                        + nodeId + ": " + e.getMessage());
             }
         });
     }
