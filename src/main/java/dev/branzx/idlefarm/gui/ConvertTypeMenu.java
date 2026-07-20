@@ -9,7 +9,7 @@ import org.bukkit.entity.Player;
 
 import java.util.List;
 
-/** Target-type picker for converting a production node in place. */
+/** Conversion target picker followed by a destructive confirmation. */
 public final class ConvertTypeMenu extends Menu {
 
     private final GuiManager gui;
@@ -28,41 +28,57 @@ public final class ConvertTypeMenu extends Menu {
 
     @Override
     protected Component title() {
-        return Component.text("Convert " + node.getType() + " →", NamedTextColor.GOLD);
+        return Component.text("Convert " + Ui.pretty(node.getType().name()),
+                NamedTextColor.GOLD);
     }
 
     @Override
     protected void build() {
-        for (int i = 0; i < rows() * 9; i++) {
-            set(i, Icon.filler());
-        }
+        fill();
         option(10, NodeType.MINING, Material.IRON_PICKAXE);
         option(11, NodeType.FARMING, Material.WHEAT);
         option(13, NodeType.WOODCUTTING, Material.OAK_LOG);
         option(15, NodeType.LIVESTOCK, Material.BEEF);
         option(16, NodeType.HUNTER, Material.IRON_SWORD);
-        set(22, Icon.of(Material.BARRIER).name("Back", NamedTextColor.RED).build(),
-                e -> new NodeDetailMenu(viewer, gui, node.getId()).open());
+        backButton(22, "Node Control",
+                () -> new NodeControlMenu(viewer, gui, node.getId()).open());
     }
 
     private void option(int slot, NodeType type, Material material) {
         if (type == node.getType()) {
-            set(slot, Icon.of(material).name(type + " (current)", NamedTextColor.DARK_GRAY).build());
+            set(slot, Icon.of(material)
+                    .name(Ui.pretty(type.name()) + " | CURRENT", NamedTextColor.DARK_GRAY)
+                    .build());
             return;
         }
         double cost = gui.plugin().getConfig().getDouble("claims.convert-cost", 750.0);
-        set(slot, Icon.of(material).name("→ " + type, NamedTextColor.GREEN)
-                .lore(List.of("Cost: " + cost, "Exploration Lv. "
-                        + node.getExplorationLevel() + " → "
-                        + (int) Math.floor(node.getExplorationLevel()
-                                * gui.plugin().getConfig().getDouble("claims.convert-exploration-keep", 0.5))),
-                        NamedTextColor.GRAY).build(),
-                e -> {
-                    var result = gui.claimService().convert(viewer.getUniqueId(), viewer.getWorld(),
-                            node.getChunk(), type);
+        int resultingLevel = (int) Math.floor(node.getExplorationLevel()
+                * gui.plugin().getConfig()
+                .getDouble("claims.convert-exploration-keep", 0.5));
+        List<String> details = List.of(
+                "Cost: " + cost,
+                "Exploration Lv." + node.getExplorationLevel() + " -> " + resultingLevel,
+                "Workers return as contracts",
+                "Buffer must be empty");
+        set(slot, Icon.of(material)
+                .name(Ui.pretty(type.name()), NamedTextColor.GREEN)
+                .loreComponents(java.util.stream.Stream.concat(
+                        details.stream().map(line -> Ui.line(line, NamedTextColor.GRAY)),
+                        java.util.stream.Stream.of(Ui.click("review conversion")))
+                        .toList())
+                .build(), event -> confirm(type, details));
+    }
+
+    private void confirm(NodeType type, List<String> details) {
+        new ConfirmMenu(viewer, "Convert to " + Ui.pretty(type.name()) + "?",
+                details,
+                () -> {
+                    var result = gui.claimService().convert(viewer.getUniqueId(),
+                            viewer.getWorld(), node.getChunk(), type);
                     viewer.sendMessage(Component.text(result.message(),
                             result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-                    new NodeDetailMenu(viewer, gui, node.getId()).open();
-                });
+                    new NodeControlMenu(viewer, gui, node.getId()).open();
+                },
+                () -> new ConvertTypeMenu(viewer, gui, node).open()).open();
     }
 }

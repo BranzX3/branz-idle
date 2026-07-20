@@ -396,7 +396,7 @@ public final class ExplorationService {
 
     /** Force-set a node's exploration level. Admin. Caller persists the node. */
     public void adminSetLevel(NodeRecord node, int level) {
-        node.setExplorationLevel(Math.max(1, Math.min(scale.levelCap(), level)));
+        node.setExplorationLevel(Math.max(1, Math.min(scale.adminLevelCap(), level)));
         node.setExplorationExp(0);
     }
 

@@ -93,11 +93,9 @@ public final class NodeBuildMenu extends Menu {
                             .map(choice -> Ui.line(pretty(choice), NamedTextColor.GRAY)).toList())
                     .build(), event -> {
                 if (node.getExplorationLevel() < level) return;
-                // Cycle choices through repeated clicks while keeping the
-                // exact effect names visible in lore.
-                int choiceIndex = event.isShiftClick() ? 2 : event.isRightClick() ? 1 : 0;
-                String selected = choices.get(choiceIndex % choices.size());
-                confirmTypePerk(node, level, selected);
+                new AdminOptionMenu(viewer, "Choose Type Perk Lv." + level, choices,
+                        selected -> confirmTypePerk(node, level, selected),
+                        this::open).open();
             });
         }
 

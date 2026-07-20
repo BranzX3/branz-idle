@@ -9,7 +9,7 @@ import org.bukkit.entity.Player;
 
 import java.util.List;
 
-/** Task-oriented admin entry point; dangerous mutations remain typed commands. */
+/** Task-oriented admin landing page with permission-aware sections. */
 public final class AdminHubMenu extends Menu {
 
     private final GuiManager gui;
@@ -26,78 +26,85 @@ public final class AdminHubMenu extends Menu {
 
     @Override
     protected Component title() {
-        return Component.text("IdleFarm • Admin Hub", NamedTextColor.DARK_RED);
+        return Component.text("IdleFarm | Admin", NamedTextColor.DARK_RED);
     }
 
     @Override
     protected void build() {
         fill();
         set(4, Icon.head(gui.skinHeadCache(), viewer.getName())
-                .name("Admin: " + viewer.getName(), NamedTextColor.RED)
+                .name("Admin | " + viewer.getName(), NamedTextColor.RED)
                 .loreComponents(List.of(
-                        Ui.line("เลือกงานตาม flow ด้านล่าง", NamedTextColor.GRAY),
-                        Ui.line("คำสั่งที่แก้ข้อมูลต้องมี reason", NamedTextColor.YELLOW)))
+                        Ui.line("Choose a task below", NamedTextColor.GRAY),
+                        Ui.line("Mutations require a reason and audit ID",
+                                NamedTextColor.YELLOW)))
                 .build());
 
         if (can("idlefarm.admin.operations")) {
             set(10, Icon.of(Material.SPYGLASS)
-                    .name("ตรวจสอบ Node ปัจจุบัน", NamedTextColor.AQUA)
-                    .loreComponents(nodeLore()).build(),
-                    event -> new AdminNodeMenu(viewer, gui).open());
+                    .name("Node Inspector", NamedTextColor.AQUA)
+                    .loreComponents(nodeLore())
+                    .build(), event -> new AdminNodeMenu(viewer, gui).open());
         }
         if (can("idlefarm.admin.content")) {
             set(12, Icon.of(Material.CHEST)
-                    .name("Content & Drop Pools", NamedTextColor.LIGHT_PURPLE)
+                    .name("Content Control", NamedTextColor.LIGHT_PURPLE)
                     .loreComponents(List.of(
-                            Ui.line("ดูและแก้ pool ตาม type/bracket", NamedTextColor.GRAY),
-                            Ui.click("เปิด Content Browser"))).build(),
-                    event -> new AdminContentMenu(viewer, gui).open());
-            set(14, Icon.of(Material.COMPARATOR)
-                    .name("Validate Content", NamedTextColor.YELLOW)
+                            Ui.line("Draft, validate, publish and rollback", NamedTextColor.GRAY),
+                            Ui.click("open content tools")))
+                    .build(), event -> new AdminContentMenu(viewer, gui).open());
+            set(14, Icon.of(Material.STRUCTURE_BLOCK)
+                    .name("Schematics", NamedTextColor.LIGHT_PURPLE)
                     .loreComponents(List.of(
-                            Ui.line("ตรวจ material, weight และ fallback", NamedTextColor.GRAY),
-                            Ui.click("รัน validation"))).build(),
-                    event -> new AdminContentMenu(viewer, gui).open());
+                            Ui.line("Buildings, anchors and animation profiles",
+                                    NamedTextColor.GRAY),
+                            Ui.click("open authoring flow")))
+                    .build(), event -> new AdminSchematicMenu(viewer, gui).open());
         }
         if (can("idlefarm.admin.audit")) {
             set(16, Icon.of(Material.REDSTONE_TORCH)
                     .name("System Health", NamedTextColor.RED)
                     .loreComponents(List.of(
-                            Ui.line("Economy และ telemetry summary", NamedTextColor.GRAY),
-                            Ui.click("โหลด metrics"))).build(),
-                    event -> AdminMetricsMenu.open(viewer, gui));
+                            Ui.line("Economy, telemetry and live alerts", NamedTextColor.GRAY),
+                            Ui.click("load dashboard")))
+                    .build(), event -> AdminMetricsMenu.open(viewer, gui));
         }
 
         if (can("idlefarm.admin.economy") || can("idlefarm.admin.operations")) {
             set(28, Icon.of(Material.PLAYER_HEAD)
-                    .name("Player & Economy", NamedTextColor.GREEN)
+                    .name("Players & Economy", NamedTextColor.GREEN)
                     .loreComponents(List.of(
-                            Ui.line("Node cap, Coins และ Credits", NamedTextColor.GRAY),
-                            Ui.click("เลือกผู้เล่น"))).build(),
-                    event -> new AdminPlayerListMenu(viewer, gui, 0).open());
+                            Ui.line("Accounts, claims, Coins, Credits and caps",
+                                    NamedTextColor.GRAY),
+                            Ui.click("search players")))
+                    .build(), event -> new AdminPlayerListMenu(viewer, gui, 0).open());
         }
         if (can("idlefarm.admin.operations")) {
             set(30, Icon.of(Material.CLOCK)
                     .name("Events & Operations", NamedTextColor.GOLD)
                     .loreComponents(List.of(
-                            Ui.line("Event และ Node operations", NamedTextColor.GRAY),
-                            Ui.click("เปิด Node Control"))).build(),
-                    event -> new AdminNodeMenu(viewer, gui).open());
-            set(34, Icon.of(Material.TNT)
-                    .name("Danger Zone", NamedTextColor.DARK_RED)
-                    .loreComponents(List.of(
-                            Ui.line("งานย้อนกลับยากต้องระบุ reason", NamedTextColor.RED),
-                            Ui.click("เปิด Node Control"))).build(),
-                    event -> new AdminNodeMenu(viewer, gui).open());
+                            Ui.line("Spawn events and control the current Node",
+                                    NamedTextColor.GRAY),
+                            Ui.click("open operations")))
+                    .build(), event -> new AdminNodeMenu(viewer, gui).open());
         }
         if (can("idlefarm.admin.audit")) {
             set(32, Icon.of(Material.WRITABLE_BOOK)
-                    .name("Audit", NamedTextColor.AQUA)
+                    .name("Audit Log", NamedTextColor.AQUA)
                     .loreComponents(List.of(
-                            Ui.line("15 รายการล่าสุด", NamedTextColor.GRAY),
-                            Ui.click("เปิด audit log"))).build(),
-                    event -> AdminLogMenu.open(viewer, gui, null,
+                            Ui.line("Recent mutations and economy actions", NamedTextColor.GRAY),
+                            Ui.click("browse audit entries")))
+                    .build(), event -> AdminLogMenu.open(viewer, gui, null,
                             () -> gui.openAdminHub(viewer)));
+        }
+        if (can("idlefarm.admin.operations")) {
+            set(34, Icon.of(Material.TNT)
+                    .name("Danger Zone", NamedTextColor.DARK_RED)
+                    .loreComponents(List.of(
+                            Ui.line("Force actions require reason and confirmation",
+                                    NamedTextColor.RED),
+                            Ui.click("inspect current Node first")))
+                    .build(), event -> new AdminNodeMenu(viewer, gui).open());
         }
         backToHub(gui);
     }
@@ -109,13 +116,16 @@ public final class AdminHubMenu extends Menu {
                 viewer.getLocation().getBlockZ() >> 4));
         if (node == null) {
             return List.of(
-                    Ui.status("Chunk นี้ยังไม่ถูก claim", NamedTextColor.YELLOW),
-                    Ui.line("ยืนใน Node แล้วเปิดเมนูใหม่", NamedTextColor.GRAY));
+                    Ui.status("UNCLAIMED CHUNK", NamedTextColor.YELLOW),
+                    Ui.line("Stand inside a Node and reopen this menu",
+                            NamedTextColor.GRAY));
         }
         return List.of(
-                Ui.status(node.getType() + " • " + node.getState(), NamedTextColor.GREEN),
-                Ui.line("Node #" + node.getId() + " • Tier " + node.getTier(), NamedTextColor.GRAY),
-                Ui.click("ดูรายละเอียดใน chat"));
+                Ui.status(Ui.pretty(node.getType().name()) + " | " + node.getState(),
+                        NamedTextColor.GREEN),
+                Ui.line("Node #" + node.getId() + " | Tier " + node.getTier(),
+                        NamedTextColor.GRAY),
+                Ui.click("inspect current Node"));
     }
 
     private boolean can(String permission) {

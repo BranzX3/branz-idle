@@ -146,7 +146,8 @@ public final class DropTableService {
         List<String> errors = new java.util.ArrayList<>();
         for (NodeType type : NodeType.values()) {
             if (!type.isProduction()) continue;
-            for (int bracket = 1; bracket <= 10; bracket++) {
+            int lastBracket = Math.max(10, highestDefinedBracket(candidate, type));
+            for (int bracket = 1; bracket <= lastBracket; bracket++) {
                 Map<String, Double> effective = table(candidate, type, bracket);
                 if (effective.isEmpty()) {
                     errors.add(type + " bracket-" + bracket + " is empty");
@@ -188,7 +189,8 @@ public final class DropTableService {
             if (section == null) continue;
             boolean bracketed = section.getConfigurationSection("bracket-1") != null;
             if (bracketed) {
-                for (int bracket = 1; bracket <= 10; bracket++) {
+                int lastBracket = Math.max(10, highestDefinedBracket(candidate, type));
+                for (int bracket = 1; bracket <= lastBracket; bracket++) {
                     ConfigurationSection table = section.getConfigurationSection("bracket-" + bracket);
                     if (table == null) continue;
                     int unlock = (bracket - 1) * bracketSize + 1;
@@ -304,7 +306,7 @@ public final class DropTableService {
 
     /** Bracket sub-tables a type defines (empty if it uses a flat table). */
     public List<String> brackets(NodeType type) {
-        ConfigurationSection section = yaml.getConfigurationSection(type.name().toLowerCase(Locale.ROOT));
+        ConfigurationSection section = draft.getConfigurationSection(type.name().toLowerCase(Locale.ROOT));
         List<String> result = new java.util.ArrayList<>();
         if (section != null) {
             for (String key : section.getKeys(false)) {
@@ -323,6 +325,17 @@ public final class DropTableService {
         } catch (NumberFormatException e) {
             return Integer.MAX_VALUE;
         }
+    }
+
+    private int highestDefinedBracket(YamlConfiguration source, NodeType type) {
+        ConfigurationSection section =
+                source.getConfigurationSection(type.name().toLowerCase(Locale.ROOT));
+        if (section == null) return 0;
+        return section.getKeys(false).stream()
+                .filter(key -> key.startsWith("bracket-"))
+                .mapToInt(this::bracketNumber)
+                .filter(value -> value != Integer.MAX_VALUE)
+                .max().orElse(0);
     }
 
     /**
@@ -499,8 +512,17 @@ public final class DropTableService {
             if (!type.isProduction()) continue;
             String prefix = type.name().toLowerCase(Locale.ROOT);
             if (normalized.equals(prefix)) return true;
-            if (normalized.matches(java.util.regex.Pattern.quote(prefix)
-                    + "\\.bracket-(?:[1-9]|10)")) return true;
+            String bracketPrefix = prefix + ".bracket-";
+            if (normalized.startsWith(bracketPrefix)) {
+                try {
+                    int bracket = Integer.parseInt(normalized.substring(bracketPrefix.length()));
+                    int max = Math.max(10,
+                            plugin.getConfig().getInt("exploration.max-brackets", 100));
+                    if (bracket >= 1 && bracket <= max) return true;
+                } catch (NumberFormatException ignored) {
+                    // Invalid paths are rejected below.
+                }
+            }
         }
         return false;
     }

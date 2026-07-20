@@ -1,5 +1,20 @@
 # IdleFarm Player and Admin UX Flows
 
+## 0. Cross-platform delivery
+
+- Slot 9 is reserved for the permanent `IdleFarm Menu` compass. It cannot be
+  moved, dropped, stored, traded, crafted, or lost on death. `/idle` remains
+  the fallback.
+- Java players receive the inventory renderer.
+- Floodgate players receive native Bedrock Forms generated from the same menu
+  actions. `SimpleForm` renders menus, `ModalForm` renders confirmations, and
+  `CustomForm` handles text and numeric input.
+- Floodgate is an optional dependency. Without it, the plugin remains fully
+  usable by Java players.
+- No required action relies on shift-click, right-click, middle-click,
+  double-click, drag, or chat input.
+- Every mutation is validated by the same service regardless of renderer.
+
 ## 1. UX principles
 
 - The Hub always recommends one action.
@@ -380,6 +395,6 @@ Validation:
 - Thai is the primary copy; English may be secondary.
 - Do not rely on color alone: use icon and state text.
 - Avoid lore lines longer than the inventory width.
-- Use consistent click conventions.
+- Use one explicit action per button; click modifiers are not gameplay inputs.
 - Provide command fallbacks for essential actions.
 - Allow animation reduction and notification frequency settings.

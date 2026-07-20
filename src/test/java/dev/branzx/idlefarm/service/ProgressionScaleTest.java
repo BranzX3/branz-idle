@@ -27,14 +27,17 @@ class ProgressionScaleTest {
     }
 
     @Test
-    void vanillaBracketsStayWithinOneToTen() {
+    void bracketsPreserveLaunchTenAndAllowManualPostHundredScale() {
         ProgressionScale scale = scaleWithDesignDefaults();
         assertEquals(1, scale.bracket(1));
         assertEquals(2, scale.bracket(10));
         assertEquals(2, scale.bracket(19));
         assertEquals(3, scale.bracket(20));
         assertEquals(10, scale.bracket(100));
-        assertEquals(10, scale.bracket(200));
+        assertEquals(11, scale.bracket(101));
+        assertEquals(21, scale.bracket(200));
+        assertEquals(100, scale.bracket(1000));
+        assertEquals(1000, scale.adminLevelCap());
     }
 
     @Test
@@ -74,6 +77,8 @@ class ProgressionScaleTest {
         when(config.getLong("exploration.exp-curve.per-level", 12)).thenReturn(12L);
         when(config.getInt("exploration.bracket-size", 10)).thenReturn(10);
         when(config.getInt("exploration.vanilla-brackets", 10)).thenReturn(10);
+        when(config.getInt("exploration.max-brackets", 100)).thenReturn(100);
+        when(config.getInt("exploration.admin-level-cap", 1000)).thenReturn(1000);
         when(config.getInt("production.buffer-capacity-per-tier", 256)).thenReturn(256);
         return new ProgressionScale(plugin);
     }

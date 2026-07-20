@@ -25,7 +25,7 @@ public final class WorkersMenu extends Menu {
 
     @Override
     protected Component title() {
-        return Component.text("Workers", NamedTextColor.DARK_AQUA);
+        return Component.text("IdleFarm | Crew", NamedTextColor.DARK_AQUA);
     }
 
     @Override
@@ -43,7 +43,13 @@ public final class WorkersMenu extends Menu {
             }
         }
         set(10, Icon.of(Material.EXPERIENCE_BOTTLE).name("Hire Worker", NamedTextColor.GREEN)
-                .lore(odds, NamedTextColor.GRAY).build(), e -> hire());
+                .lore(odds, NamedTextColor.GRAY).build(), e ->
+                        new ConfirmMenu(viewer, "Hire a Worker?",
+                                List.of("Cost: " + formatAmount(hireCost),
+                                        "Rarity, stats and Trait are random",
+                                        "The result is resolved server-side"),
+                                this::hire,
+                                () -> new WorkersMenu(viewer, gui).open()).open());
 
         int used = gui.workerStore().bagCount(viewer.getUniqueId());
         int cap = gui.workerService().bagCapacity(viewer.getUniqueId());

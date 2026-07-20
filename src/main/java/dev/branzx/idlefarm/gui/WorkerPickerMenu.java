@@ -97,7 +97,7 @@ public final class WorkerPickerMenu extends Menu {
         List<Component> lore = meta.lore() == null
                 ? new ArrayList<>()
                 : new ArrayList<>(meta.lore());
-        lore.add(Ui.line("Click / Shift-click: assign to this Node", NamedTextColor.GREEN));
+        lore.add(Ui.line("Select: assign to this Node", NamedTextColor.GREEN));
         meta.lore(lore);
         item.setItemMeta(meta);
         return item;

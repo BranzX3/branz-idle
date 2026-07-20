@@ -394,14 +394,15 @@ public final class AdminCommands {
         }
         int level = Integer.parseInt(args[2]);
         explorationService.adminSetLevel(node, level);
+        int appliedLevel = node.getExplorationLevel();
         nodeStore.updateProduction(node);
         String auditId = UUID.randomUUID().toString();
         String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length));
-        sender.sendMessage(Component.text("Node #" + node.getId() + " exploration level = " + level
+        sender.sendMessage(Component.text("Node #" + node.getId() + " exploration level = " + appliedLevel
                 + " (bracket " + explorationService.bracket(node) + ") | audit " + auditId,
                 NamedTextColor.GREEN));
         auditService.logAdmin(player.getUniqueId(), auditId, reason, "ADMIN_EXPLEVEL",
-                node.getId() + " -> " + level);
+                node.getId() + " requested=" + level + " applied=" + appliedLevel);
         return true;
     }
 

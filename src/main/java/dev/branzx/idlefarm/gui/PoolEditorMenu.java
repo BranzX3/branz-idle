@@ -6,7 +6,6 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.ClickType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,8 +16,8 @@ import java.util.function.BooleanSupplier;
 
 /**
  * Admin drop-pool editor. Real items in a chest grid, weight in lore.
- *  - L/R click: weight -1/+1 (shift: ±10)
- *  - Drop key (Q): remove from pool
+ * Each item opens explicit weight controls that work on mouse, touch and
+ * controller. Removal and exact-value changes remain audited.
  *  - Click an empty slot while holding an item: add it (weight 10)
  * Every change writes only drops-draft.yml. Publish is a separate validated
  * and audited operation in Content Control.
@@ -69,21 +68,21 @@ public final class PoolEditorMenu extends Menu {
             lore.add(Ui.line("Weight " + Ui.num(weight) + "  (" + String.format("%.1f", percent) + "%)",
                     NamedTextColor.GOLD));
             lore.add(Ui.divider());
-            lore.add(Ui.line("L/R click: -1/+1  (shift ±10)", NamedTextColor.GRAY));
-            lore.add(Ui.line("Middle click: type exact weight", NamedTextColor.AQUA));
-            lore.add(Ui.line("Drop key (Q): remove", NamedTextColor.RED));
+            lore.add(Ui.line("Open explicit weight controls", NamedTextColor.AQUA));
             String materialKey = entry.getKey();
             set(slot, Icon.of(material).name(Ui.pretty(materialKey), NamedTextColor.WHITE)
-                    .loreComponents(lore).build(), e -> adjust(materialKey, weight, e.getClick()));
+                    .loreComponents(lore).build(), e -> openWeightActions(materialKey, weight));
             slot++;
         }
 
-        // Remaining grid slots accept a held item to add it to the pool.
-        for (int i = slot; i < 45; i++) {
-            set(i, Icon.of(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
-                    .name("Add item", NamedTextColor.GRAY)
-                    .lore("Click while holding an item in", NamedTextColor.DARK_GRAY).build(),
+        if (slot < 45) {
+            set(slot++, Icon.of(Material.LIME_DYE)
+                    .name("Add Held Item", NamedTextColor.GREEN)
+                    .lore("Adds the main-hand item with weight 10", NamedTextColor.GRAY).build(),
                     e -> addHeld());
+        }
+        for (int i = slot; i < 45; i++) {
+            set(i, Icon.filler());
         }
 
         for (int i = 45; i < 54; i++) {
@@ -94,14 +93,19 @@ public final class PoolEditorMenu extends Menu {
                 e -> viewer.closeInventory());
     }
 
-    private void adjust(String material, double current, ClickType click) {
-        if (click == ClickType.DROP || click == ClickType.CONTROL_DROP) {
+    private void openWeightActions(String material, double current) {
+        List<String> options = List.of("-10", "-1", "SET_EXACT", "+1", "+10", "REMOVE");
+        new AdminOptionMenu(viewer, "Weight • " + Ui.pretty(material), options,
+                option -> adjust(material, current, option), this::open).open();
+    }
+
+    private void adjust(String material, double current, String option) {
+        if ("REMOVE".equals(option)) {
             mutate("Remove " + Ui.pretty(material),
                     path + " remove " + material, () -> drops.setWeight(path, material, 0));
             return;
         }
-        // Middle click: type an exact weight in chat.
-        if (click == ClickType.MIDDLE) {
+        if ("SET_EXACT".equals(option)) {
             gui.chatPrompt().requestNumber(viewer,
                     "Enter exact weight for " + Ui.pretty(material) + " (current " + Ui.num(current) + ")",
                     value -> {
@@ -112,13 +116,12 @@ public final class PoolEditorMenu extends Menu {
                     this::open);
             return;
         }
-        double delta = switch (click) {
-            case LEFT -> -1;
-            case RIGHT -> 1;
-            case SHIFT_LEFT -> -10;
-            case SHIFT_RIGHT -> 10;
-            default -> 0;
-        };
+        double delta;
+        try {
+            delta = Double.parseDouble(option);
+        } catch (NumberFormatException ignored) {
+            return;
+        }
         if (delta == 0) {
             return;
         }

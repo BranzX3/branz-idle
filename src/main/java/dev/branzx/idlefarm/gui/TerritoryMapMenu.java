@@ -2,7 +2,6 @@ package dev.branzx.idlefarm.gui;
 
 import dev.branzx.idlefarm.node.ChunkKey;
 import dev.branzx.idlefarm.node.NodeRecord;
-import dev.branzx.idlefarm.node.NodeType;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
@@ -12,15 +11,13 @@ import org.bukkit.inventory.ItemStack;
 import java.util.List;
 
 /**
- * 9x5 chunk-grid map centered on the viewer's chunk. Own nodes are colored
- * by type (click → Node Detail; shift-click → unclaim confirm), unclaimed
- * chunks adjacent to the territory open the claim type picker, other
- * players' chunks show red.
+ * Five-by-nine chunk map centered on the player.
+ * Green is actionable, colored items are owned, red belongs to another player.
  */
 public final class TerritoryMapMenu extends Menu {
 
-    private static final int GRID_W = 9;
-    private static final int GRID_H = 5;
+    private static final int GRID_WIDTH = 9;
+    private static final int GRID_HEIGHT = 5;
 
     private final GuiManager gui;
 
@@ -36,66 +33,86 @@ public final class TerritoryMapMenu extends Menu {
 
     @Override
     protected Component title() {
-        return Component.text("Territory Map", NamedTextColor.DARK_GREEN);
+        return Component.text("IdleFarm | Territory", NamedTextColor.DARK_GREEN);
     }
 
     @Override
     protected void build() {
-        int centerChunkX = viewer.getLocation().getBlockX() >> 4;
-        int centerChunkZ = viewer.getLocation().getBlockZ() >> 4;
+        int centerX = viewer.getLocation().getBlockX() >> 4;
+        int centerZ = viewer.getLocation().getBlockZ() >> 4;
         String world = viewer.getWorld().getName();
 
-        for (int row = 0; row < GRID_H; row++) {
-            for (int col = 0; col < GRID_W; col++) {
-                int chunkX = centerChunkX + (col - GRID_W / 2);
-                int chunkZ = centerChunkZ + (row - GRID_H / 2);
+        for (int row = 0; row < GRID_HEIGHT; row++) {
+            for (int column = 0; column < GRID_WIDTH; column++) {
+                int chunkX = centerX + column - GRID_WIDTH / 2;
+                int chunkZ = centerZ + row - GRID_HEIGHT / 2;
                 ChunkKey key = new ChunkKey(world, chunkX, chunkZ);
-                int slot = row * 9 + col;
-                boolean isCenter = chunkX == centerChunkX && chunkZ == centerChunkZ;
+                boolean current = chunkX == centerX && chunkZ == centerZ;
                 NodeRecord node = gui.nodeStore().getByChunk(key);
+                int slot = row * 9 + column;
 
                 if (node == null) {
-                    // First-ever claim can go anywhere; after that, only chunks
-                    // touching the player's territory are claimable.
-                    boolean firstClaim = !gui.claimService().hasResidential(viewer.getUniqueId());
-                    boolean claimable = firstClaim ? isCenter : adjacentToOwn(key);
-                    String hint = firstClaim
-                            ? (isCenter ? "Click to claim your first plot!" : "Stand here & refresh to claim")
-                            : (claimable ? "Click to claim" : "Not adjacent to your land");
-                    set(slot, Icon.of(claimable ? Material.LIME_STAINED_GLASS_PANE
-                                    : Material.GRAY_STAINED_GLASS_PANE)
-                            .name((isCenter ? "» " : "") + "Chunk " + chunkX + "," + chunkZ,
-                                    claimable ? NamedTextColor.GREEN : NamedTextColor.GRAY)
-                            .lore(hint, NamedTextColor.DARK_GRAY)
-                            .build(),
-                            claimable ? e -> new ClaimTypeMenu(viewer, gui, key).open() : null);
+                    drawEmpty(slot, key, current);
                 } else if (node.getOwnerUuid().equals(viewer.getUniqueId())) {
-                    set(slot, ownIcon(node, isCenter), e -> {
-                        if (e.isShiftClick()) {
-                            confirmUnclaim(node);
-                        } else if (node.getType().isProduction()) {
-                            gui.openNodeDetail(viewer, node);
-                        }
-                    });
+                    drawOwned(slot, node, current);
                 } else {
                     set(slot, Icon.of(Material.RED_STAINED_GLASS_PANE)
-                            .name("Claimed", NamedTextColor.RED)
-                            .lore("Another player's territory", NamedTextColor.DARK_GRAY).build());
+                            .name("Claimed Territory", NamedTextColor.RED)
+                            .lore("Owned by another player", NamedTextColor.GRAY)
+                            .build());
                 }
             }
         }
 
-        for (int i = 45; i < 54; i++) {
-            set(i, Icon.filler());
+        for (int slot = 45; slot < 54; slot++) {
+            set(slot, Icon.filler());
         }
-        set(49, Icon.of(Material.NETHER_STAR).name("Main Menu", NamedTextColor.GREEN).build(),
-                e -> gui.openMainHub(viewer));
-        set(53, Icon.of(Material.CLOCK).name("Refresh", NamedTextColor.YELLOW)
-                .lore("Re-centers on your position", NamedTextColor.GRAY).build(),
-                e -> new TerritoryMapMenu(viewer, gui).open());
+        set(45, Icon.of(Material.GRASS_BLOCK)
+                .name("All Nodes", NamedTextColor.GREEN)
+                .lore("Open the status-first Node list", NamedTextColor.GRAY)
+                .build(), event -> gui.openNodes(viewer));
+        set(49, Icon.of(Material.NETHER_STAR)
+                .name("Back to Hub", NamedTextColor.GREEN)
+                .build(), event -> gui.openMainHub(viewer));
+        set(53, Icon.of(Material.COMPASS)
+                .name("Recenter Map", NamedTextColor.AQUA)
+                .lore("Center the map on your current chunk", NamedTextColor.GRAY)
+                .build(), event -> new TerritoryMapMenu(viewer, gui).open());
     }
 
-    private ItemStack ownIcon(NodeRecord node, boolean isCenter) {
+    private void drawEmpty(int slot, ChunkKey key, boolean current) {
+        boolean firstClaim = !gui.claimService().hasResidential(viewer.getUniqueId());
+        boolean claimable = firstClaim ? current : adjacentToOwn(key);
+        Material material = claimable
+                ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE;
+        List<Component> lore = claimable
+                ? List.of(
+                        Ui.line("Unclaimed", NamedTextColor.GRAY),
+                        Ui.click(firstClaim ? "build your Residential plot" : "claim this chunk"))
+                : List.of(
+                        Ui.line("Unclaimed", NamedTextColor.GRAY),
+                        Ui.line(firstClaim ? "Stand in this chunk to begin"
+                                        : "Must touch your existing territory",
+                                NamedTextColor.DARK_GRAY));
+        set(slot, Icon.of(material)
+                .name((current ? "YOU ARE HERE | " : "")
+                                + key.x() + ", " + key.z(),
+                        claimable ? NamedTextColor.GREEN : NamedTextColor.GRAY)
+                .loreComponents(lore).build(),
+                claimable ? event -> new ClaimTypeMenu(viewer, gui, key).open() : null);
+    }
+
+    private void drawOwned(int slot, NodeRecord node, boolean current) {
+        set(slot, ownedIcon(node, current), event -> {
+            if (node.getType().isProduction()) {
+                gui.openNodeDetail(viewer, node);
+            } else {
+                gui.openResidential(viewer, node);
+            }
+        });
+    }
+
+    private ItemStack ownedIcon(NodeRecord node, boolean current) {
         Material material = switch (node.getType()) {
             case RESIDENTIAL -> Material.OAK_DOOR;
             case MINING -> Material.IRON_PICKAXE;
@@ -104,12 +121,19 @@ public final class TerritoryMapMenu extends Menu {
             case LIVESTOCK -> Material.BEEF;
             case HUNTER -> Material.IRON_SWORD;
         };
+        List<Component> lore = node.getType().isProduction()
+                ? List.of(
+                        Ui.line("Tier " + node.getTier() + " | " + node.getState(),
+                                NamedTextColor.GRAY),
+                        Ui.click("open Node Control"))
+                : List.of(
+                        Ui.status("HOME PLOT", NamedTextColor.YELLOW),
+                        Ui.click("open Residential controls"));
         return Icon.of(material)
-                .name((isCenter ? "» " : "") + node.getType() + " T" + node.getTier(), NamedTextColor.GREEN)
-                .lore(List.of("State: " + node.getState(),
-                        node.getType().isProduction() ? "Click: manage" : "Your home plot",
-                        "Shift-click: unclaim"), NamedTextColor.GRAY)
-                .build();
+                .name((current ? "YOU ARE HERE | " : "")
+                                + Ui.pretty(node.getType().name()),
+                        current ? NamedTextColor.AQUA : NamedTextColor.GREEN)
+                .loreComponents(lore).build();
     }
 
     private boolean adjacentToOwn(ChunkKey key) {
@@ -124,10 +148,11 @@ public final class TerritoryMapMenu extends Menu {
 
     private void confirmUnclaim(NodeRecord node) {
         double refund = gui.claimService().claimCost(node.getType())
-                * gui.plugin().getConfig().getDouble("claims.unclaim-refund-ratio", 0.5);
-        new ConfirmMenu(viewer, "Unclaim " + node.getType() + "?",
+                * gui.plugin().getConfig()
+                .getDouble("claims.unclaim-refund-ratio", 0.5);
+        new ConfirmMenu(viewer, "Unclaim " + Ui.pretty(node.getType().name()) + "?",
                 List.of("Refund: " + refund,
-                        "Exploration level is LOST",
+                        "Exploration progress will be lost",
                         "Workers return as contracts",
                         "Buffer must be empty"),
                 () -> {

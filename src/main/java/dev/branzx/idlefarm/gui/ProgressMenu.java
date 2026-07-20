@@ -69,16 +69,25 @@ public final class ProgressMenu extends Menu {
                                             commission.current() + "/" + commission.target()),
                                     Ui.line("Reward: " + commission.reward(), NamedTextColor.GOLD),
                                     Ui.line(commission.claimed() ? "Claimed"
-                                                    : done ? "Left-click to claim"
-                                                    : "Right-click to use today's free reroll",
+                                                    : done ? "Claim reward"
+                                                    : "Review today's free reroll",
                                             commission.claimed() ? NamedTextColor.DARK_GREEN : NamedTextColor.DARK_GRAY)))
                             .build(),
                     event -> {
-                        GameDesignService.Result result = event.isRightClick()
-                                ? design.rerollCommission(viewer.getUniqueId(), commission.id())
-                                : design.claimCommission(viewer.getUniqueId(), commission.id());
-                        message(result);
-                        redraw();
+                        if (commission.claimed()) return;
+                        if (done) {
+                            message(design.claimCommission(viewer.getUniqueId(), commission.id()));
+                            redraw();
+                        } else {
+                            new ConfirmMenu(viewer, "Use free reroll?",
+                                    List.of(commission.description(),
+                                            "Current progress will be replaced."),
+                                    () -> {
+                                        message(design.rerollCommission(
+                                                viewer.getUniqueId(), commission.id()));
+                                        open();
+                                    }, this::open).open();
+                        }
                     });
         }
         var rewardCatalog = design.progressionRewards();
@@ -142,12 +151,8 @@ public final class ProgressMenu extends Menu {
                             Ui.line(project.completed() ? "Completed beside your Residential Node"
                                             : "Next stage at " + nextProjectThreshold(project)
                                                     + " • click to contribute up to 64",
-                                    NamedTextColor.DARK_GRAY))).build(), event -> {
-                GameDesignService.Result result =
-                        design.contributeProject(viewer.getUniqueId(), project.id(), 64);
-                message(result);
-                redraw();
-            });
+                                    NamedTextColor.DARK_GRAY))).build(),
+                    event -> confirmProjectContribution(project));
         }
         GameDesignService.Project serverProject = design.serverProject();
         set(32, Icon.of(serverProject.completed() ? Material.BEACON : Material.BELL)
@@ -160,12 +165,8 @@ public final class ProgressMenu extends Menu {
                                 NamedTextColor.YELLOW,
                                 serverProject.current() + "/" + serverProject.target()),
                         Ui.line("Click: contribute up to 64 " + pretty(serverProject.material()),
-                                NamedTextColor.DARK_GRAY))).build(), event -> {
-            GameDesignService.Result result =
-                    design.contributeServerProject(viewer.getUniqueId(), 64);
-            message(result);
-            redraw();
-        });
+                                NamedTextColor.DARK_GRAY))).build(),
+                event -> confirmServerContribution(serverProject));
 
         int journalSlot = 36;
         for (NodeType type : NodeType.values()) {
@@ -206,6 +207,32 @@ public final class ProgressMenu extends Menu {
     private void message(GameDesignService.Result result) {
         viewer.sendMessage(Component.text(result.message(),
                 result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+    }
+
+    private void confirmProjectContribution(GameDesignService.Project project) {
+        new ConfirmMenu(viewer, "Contribute to " + project.name() + "?",
+                List.of("Consumes up to 64 " + pretty(project.material()),
+                        "Items are taken from Warehouse",
+                        "Contribution cannot be withdrawn"),
+                () -> {
+                    message(gui.gameDesignService().contributeProject(
+                            viewer.getUniqueId(), project.id(), 64));
+                    new ProgressMenu(viewer, gui).open();
+                },
+                () -> new ProgressMenu(viewer, gui).open()).open();
+    }
+
+    private void confirmServerContribution(GameDesignService.Project project) {
+        new ConfirmMenu(viewer, "Contribute to the Server Project?",
+                List.of("Consumes up to 64 " + pretty(project.material()),
+                        "Items are taken from Warehouse",
+                        "Contribution cannot be withdrawn"),
+                () -> {
+                    message(gui.gameDesignService().contributeServerProject(
+                            viewer.getUniqueId(), 64));
+                    new ProgressMenu(viewer, gui).open();
+                },
+                () -> new ProgressMenu(viewer, gui).open()).open();
     }
 
     private Material icon(NodeType type) {

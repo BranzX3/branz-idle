@@ -7,9 +7,10 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 
+import java.util.ArrayList;
 import java.util.List;
 
-/** Boosters (timed multipliers) and one-time convenience perks. */
+/** Coin-funded convenience purchases with explicit review before spending. */
 public final class ShopMenu extends Menu {
 
     private final GuiManager gui;
@@ -26,69 +27,84 @@ public final class ShopMenu extends Menu {
 
     @Override
     protected Component title() {
-        return Component.text("Boosters & Perks", NamedTextColor.GOLD);
+        return Component.text("IdleFarm | Upgrades", NamedTextColor.GOLD);
     }
 
     @Override
     protected void build() {
-        for (int i = 0; i < rows() * 9; i++) {
-            set(i, Icon.filler());
-        }
-        BoosterService boosters = gui.boosterService();
-        PerkService perks = gui.perkService();
+        fill();
+        set(4, Icon.of(Material.EMERALD)
+                .name("Boosters & Convenience", NamedTextColor.GOLD)
+                .lore("Every purchase is reviewed before Coins are spent",
+                        NamedTextColor.GRAY).build());
 
-        // Boosters row.
-        booster(10, BoosterService.MONEY, Material.GOLD_INGOT, "Money Booster");
-        booster(12, BoosterService.PRODUCTION, Material.REDSTONE, "Production Booster");
+        booster(11, BoosterService.MONEY, Material.GOLD_INGOT, "Money Booster");
+        booster(13, BoosterService.PRODUCTION, Material.REDSTONE, "Production Booster");
+        perk(20, PerkService.AUTO_COLLECT, Material.HOPPER, "Auto-Collect",
+                List.of("Periodically sends Node buffers", "to your Warehouse"));
+        perk(22, PerkService.REMOTE_COLLECT, Material.ENDER_EYE, "Remote Collect",
+                List.of("Adds Quick Collect All", "to the Home screen"));
 
-        // Perks row.
-        perk(14, PerkService.AUTO_COLLECT, Material.HOPPER, "Auto-Collect",
-                List.of("Node buffers flush to your", "Warehouse automatically", "(endgame QoL)"));
-        perk(16, PerkService.REMOTE_COLLECT, Material.ENDER_EYE, "Remote Collect",
-                List.of("Collect All button in the hub,", "works from anywhere"));
-
-        set(31, Icon.of(Material.NETHER_STAR).name("Main Menu", NamedTextColor.GREEN).build(),
-                e -> gui.openMainHub(viewer));
+        backToHub(gui);
     }
 
     private void booster(int slot, String type, Material material, String label) {
         BoosterService boosters = gui.boosterService();
         long remaining = boosters.remainingMillis(viewer.getUniqueId(), type);
-        var status = remaining > 0
-                ? Ui.line("● ACTIVE — " + Ui.time(remaining) + " left (buy extends)", NamedTextColor.GREEN)
-                : Ui.line("○ Inactive", NamedTextColor.DARK_GRAY);
+        double cost = boosters.cost(type);
+        List<Component> lore = new ArrayList<>();
+        lore.add(Ui.line("x" + boosters.boostMultiplier(type) + " for "
+                + boosters.durationMinutes(type) + "m", NamedTextColor.AQUA));
+        lore.add(Ui.line("Cost: " + Ui.num(cost), NamedTextColor.GOLD));
+        lore.add(remaining > 0
+                ? Ui.status("ACTIVE | " + Ui.time(remaining) + " LEFT", NamedTextColor.GREEN)
+                : Ui.status("INACTIVE", NamedTextColor.DARK_GRAY));
+        lore.add(Ui.click("review purchase"));
         set(slot, Icon.of(material).name(label, NamedTextColor.YELLOW)
-                .loreComponents(List.of(
-                        Ui.line("×" + boosters.boostMultiplier(type) + " for "
-                                + boosters.durationMinutes(type) + "m", NamedTextColor.AQUA),
-                        Ui.line("◆ " + Ui.num(boosters.cost(type)), NamedTextColor.GOLD),
-                        Ui.divider(),
-                        status)).build(),
-                e -> {
-                    String error = boosters.buy(viewer.getUniqueId(), type);
-                    viewer.sendMessage(Component.text(error == null ? label + " activated!" : error,
-                            error == null ? NamedTextColor.GREEN : NamedTextColor.RED));
-                    redraw();
-                });
+                .loreComponents(lore).build(), event ->
+                new ConfirmMenu(viewer, "Buy " + label + "?",
+                        List.of("Cost: " + Ui.num(cost),
+                                "Duration: " + boosters.durationMinutes(type) + " minutes",
+                                remaining > 0
+                                        ? "Adds time to the active booster"
+                                        : "Activates immediately"),
+                        () -> buyBooster(type, label),
+                        () -> new ShopMenu(viewer, gui).open()).open());
     }
 
-    private void perk(int slot, String perk, Material material, String label, List<String> description) {
+    private void buyBooster(String type, String label) {
+        String error = gui.boosterService().buy(viewer.getUniqueId(), type);
+        viewer.sendMessage(Component.text(error == null ? label + " activated." : error,
+                error == null ? NamedTextColor.GREEN : NamedTextColor.RED));
+        new ShopMenu(viewer, gui).open();
+    }
+
+    private void perk(int slot, String perk, Material material, String label,
+                      List<String> description) {
         PerkService perks = gui.perkService();
         boolean owned = perks.has(viewer.getUniqueId(), perk);
-        List<String> lore = new java.util.ArrayList<>(description);
-        lore.add(owned ? "OWNED" : "Cost: " + perks.cost(perk));
-        set(slot, Icon.of(material).name(label, owned ? NamedTextColor.GREEN : NamedTextColor.AQUA)
-                .lore(lore, NamedTextColor.GRAY).build(),
-                e -> {
-                    if (owned) {
-                        viewer.sendMessage(Component.text("You already own " + label + ".",
-                                NamedTextColor.YELLOW));
-                        return;
-                    }
-                    String error = perks.buy(viewer.getUniqueId(), perk);
-                    viewer.sendMessage(Component.text(error == null ? label + " unlocked!" : error,
-                            error == null ? NamedTextColor.GREEN : NamedTextColor.RED));
-                    redraw();
-                });
+        double cost = perks.cost(perk);
+        List<Component> lore = new ArrayList<>();
+        description.forEach(line -> lore.add(Ui.line(line, NamedTextColor.GRAY)));
+        lore.add(owned ? Ui.status("OWNED", NamedTextColor.GREEN)
+                : Ui.line("Cost: " + Ui.num(cost), NamedTextColor.GOLD));
+        if (!owned) {
+            lore.add(Ui.click("review purchase"));
+        }
+        set(slot, Icon.of(material)
+                .name(label, owned ? NamedTextColor.GREEN : NamedTextColor.AQUA)
+                .loreComponents(lore).build(), owned ? null : event ->
+                        new ConfirmMenu(viewer, "Unlock " + label + "?",
+                                List.of("Cost: " + Ui.num(cost),
+                                        "Permanent convenience unlock"),
+                                () -> buyPerk(perk, label),
+                                () -> new ShopMenu(viewer, gui).open()).open());
+    }
+
+    private void buyPerk(String perk, String label) {
+        String error = gui.perkService().buy(viewer.getUniqueId(), perk);
+        viewer.sendMessage(Component.text(error == null ? label + " unlocked." : error,
+                error == null ? NamedTextColor.GREEN : NamedTextColor.RED));
+        new ShopMenu(viewer, gui).open();
     }
 }

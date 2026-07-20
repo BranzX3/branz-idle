@@ -7,10 +7,15 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Home screen ordered by player intent:
+ * account summary, one recommended action, core loop, then secondary tools.
+ */
 public final class MainHubMenu extends Menu {
 
     private final GuiManager gui;
@@ -27,7 +32,7 @@ public final class MainHubMenu extends Menu {
 
     @Override
     protected Component title() {
-        return Component.text("IdleFarm", NamedTextColor.DARK_GREEN);
+        return Component.text("IdleFarm | Home", NamedTextColor.DARK_GREEN);
     }
 
     @Override
@@ -35,189 +40,240 @@ public final class MainHubMenu extends Menu {
         fill();
 
         PlayerData data = gui.dataStore().getOnline(viewer.getUniqueId());
-        String currency = gui.plugin().getConfig().getString("currency-name", "Coins");
         List<NodeRecord> owned = gui.nodeStore().getByOwner(viewer.getUniqueId());
-        long production = owned.stream().filter(n -> n.getType().isProduction()).count();
-        long fullBuffers = owned.stream()
-                .filter(n -> n.getType().isProduction() && "STORAGE_FULL".equals(n.getState())).count();
-        long eventsReady = owned.stream().filter(n -> {
-            var event = gui.explorationService().getEvent(n.getId());
-            return event != null && ("AVAILABLE".equals(event.getState())
-                    || "COMPLETED".equals(event.getState()));
-        }).count();
+        List<NodeRecord> productionNodes = owned.stream()
+                .filter(node -> node.getType().isProduction()).toList();
+        long fullBuffers = productionNodes.stream()
+                .filter(node -> "STORAGE_FULL".equals(node.getState())).count();
+        long eventsReady = productionNodes.stream().filter(this::hasReadyEvent).count();
 
-        setPriority(owned, production, fullBuffers, eventsReady);
+        set(4, profile(data, productionNodes.size()),
+                event -> gui.openProfile(viewer));
+        setNextAction(productionNodes, fullBuffers, eventsReady);
 
-        // Primary player loop: territory -> production -> storage -> workers -> goals.
-        List<net.kyori.adventure.text.Component> nodeLore = new ArrayList<>();
-        nodeLore.add(Ui.line(production + "/" + gui.claimService().nodeCap(viewer.getUniqueId())
-                + " production nodes", NamedTextColor.GRAY));
+        set(19, Icon.of(Material.FILLED_MAP)
+                .name("Territory", NamedTextColor.GREEN)
+                .loreComponents(List.of(
+                        Ui.line(owned.size() + " claimed chunks", NamedTextColor.GRAY),
+                        Ui.click("view map or claim land")))
+                .build(), event -> gui.openTerritoryMap(viewer));
+
+        List<Component> nodeLore = new ArrayList<>();
+        nodeLore.add(Ui.line(productionNodes.size() + "/"
+                + gui.claimService().nodeCap(viewer.getUniqueId()) + " production nodes",
+                NamedTextColor.GRAY));
         if (fullBuffers > 0) {
-            nodeLore.add(Ui.line("⚠ " + fullBuffers + " buffer(s) FULL", NamedTextColor.RED));
+            nodeLore.add(Ui.line(fullBuffers + " buffer(s) need collecting", NamedTextColor.RED));
         }
         if (eventsReady > 0) {
-            nodeLore.add(Ui.line("★ " + eventsReady + " event(s) waiting", NamedTextColor.GOLD));
+            nodeLore.add(Ui.line(eventsReady + " exploration action(s) ready", NamedTextColor.GOLD));
         }
-        if (fullBuffers == 0 && eventsReady == 0) {
-            nodeLore.add(Ui.line("● All running smoothly", NamedTextColor.GREEN));
-        }
-        set(20, Icon.of(Material.GRASS_BLOCK).name("Nodes", NamedTextColor.GREEN)
-                .loreComponents(nodeLore)
-                .build(), e -> gui.openNodes(viewer));
-
-        set(19, Icon.of(Material.FILLED_MAP).name("Territory Map", NamedTextColor.GREEN)
-                .lore("Claim & manage from a chunk map", NamedTextColor.GRAY).build(),
-                e -> gui.openTerritoryMap(viewer));
+        nodeLore.add(Ui.click("open Node Control"));
+        set(21, Icon.of(Material.GRASS_BLOCK)
+                .name("Node Control", fullBuffers > 0 ? NamedTextColor.RED : NamedTextColor.GREEN)
+                .loreComponents(nodeLore).build(), event -> gui.openNodes(viewer));
 
         int stored = gui.warehouseService().total(viewer.getUniqueId());
         int capacity = gui.warehouseService().getCapacity(viewer.getUniqueId());
-        set(22, Icon.of(Material.CHEST).name("Warehouse", NamedTextColor.GOLD)
-                .loreComponents(List.of(Ui.bar("", capacity == 0 ? 0 : stored / (double) capacity,
-                        stored >= capacity ? NamedTextColor.RED : NamedTextColor.GOLD,
-                        Ui.num(stored) + "/" + Ui.num(capacity)))).build(),
-                e -> gui.openWarehouse(viewer, viewer.getUniqueId()));
+        set(23, Icon.of(Material.CHEST)
+                .name("Warehouse", stored >= capacity ? NamedTextColor.RED : NamedTextColor.GOLD)
+                .loreComponents(List.of(
+                        Ui.bar("Storage", capacity == 0 ? 0 : stored / (double) capacity,
+                                stored >= capacity ? NamedTextColor.RED : NamedTextColor.GOLD,
+                                Ui.num(stored) + "/" + Ui.num(capacity)),
+                        Ui.click("deposit or withdraw items")))
+                .build(), event -> gui.openWarehouse(viewer, viewer.getUniqueId()));
 
-        set(23, Icon.of(Material.VILLAGER_SPAWN_EGG).name("Workers", NamedTextColor.AQUA)
-                .lore("Hire & fuse workers", NamedTextColor.GRAY).build(),
-                e -> gui.openWorkers(viewer));
+        set(25, Icon.of(Material.WRITABLE_BOOK)
+                .name("Progress", NamedTextColor.AQUA)
+                .loreComponents(progressLore(owned))
+                .build(), event -> gui.openProgress(viewer));
 
-        set(32, Icon.of(Material.BEACON).name("Boosters & Perks", NamedTextColor.LIGHT_PURPLE)
-                .lore("Multipliers & QoL unlocks", NamedTextColor.GRAY).build(),
-                e -> gui.openShop(viewer));
+        set(29, Icon.of(Material.VILLAGER_SPAWN_EGG)
+                .name("Crew", NamedTextColor.AQUA)
+                .loreComponents(List.of(
+                        Ui.line("Workers, hiring and fusion", NamedTextColor.GRAY),
+                        Ui.click("manage your crew")))
+                .build(), event -> gui.openWorkers(viewer));
 
         if (gui.expeditionService() != null) {
-            long mine = gui.expeditionService().contributionOf(viewer.getUniqueId());
-            set(28, Icon.of(Material.CAMPFIRE).name("Global Expedition", NamedTextColor.GOLD)
-                    .loreComponents(List.of(
-                            Ui.line("Week " + gui.expeditionService().activeWeek(), NamedTextColor.GRAY),
-                            Ui.line("Your contribution: " + Ui.num(mine), NamedTextColor.GOLD),
-                            Ui.line("Weekly rewards for top ranks!", NamedTextColor.YELLOW)))
-                    .build(), e -> gui.openExpedition(viewer));
+            set(31, Icon.of(Material.CAMPFIRE)
+                    .name("Weekly Expedition", NamedTextColor.GOLD)
+                    .loreComponents(expeditionLore())
+                    .build(), event -> gui.openExpedition(viewer));
         }
 
-        if (gui.gameDesignService() != null) {
-            Long focusedId = gui.gameDesignService().focusedNode(viewer.getUniqueId());
-            NodeRecord focused = focusedId == null ? null : owned.stream()
-                    .filter(node -> node.getId() == focusedId).findFirst().orElse(null);
-            List<net.kyori.adventure.text.Component> lore = new ArrayList<>();
-            if (focused == null) {
-                lore.add(Ui.line("Recommended: select a Focused Node", NamedTextColor.YELLOW));
-            } else {
-                lore.add(Ui.line("Focused " + focused.getType() + " Lv."
-                        + focused.getExplorationLevel(), NamedTextColor.AQUA));
-                lore.add(Ui.line("Daily commissions, Journal & Projects", NamedTextColor.GRAY));
-            }
-            set(24, Icon.of(Material.WRITABLE_BOOK).name("Pioneer Chronicle", NamedTextColor.AQUA)
-                    .loreComponents(lore).build(), e -> gui.openProgress(viewer));
-        }
+        set(33, Icon.of(Material.EMERALD)
+                .name("Upgrades", NamedTextColor.LIGHT_PURPLE)
+                .loreComponents(List.of(
+                        Ui.line("Boosters and convenience perks", NamedTextColor.GRAY),
+                        Ui.click("open upgrades")))
+                .build(), event -> gui.openShop(viewer));
 
-        set(29, Icon.of(Material.OAK_HANGING_SIGN).name("Trust", NamedTextColor.GREEN)
-                .lore("Let friends into your territory", NamedTextColor.GRAY).build(),
-                e -> gui.openTrust(viewer));
+        set(35, Icon.of(Material.OAK_HANGING_SIGN)
+                .name("Social", NamedTextColor.GREEN)
+                .loreComponents(List.of(
+                        Ui.line("Trust, visits and trading", NamedTextColor.GRAY),
+                        Ui.click("open Social")))
+                .build(), event -> gui.openSocial(viewer));
 
-        set(30, Icon.of(Material.GOLD_INGOT).name("Leaderboard", NamedTextColor.GOLD)
-                .lore("Richest players on the server", NamedTextColor.GRAY).build(),
-                e -> gui.openLeaderboard(viewer));
-
-        // Collect-all convenience (perk-gated).
         if (gui.perkService() != null
                 && gui.perkService().has(viewer.getUniqueId(), PerkService.REMOTE_COLLECT)) {
-            set(31, Icon.of(Material.HOPPER_MINECART).name("Collect All", NamedTextColor.GOLD)
-                    .lore("All node buffers → Warehouse", NamedTextColor.GRAY).build(),
-                    e -> collectAll(owned));
+            set(45, Icon.of(Material.HOPPER_MINECART)
+                    .name("Quick Collect All", NamedTextColor.GOLD)
+                    .loreComponents(List.of(
+                            Ui.line("Move every Node buffer to Warehouse", NamedTextColor.GRAY),
+                            Ui.click("collect now")))
+                    .build(), event -> collectAll(productionNodes));
         }
 
+        set(48, Icon.of(Material.GOLD_INGOT)
+                .name("Leaderboard", NamedTextColor.GOLD)
+                .lore("See the richest players", NamedTextColor.GRAY)
+                .build(), event -> gui.openLeaderboard(viewer));
+
+        closeButton();
+
+        if (gui.hasAdminAccess(viewer)) {
+            set(53, Icon.of(Material.COMMAND_BLOCK)
+                    .name("Admin", NamedTextColor.RED)
+                    .lore("Open server management tools", NamedTextColor.GRAY)
+                    .build(), event -> gui.openAdminHub(viewer));
+        }
+    }
+
+    private ItemStack profile(PlayerData data, int productionNodes) {
+        String currency = gui.plugin().getConfig().getString("currency-name", "Coins");
         double balance = data == null ? 0 : data.getBalance();
         int streak = gui.streakService() == null ? 0
                 : gui.streakService().currentStreak(viewer.getUniqueId());
-        List<net.kyori.adventure.text.Component> profileLore = new ArrayList<>();
-        profileLore.add(Ui.line("◆ " + Ui.num(balance) + " " + currency, NamedTextColor.GOLD));
-        profileLore.add(Ui.line("☀ " + Ui.time((data == null ? 0 : data.getTotalOnlineMinutes()) * 60_000L)
-                + " online", NamedTextColor.AQUA));
-        profileLore.add(Ui.line("⚡ Streak " + streak + " day(s)", NamedTextColor.RED));
+        List<Component> lore = new ArrayList<>();
+        lore.add(Ui.line(Ui.num(balance) + " " + currency, NamedTextColor.GOLD));
+        lore.add(Ui.line(productionNodes + " production nodes", NamedTextColor.GREEN));
+        lore.add(Ui.line("Login streak: " + streak + " day(s)", NamedTextColor.RED));
         if (gui.boosterService() != null) {
-            long moneyMs = gui.boosterService().remainingMillis(viewer.getUniqueId(), "money");
-            long prodMs = gui.boosterService().remainingMillis(viewer.getUniqueId(), "production");
-            if (moneyMs > 0) {
-                profileLore.add(Ui.line("▲ Money boost " + Ui.time(moneyMs), NamedTextColor.LIGHT_PURPLE));
-            }
-            if (prodMs > 0) {
-                profileLore.add(Ui.line("▲ Production boost " + Ui.time(prodMs), NamedTextColor.LIGHT_PURPLE));
+            long production = gui.boosterService()
+                    .remainingMillis(viewer.getUniqueId(), "production");
+            if (production > 0) {
+                lore.add(Ui.line("Production boost: " + Ui.time(production),
+                        NamedTextColor.LIGHT_PURPLE));
             }
         }
-        profileLore.add(Ui.click("แสดงข้อมูลสรุปใน chat"));
-        set(4, Icon.of(Material.SUNFLOWER).name(viewer.getName(), NamedTextColor.YELLOW)
-                .loreComponents(profileLore).build(),
-                event -> viewer.performCommand("idle balance"));
-
-        if (gui.hasAdminAccess(viewer)) {
-            set(34, Icon.of(Material.COMMAND_BLOCK).name("Admin Hub", NamedTextColor.RED)
-                    .lore("เครื่องมือดูแลระบบแยกตามงาน", NamedTextColor.GRAY).build(),
-                    event -> gui.openAdminHub(viewer));
-        }
-        closeButton();
+        lore.add(Ui.click("show account details in chat"));
+        return Icon.head(gui.skinHeadCache(), viewer.getName())
+                .name(viewer.getName(), NamedTextColor.YELLOW)
+                .loreComponents(lore).build();
     }
 
-    private void setPriority(List<NodeRecord> owned, long production, long fullBuffers, long eventsReady) {
-        if (production == 0) {
+    private void setNextAction(List<NodeRecord> nodes, long fullBuffers, long eventsReady) {
+        if (nodes.isEmpty()) {
             set(13, Icon.of(Material.COMPASS)
-                    .name("แนะนำ: สร้าง Production Node", NamedTextColor.YELLOW)
+                    .name("Next: Build your first Node", NamedTextColor.YELLOW)
                     .loreComponents(List.of(
-                            Ui.line("เริ่มจาก Mining, Farming หรือ Woodcutting", NamedTextColor.GRAY),
-                            Ui.click("เปิด Territory Map"))).build(),
-                    event -> gui.openTerritoryMap(viewer));
+                            Ui.line("Choose an adjacent chunk and Node type", NamedTextColor.GRAY),
+                            Ui.click("open Territory")))
+                    .build(), event -> gui.openTerritoryMap(viewer));
             return;
         }
         if (fullBuffers > 0) {
-            set(13, Icon.of(Material.REDSTONE)
-                    .name("ต้องจัดการ: Buffer เต็ม " + fullBuffers + " จุด", NamedTextColor.RED)
+            NodeRecord target = nodes.stream()
+                    .filter(node -> "STORAGE_FULL".equals(node.getState()))
+                    .findFirst().orElseThrow();
+            set(13, Icon.of(Material.HOPPER)
+                    .name("Next: Collect a full buffer", NamedTextColor.RED)
                     .loreComponents(List.of(
-                            Ui.line("การผลิตหยุดจนกว่าจะเก็บของ", NamedTextColor.GRAY),
-                            Ui.click("เปิด Nodes"))).build(),
-                    event -> gui.openNodes(viewer));
+                            Ui.line(target.getType() + " production is stopped", NamedTextColor.GRAY),
+                            Ui.click("open this Node")))
+                    .build(), event -> gui.openNodeDetail(viewer, target));
             return;
         }
         if (eventsReady > 0) {
+            NodeRecord target = nodes.stream().filter(this::hasReadyEvent)
+                    .findFirst().orElseThrow();
             set(13, Icon.of(Material.FIREWORK_STAR)
-                    .name("พร้อมเล่น: Exploration " + eventsReady + " จุด", NamedTextColor.GOLD)
+                    .name("Next: Exploration is ready", NamedTextColor.GOLD)
                     .loreComponents(List.of(
-                            Ui.line("มี event รอเริ่มหรือ loot รอรับ", NamedTextColor.GRAY),
-                            Ui.click("เปิด Nodes"))).build(),
-                    event -> gui.openNodes(viewer));
+                            Ui.line(target.getType() + " has an event or reward waiting",
+                                    NamedTextColor.GRAY),
+                            Ui.click("open this Node")))
+                    .build(), event -> gui.openNodeDetail(viewer, target));
             return;
         }
-        Long focusedId = gui.gameDesignService() == null ? null
-                : gui.gameDesignService().focusedNode(viewer.getUniqueId());
-        NodeRecord focused = focusedId == null ? null : owned.stream()
-                .filter(node -> node.getId() == focusedId).findFirst().orElse(null);
-        if (focused == null) {
-            set(13, Icon.of(Material.WRITABLE_BOOK)
-                    .name("แนะนำ: เลือก Focused Node", NamedTextColor.YELLOW)
+        NodeRecord empty = nodes.stream()
+                .filter(node -> gui.workerStore().getAssigned(node.getId()).isEmpty())
+                .findFirst().orElse(null);
+        if (empty != null) {
+            set(13, Icon.of(Material.PLAYER_HEAD)
+                    .name("Next: Assign a Worker", NamedTextColor.YELLOW)
                     .loreComponents(List.of(
-                            Ui.line("เพื่อเปิด Daily Commission และเป้าหมาย", NamedTextColor.GRAY),
-                            Ui.click("เปิด Chronicle"))).build(),
-                    event -> gui.openProgress(viewer));
+                            Ui.line(empty.getType() + " cannot produce without a crew",
+                                    NamedTextColor.GRAY),
+                            Ui.click("open this Node")))
+                    .build(), event -> gui.openNodeDetail(viewer, empty));
             return;
         }
+        NodeRecord focused = focusedNode(nodes);
         set(13, Icon.of(Material.LIME_DYE)
-                .name("กำลังผลิตปกติ", NamedTextColor.GREEN)
+                .name("All systems running", NamedTextColor.GREEN)
                 .loreComponents(List.of(
-                        Ui.line(focused.getType() + " • Lv." + focused.getExplorationLevel(),
-                                NamedTextColor.AQUA),
-                        Ui.click("เปิด Focused Node"))).build(),
-                event -> gui.openNodeDetail(viewer, focused));
+                        Ui.line(focused.getType() + " | Exploration Lv."
+                                + focused.getExplorationLevel(), NamedTextColor.AQUA),
+                        Ui.click("open focused Node")))
+                .build(), event -> gui.openNodeDetail(viewer, focused));
     }
 
-    private void collectAll(List<NodeRecord> owned) {
+    private List<Component> progressLore(List<NodeRecord> nodes) {
+        NodeRecord focused = focusedNodeOrNull(nodes);
+        if (focused == null) {
+            return List.of(
+                    Ui.line("No Focused Node selected", NamedTextColor.YELLOW),
+                    Ui.line("Chronicle, commissions and season goals", NamedTextColor.GRAY),
+                    Ui.click("open Progress"));
+        }
+        return List.of(
+                Ui.line("Focused: " + focused.getType() + " Lv."
+                        + focused.getExplorationLevel(), NamedTextColor.AQUA),
+                Ui.line("Chronicle, commissions and season goals", NamedTextColor.GRAY),
+                Ui.click("open Progress"));
+    }
+
+    private List<Component> expeditionLore() {
+        return List.of(
+                Ui.line("Week " + gui.expeditionService().activeWeek(), NamedTextColor.GRAY),
+                Ui.line("Contribution: "
+                        + Ui.num(gui.expeditionService().contributionOf(viewer.getUniqueId())),
+                        NamedTextColor.GOLD),
+                Ui.click("view weekly event"));
+    }
+
+    private NodeRecord focusedNode(List<NodeRecord> nodes) {
+        NodeRecord focused = focusedNodeOrNull(nodes);
+        return focused == null ? nodes.getFirst() : focused;
+    }
+
+    private NodeRecord focusedNodeOrNull(List<NodeRecord> nodes) {
+        Long id = gui.gameDesignService() == null ? null
+                : gui.gameDesignService().focusedNode(viewer.getUniqueId());
+        if (id == null) {
+            return null;
+        }
+        return nodes.stream().filter(node -> node.getId() == id).findFirst().orElse(null);
+    }
+
+    private boolean hasReadyEvent(NodeRecord node) {
+        var event = gui.explorationService().getEvent(node.getId());
+        return event != null && ("AVAILABLE".equals(event.getState())
+                || "COMPLETED".equals(event.getState()));
+    }
+
+    private void collectAll(List<NodeRecord> nodes) {
         int moved = 0;
-        for (NodeRecord node : owned) {
-            if (!node.getType().isProduction() || node.getStorage().isEmpty()) {
+        for (NodeRecord node : nodes) {
+            if (node.getStorage().isEmpty()) {
                 continue;
             }
             int nodeMoved = gui.warehouseService().collectNode(node);
             moved += nodeMoved;
-            node.setState("ACTIVE");
-            gui.nodeStore().updateProduction(node);
             if (gui.gameDesignService() != null) {
                 gui.gameDesignService().onBufferCollected(node, nodeMoved);
             }
@@ -225,9 +281,5 @@ public final class MainHubMenu extends Menu {
         viewer.sendMessage(Component.text("Collected " + moved + " items to Warehouse.",
                 NamedTextColor.GREEN));
         redraw();
-    }
-
-    private String formatAmount(double amount) {
-        return amount == Math.floor(amount) ? String.valueOf((long) amount) : String.format("%.2f", amount);
     }
 }

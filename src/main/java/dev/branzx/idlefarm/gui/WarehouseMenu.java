@@ -12,10 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Paged warehouse view. Left-click withdraws one stack, shift-click
- * withdraws all of that material into the player's inventory.
- */
+/** Paged warehouse view with explicit, cross-platform item actions. */
 public final class WarehouseMenu extends Menu {
 
     private static final int PAGE_SIZE = 45;
@@ -66,16 +63,8 @@ public final class WarehouseMenu extends Menu {
                     .loreComponents(List.of(
                             Ui.line("Stored ×" + Ui.num(entry.getValue()), NamedTextColor.GOLD),
                             Ui.divider(),
-                            Ui.line("Click: withdraw 1 stack", NamedTextColor.GRAY),
-                            Ui.line("Shift-click: withdraw all", NamedTextColor.GRAY),
-                            Ui.line("Middle click: type exact amount", NamedTextColor.AQUA))).build(),
-                    e -> {
-                        if (e.getClick() == org.bukkit.event.inventory.ClickType.MIDDLE) {
-                            promptExact(entry.getKey(), material);
-                        } else {
-                            withdraw(entry.getKey(), material, e.isShiftClick());
-                        }
-                    });
+                            Ui.line("Open withdrawal options", NamedTextColor.AQUA))).build(),
+                    e -> new ItemActionsMenu(entry.getKey(), material).open());
         }
 
         for (int i = 45; i < 54; i++) {
@@ -87,11 +76,23 @@ public final class WarehouseMenu extends Menu {
         }
         set(49, Icon.of(Material.NETHER_STAR).name("Main Menu", NamedTextColor.GREEN).build(),
                 e -> gui.openMainHub(viewer));
+        set(46, Icon.of(Material.HOPPER)
+                .name("Deposit Items", NamedTextColor.GREEN)
+                .loreComponents(List.of(
+                        Ui.line("Choose an inventory stack", NamedTextColor.GRAY),
+                        Ui.line("Works with touch and controller", NamedTextColor.DARK_GRAY)))
+                .build(), e -> new DepositMenu().open());
         double expandCost = gui.plugin().getConfig().getDouble("warehouse.expand-cost", 5000);
         int expandStep = gui.plugin().getConfig().getInt("warehouse.expand-step", 1000);
         set(48, Icon.of(Material.ENDER_CHEST).name("Expand +" + expandStep, NamedTextColor.AQUA)
-                .lore("Cost: " + formatAmount(expandCost), NamedTextColor.GRAY).build(),
-                e -> expand());
+                .loreComponents(List.of(
+                        Ui.line("Cost: " + formatAmount(expandCost), NamedTextColor.GOLD),
+                        Ui.click("review expansion"))).build(),
+                e -> new ConfirmMenu(viewer, "Expand Warehouse?",
+                        List.of("Cost: " + formatAmount(expandCost),
+                                "Capacity: +" + expandStep),
+                        this::expand,
+                        () -> new WarehouseMenu(viewer, gui, owner, page).open()).open());
         if (start + PAGE_SIZE < entries.size()) {
             set(53, Icon.of(Material.ARROW).name("Next", NamedTextColor.YELLOW).build(),
                     e -> new WarehouseMenu(viewer, gui, owner, page + 1).open());
@@ -169,5 +170,109 @@ public final class WarehouseMenu extends Menu {
 
     private String formatAmount(double amount) {
         return amount == Math.floor(amount) ? String.valueOf((long) amount) : String.format("%.2f", amount);
+    }
+
+    private final class ItemActionsMenu extends Menu {
+        private final String key;
+        private final Material material;
+
+        private ItemActionsMenu(String key, Material material) {
+            super(WarehouseMenu.this.viewer);
+            this.key = key;
+            this.material = material;
+        }
+
+        @Override protected int rows() { return 3; }
+        @Override protected Component title() {
+            return Component.text(prettify(key), NamedTextColor.GOLD);
+        }
+
+        @Override
+        protected void build() {
+            fill();
+            int have = gui.warehouseService().getContents(owner)
+                    .getOrDefault(key.toUpperCase(Locale.ROOT), 0);
+            Material icon = material == null ? Material.PRISMARINE_SHARD : material;
+            set(4, Icon.of(icon).name(prettify(key), NamedTextColor.WHITE)
+                    .lore("Stored ×" + have, NamedTextColor.GOLD).build());
+            set(10, Icon.of(Material.PAPER).name("Withdraw 1", NamedTextColor.GREEN).build(),
+                    e -> finish(1));
+            set(12, Icon.of(Material.CHEST).name("Withdraw 1 Stack", NamedTextColor.GREEN).build(),
+                    e -> finish(Math.min(material == null ? 64 : material.getMaxStackSize(), have)));
+            set(14, Icon.of(Material.NAME_TAG).name("Enter Exact Amount", NamedTextColor.AQUA).build(),
+                    e -> gui.chatPrompt().requestNumber(viewer,
+                            "How many " + prettify(key) + "? (stored " + have + ")",
+                            value -> finish((int) Math.floor(value)), this::open));
+            set(16, Icon.of(Material.HOPPER).name("Withdraw All", NamedTextColor.YELLOW)
+                    .lore("Amount: " + have, NamedTextColor.GRAY).build(), e -> finish(have));
+            backButton(22, "Warehouse", WarehouseMenu.this::open);
+        }
+
+        private void finish(int amount) {
+            withdrawExact(key, material, Math.max(0, amount));
+            WarehouseMenu.this.open();
+        }
+    }
+
+    private final class DepositMenu extends Menu {
+        private DepositMenu() {
+            super(WarehouseMenu.this.viewer);
+        }
+
+        @Override protected int rows() { return 6; }
+        @Override protected Component title() {
+            return Component.text("Deposit to Warehouse", NamedTextColor.DARK_GREEN);
+        }
+
+        @Override
+        protected void build() {
+            fill();
+            int shown = 0;
+            for (int inventorySlot = 0; inventorySlot < viewer.getInventory().getSize()
+                    && shown < 45; inventorySlot++) {
+                ItemStack item = viewer.getInventory().getItem(inventorySlot);
+                if (item == null || item.getType().isAir() || isCustom(item)) continue;
+                int sourceSlot = inventorySlot;
+                set(shown++, Icon.of(item.getType()).amount(item.getAmount())
+                        .name(Ui.pretty(item.getType().name()), NamedTextColor.WHITE)
+                        .lore("Deposit this stack ×" + item.getAmount(), NamedTextColor.GREEN)
+                        .build(), e -> deposit(sourceSlot));
+            }
+            if (shown == 0) {
+                set(22, Icon.of(Material.BARRIER).name("No eligible items",
+                        NamedTextColor.GRAY).lore("Custom items stay in your inventory",
+                        NamedTextColor.DARK_GRAY).build());
+            }
+            backButton(49, "Warehouse", WarehouseMenu.this::open);
+        }
+
+        private boolean isCustom(ItemStack item) {
+            return item.hasItemMeta()
+                    && !item.getItemMeta().getPersistentDataContainer().isEmpty();
+        }
+
+        private void deposit(int sourceSlot) {
+            ItemStack item = viewer.getInventory().getItem(sourceSlot);
+            if (item == null || item.getType().isAir() || isCustom(item)) {
+                open();
+                return;
+            }
+            int requested = item.getAmount();
+            int stored = gui.warehouseService().deposit(owner, item.getType().name(), requested);
+            if (stored <= 0) {
+                viewer.sendMessage(Component.text(
+                        "Warehouse is full. Withdraw items or expand capacity.",
+                        NamedTextColor.RED));
+            } else {
+                if (stored >= requested) {
+                    viewer.getInventory().setItem(sourceSlot, null);
+                } else {
+                    item.setAmount(requested - stored);
+                }
+                viewer.sendMessage(Component.text("Deposited " + stored + " "
+                        + Ui.pretty(item.getType().name()) + ".", NamedTextColor.GREEN));
+            }
+            open();
+        }
     }
 }

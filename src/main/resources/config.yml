@@ -1,5 +1,13 @@
 # IdleFarm configuration
 
+# Permanent hotbar access to the platform-appropriate IdleFarm UI.
+menu-item:
+  enabled: true
+  # Bukkit hotbar index, 0-8. The default is the right-most slot.
+  slot: 8
+  material: COMPASS
+  repair-interval-ticks: 100
+
 # Storage backend: "sqlite" (zero-setup, single file in the plugin folder)
 # or "mysql" (use the mysql section below).
 storage:
@@ -458,6 +466,10 @@ exploration:
   bracket-size: 10
   vanilla-brackets: 10
   level-cap: 100
+  # Automatic launch progression stops at level-cap. Admins may manually
+  # stage and test future brackets up to this ceiling before enabling them.
+  admin-level-cap: 1000
+  max-brackets: 100
   # Exploration EXP needed for next level = base × (level + 1).
   exp-curve:
     base: 120

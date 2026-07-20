@@ -74,8 +74,7 @@ public final class FuseMenu extends Menu {
 
         refreshInfo(a, b);
 
-        set(40, Icon.of(Material.BARRIER).name("Close", NamedTextColor.RED).build(),
-                e -> viewer.closeInventory());
+        backButton(40, "Crew", () -> gui.openWorkers(viewer));
     }
 
     private void drawSlot(int slot, WorkerRecord picked, String label, Rarity filter,
@@ -138,7 +137,17 @@ public final class FuseMenu extends Menu {
         set(FUSE_BTN, Icon.of(Material.LIME_STAINED_GLASS_PANE)
                 .name("* FUSE — " + Math.round(chance * 100) + "% *", NamedTextColor.GREEN)
                 .lore("Click to roll!", NamedTextColor.GRAY).build(),
-                e -> doFuse(a, b));
+                e -> confirmFuse(a, b, chance));
+    }
+
+    private void confirmFuse(WorkerRecord base, WorkerRecord duplicate, double chance) {
+        new ConfirmMenu(viewer, "Fuse these Workers?",
+                List.of("Success chance: " + Math.round(chance * 100) + "%",
+                        "Base: " + base.getName() + " (protected on failure)",
+                        "Duplicate: " + duplicate.getName() + " (will be consumed)",
+                        "Returned EXP becomes Training Notes"),
+                () -> doFuse(base, duplicate),
+                this::open).open();
     }
 
     private String validate(WorkerRecord a, WorkerRecord b) {

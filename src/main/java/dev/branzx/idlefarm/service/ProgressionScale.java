@@ -32,6 +32,12 @@ public final class ProgressionScale {
         return plugin.getConfig().getInt("exploration.level-cap", 100);
     }
 
+    /** Ceiling for audited manual content staging; not automatic progression. */
+    public int adminLevelCap() {
+        return Math.max(levelCap(),
+                plugin.getConfig().getInt("exploration.admin-level-cap", 1000));
+    }
+
     public long expForNextLevel(int currentLevel) {
         if (currentLevel >= levelCap()) {
             return 0;
@@ -45,7 +51,13 @@ public final class ProgressionScale {
         int size = Math.max(1, plugin.getConfig().getInt("exploration.bracket-size", 10));
         int vanillaBrackets = Math.max(1,
                 plugin.getConfig().getInt("exploration.vanilla-brackets", 10));
-        return Math.min(vanillaBrackets, Math.max(1, level) / size + 1);
+        int maxBrackets = Math.max(vanillaBrackets,
+                plugin.getConfig().getInt("exploration.max-brackets", 100));
+        int raw = Math.max(1, level) / size + 1;
+        if (level <= vanillaBrackets * size) {
+            return Math.min(vanillaBrackets, raw);
+        }
+        return Math.min(maxBrackets, raw);
     }
 
     public int bufferCapacity(NodeRecord node) {

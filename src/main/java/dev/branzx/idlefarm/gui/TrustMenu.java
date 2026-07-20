@@ -55,17 +55,14 @@ public final class TrustMenu extends Menu {
             var offline = Bukkit.getOfflinePlayer(entry.getKey());
             String name = offline.getName() == null ? "?" : offline.getName();
             TrustLevel level = entry.getValue();
+            List<Component> accessLore = new java.util.ArrayList<>();
+            accessLore.add(Ui.line("Role: " + Ui.pretty(level.name()), NamedTextColor.AQUA));
+            roleAccess(level).forEach(line ->
+                    accessLore.add(Ui.line(line, NamedTextColor.GRAY)));
+            accessLore.add(Ui.click("manage role and access"));
             set(slot, Icon.head(gui.skinHeadCache(), name).name(name, NamedTextColor.GREEN)
-                    .lore(List.of("Level: " + level, "Click: cycle level",
-                            "Shift-click: remove"), NamedTextColor.GRAY).build(),
-                    e -> {
-                        if (e.isShiftClick()) {
-                            gui.trustService().removeTrust(viewer.getUniqueId(), entry.getKey());
-                        } else {
-                            gui.trustService().setTrust(viewer.getUniqueId(), entry.getKey(), cycle(level));
-                        }
-                        redraw();
-                    });
+                    .loreComponents(accessLore).build(),
+                    e -> new TrustedPlayerMenu(entry.getKey(), name, level).open());
             slot++;
         }
 
@@ -92,7 +89,7 @@ public final class TrustMenu extends Menu {
             addSlot++;
         }
 
-        backToHub(gui);
+        backButton(49, "Social", () -> gui.openSocial(viewer));
     }
 
     private TrustLevel cycle(TrustLevel level) {
@@ -101,5 +98,80 @@ public final class TrustMenu extends Menu {
             case HELPER -> TrustLevel.MANAGER;
             case MANAGER -> TrustLevel.VISITOR;
         };
+    }
+
+    private List<String> roleAccess(TrustLevel level) {
+        return switch (level) {
+            case VISITOR -> List.of("Can visit and use allowed doors",
+                    "Cannot collect or manage Nodes");
+            case HELPER -> List.of("Visitor access + collect buffers",
+                    "Can contribute to projects");
+            case MANAGER -> List.of("Helper access + Workers and events",
+                    "Cannot upgrade, convert or unclaim");
+        };
+    }
+
+    private void confirmRole(UUID target, String name,
+                             TrustLevel before, TrustLevel after) {
+        List<String> details = new java.util.ArrayList<>();
+        details.add(Ui.pretty(before.name()) + " -> " + Ui.pretty(after.name()));
+        details.addAll(roleAccess(after));
+        new ConfirmMenu(viewer, "Change access for " + name + "?",
+                details,
+                () -> {
+                    gui.trustService().setTrust(viewer.getUniqueId(), target, after);
+                    new TrustMenu(viewer, gui).open();
+                },
+                () -> new TrustMenu(viewer, gui).open()).open();
+    }
+
+    private void confirmRemove(UUID target, String name) {
+        new ConfirmMenu(viewer, "Remove " + name + " from Trust?",
+                List.of("All territory access is removed immediately"),
+                () -> {
+                    gui.trustService().removeTrust(viewer.getUniqueId(), target);
+                    new TrustMenu(viewer, gui).open();
+                },
+                () -> new TrustMenu(viewer, gui).open()).open();
+    }
+
+    private final class TrustedPlayerMenu extends Menu {
+        private final UUID target;
+        private final String name;
+        private final TrustLevel current;
+
+        private TrustedPlayerMenu(UUID target, String name, TrustLevel current) {
+            super(TrustMenu.this.viewer);
+            this.target = target;
+            this.name = name;
+            this.current = current;
+        }
+
+        @Override protected int rows() { return 3; }
+        @Override protected Component title() {
+            return Component.text("Access • " + name, NamedTextColor.DARK_GREEN);
+        }
+
+        @Override
+        protected void build() {
+            fill();
+            set(4, Icon.head(gui.skinHeadCache(), name).name(name, NamedTextColor.GREEN)
+                    .lore("Current role: " + Ui.pretty(current.name()), NamedTextColor.AQUA).build());
+            int slot = 10;
+            for (TrustLevel role : TrustLevel.values()) {
+                TrustLevel selected = role;
+                set(slot, Icon.of(role == current ? Material.LIME_DYE : Material.PAPER)
+                        .name(Ui.pretty(role.name()), role == current
+                                ? NamedTextColor.GREEN : NamedTextColor.YELLOW)
+                        .lore(roleAccess(role), NamedTextColor.GRAY).build(),
+                        role == current ? null
+                                : e -> confirmRole(target, name, current, selected));
+                slot += 2;
+            }
+            set(16, Icon.of(Material.BARRIER).name("Remove Access", NamedTextColor.RED)
+                    .lore("Review and remove all territory access", NamedTextColor.GRAY).build(),
+                    e -> confirmRemove(target, name));
+            backButton(22, "Trust", () -> new TrustMenu(viewer, gui).open());
+        }
     }
 }

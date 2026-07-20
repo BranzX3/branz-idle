@@ -3,6 +3,7 @@ package dev.branzx.idlefarm;
 import dev.branzx.idlefarm.command.AdminCommands;
 import dev.branzx.idlefarm.command.IdleCommand;
 import dev.branzx.idlefarm.gui.GuiManager;
+import dev.branzx.idlefarm.gui.MenuItemService;
 import dev.branzx.idlefarm.schematic.SchematicRegistry;
 import dev.branzx.idlefarm.listener.PlayerConnectionListener;
 import dev.branzx.idlefarm.listener.ProtectionListener;
@@ -152,6 +153,9 @@ public final class IdleFarmPlugin extends JavaPlugin {
         pluginManager.registerEvents(npcManager, this);
         pluginManager.registerEvents(guiManager, this);
         pluginManager.registerEvents(guiManager.chatPrompt(), this);
+        MenuItemService menuItemService = new MenuItemService(this, guiManager);
+        pluginManager.registerEvents(menuItemService, this);
+        menuItemService.start();
 
         // Citizens is a hard dependency, so its API is ready by now.
         npcManager.init();

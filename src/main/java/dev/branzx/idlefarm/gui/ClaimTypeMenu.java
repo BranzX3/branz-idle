@@ -62,12 +62,20 @@ public final class ClaimTypeMenu extends Menu {
                 : List.of("Cost: " + Ui.num(cost), "Building plot, no cap cost",
                         "Residential: " + gui.claimService().countResidential(viewer.getUniqueId())
                                 + "/" + gui.claimService().residentialCap(viewer.getUniqueId()));
-        set(slot, Icon.of(material).name(type.name(), NamedTextColor.GREEN)
-                .lore(lore, NamedTextColor.GRAY).build(), e -> {
-            var result = gui.claimService().claim(viewer.getUniqueId(), viewer.getWorld(), chunk, type);
-            viewer.sendMessage(Component.text(result.message(),
-                    result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-            new TerritoryMapMenu(viewer, gui).open();
-        });
+        set(slot, Icon.of(material).name(Ui.pretty(type.name()), NamedTextColor.GREEN)
+                .loreComponents(java.util.stream.Stream.concat(
+                        lore.stream().map(line -> Ui.line(line, NamedTextColor.GRAY)),
+                        java.util.stream.Stream.of(Ui.click("review claim")))
+                        .toList()).build(), e -> new ConfirmMenu(viewer,
+                "Claim " + Ui.pretty(type.name()) + "?",
+                lore,
+                () -> {
+                    var result = gui.claimService().claim(viewer.getUniqueId(),
+                            viewer.getWorld(), chunk, type);
+                    viewer.sendMessage(Component.text(result.message(),
+                            result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+                    new TerritoryMapMenu(viewer, gui).open();
+                },
+                () -> new ClaimTypeMenu(viewer, gui, chunk).open()).open());
     }
 }

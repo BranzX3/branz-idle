@@ -24,14 +24,23 @@ import java.util.function.Consumer;
  */
 public final class ChatPrompt implements Listener {
 
+    public interface NativeInput {
+        boolean request(Player player, String message, Consumer<String> onInput, Runnable onCancel);
+    }
+
     private record Pending(Consumer<String> onInput, Runnable onCancel) {
     }
 
     private final IdleFarmPlugin plugin;
     private final Map<UUID, Pending> waiting = new ConcurrentHashMap<>();
+    private NativeInput nativeInput;
 
     public ChatPrompt(IdleFarmPlugin plugin) {
         this.plugin = plugin;
+    }
+
+    public void setNativeInput(NativeInput nativeInput) {
+        this.nativeInput = nativeInput;
     }
 
     /**
@@ -39,6 +48,9 @@ public final class ChatPrompt implements Listener {
      * line on the main thread; {@code onCancel} runs if they type "cancel".
      */
     public void request(Player player, String message, Consumer<String> onInput, Runnable onCancel) {
+        if (nativeInput != null && nativeInput.request(player, message, onInput, onCancel)) {
+            return;
+        }
         player.closeInventory();
         waiting.put(player.getUniqueId(), new Pending(onInput, onCancel));
         player.sendMessage(Component.text("» " + message, NamedTextColor.YELLOW));

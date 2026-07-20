@@ -55,4 +55,25 @@ public final class ConfirmMenu extends Menu {
                     }
                 });
     }
+
+    String question() {
+        return question;
+    }
+
+    List<String> details() {
+        return details;
+    }
+
+    void confirm() {
+        viewer.closeInventory();
+        onConfirm.run();
+    }
+
+    void cancel() {
+        if (onCancel != null) {
+            onCancel.run();
+        } else {
+            viewer.closeInventory();
+        }
+    }
 }

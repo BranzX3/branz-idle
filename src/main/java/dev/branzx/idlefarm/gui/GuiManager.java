@@ -48,6 +48,7 @@ public final class GuiManager implements Listener {
     private final dev.branzx.idlefarm.service.DropTableService dropTableService;
     private final dev.branzx.idlefarm.service.TradeService tradeService;
     private final dev.branzx.idlefarm.service.GlobalExpeditionService expeditionService;
+    private final BedrockMenuRenderer bedrockRenderer;
     // Deliberate late binding: AdminCommands needs this GuiManager to open
     // admin menus, so the pair cannot both be constructor-injected.
     private dev.branzx.idlefarm.command.AdminCommands adminCommands;
@@ -87,6 +88,23 @@ public final class GuiManager implements Listener {
         this.dropTableService = dropTableService;
         this.tradeService = tradeService;
         this.expeditionService = expeditionService;
+        Menu.setRenderer(null);
+        BedrockMenuRenderer detectedRenderer = null;
+        if (plugin.getServer().getPluginManager().getPlugin("floodgate") != null) {
+            try {
+                detectedRenderer = new BedrockMenuRenderer(plugin);
+                Menu.setRenderer(detectedRenderer);
+                this.chatPrompt.setNativeInput(detectedRenderer);
+                plugin.getLogger().info("Floodgate detected: native Bedrock forms enabled.");
+            } catch (RuntimeException | LinkageError error) {
+                plugin.getLogger().warning("Floodgate forms unavailable: " + error.getMessage());
+            }
+        }
+        this.bedrockRenderer = detectedRenderer;
+    }
+
+    public boolean isBedrock(Player player) {
+        return bedrockRenderer != null && bedrockRenderer.isBedrock(player);
     }
 
     public dev.branzx.idlefarm.service.GameDesignService gameDesignService() {
@@ -196,6 +214,10 @@ public final class GuiManager implements Listener {
         new MainHubMenu(player, this).open();
     }
 
+    public void openProfile(Player player) {
+        new ProfileMenu(player, this).open();
+    }
+
     public void openAdminHub(Player player) {
         if (!hasAdminAccess(player)) {
             player.sendMessage(net.kyori.adventure.text.Component.text(
@@ -219,7 +241,11 @@ public final class GuiManager implements Listener {
     }
 
     public void openNodeDetail(Player player, NodeRecord node) {
-        new NodeDetailMenu(player, this, node.getId()).open();
+        new NodeControlMenu(player, this, node.getId()).open();
+    }
+
+    public void openResidential(Player player, NodeRecord node) {
+        new ResidentialMenu(player, this, node.getId()).open();
     }
 
     public void openWarehouse(Player player, UUID owner) {
@@ -248,6 +274,10 @@ public final class GuiManager implements Listener {
 
     public void openTrust(Player player) {
         new TrustMenu(player, this).open();
+    }
+
+    public void openSocial(Player player) {
+        new SocialMenu(player, this).open();
     }
 
     public void openTerritoryMap(Player player) {

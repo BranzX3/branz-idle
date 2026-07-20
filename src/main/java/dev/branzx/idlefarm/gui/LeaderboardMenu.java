@@ -33,7 +33,7 @@ public final class LeaderboardMenu extends Menu {
     @Override
     protected void build() {
         fill();
-        backToHub(gui);
+        backButton(31, "Social", () -> gui.openSocial(viewer));
 
         if (top == null) {
             set(13, Icon.of(Material.CLOCK).name("Loading…", NamedTextColor.GRAY).build());

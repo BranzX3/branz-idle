@@ -23,6 +23,10 @@ repositories {
         name = "citizens"
         url = uri("https://maven.citizensnpcs.co/repo")
     }
+    maven {
+        name = "opencollab"
+        url = uri("https://repo.opencollab.dev/main/")
+    }
 }
 
 dependencies {
@@ -30,6 +34,7 @@ dependencies {
     compileOnly("net.citizensnpcs:citizens-main:2.0.43-SNAPSHOT") {
         exclude(group = "*", module = "*")
     }
+    compileOnly("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")
 
     implementation("com.zaxxer:HikariCP:6.2.1")
     implementation("com.mysql:mysql-connector-j:9.1.0")

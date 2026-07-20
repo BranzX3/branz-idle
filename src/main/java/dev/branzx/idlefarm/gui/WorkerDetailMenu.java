@@ -107,15 +107,15 @@ public final class WorkerDetailMenu extends Menu {
                     "LUCKY_TOKEN", "TRAIL_BOOTS", "NONE");
             set(20, Icon.of(Material.HEART_OF_THE_SEA).name("Charm: " + Ui.pretty(currentCharm),
                             NamedTextColor.LIGHT_PURPLE)
-                    .lore("Left/right/shift click selects situational Charm", NamedTextColor.GRAY).build(),
-                    e -> {
-                        int index = (charms.indexOf(currentCharm) + 1) % charms.size();
-                        var result = gui.gameDesignService().equipCharm(
-                                viewer.getUniqueId(), worker, charms.get(index));
-                        viewer.sendMessage(Component.text(result.message(),
-                                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-                        redraw();
-                    });
+                    .lore("Choose a situational Charm", NamedTextColor.GRAY).build(),
+                    e -> new AdminOptionMenu(viewer, "Choose Charm", charms,
+                            selected -> {
+                                var result = gui.gameDesignService().equipCharm(
+                                        viewer.getUniqueId(), worker, selected);
+                                viewer.sendMessage(Component.text(result.message(),
+                                        result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+                                open();
+                            }, this::open).open());
             long notes = gui.gameDesignService().trainingNotes(viewer.getUniqueId());
             set(21, Icon.of(Material.EXPERIENCE_BOTTLE)
                     .name("Training Notes: " + notes, NamedTextColor.GREEN)

@@ -10,11 +10,7 @@ import org.bukkit.inventory.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * The player's virtual worker bag: a paged, click-driven roster. Shift-click
- * moves worker contracts between this bag and the player's inventory, like a
- * normal chest. Capacity is expandable with Money.
- */
+/** The player's virtual worker bag: a paged, cross-platform roster. */
 public final class WorkerBagMenu extends Menu {
 
     private static final int PAGE_SIZE = 45;
@@ -52,16 +48,9 @@ public final class WorkerBagMenu extends Menu {
             WorkerRecord worker = bag.get(start + i);
             List<Component> lore = new ArrayList<>(gui.workerService().workerLore(worker));
             lore.add(Ui.line("Click: manage worker", NamedTextColor.DARK_GRAY));
-            lore.add(Ui.line("Shift-click: move to inventory", NamedTextColor.GREEN));
             set(i, Icon.head(gui.skinHeadCache(), worker.getSkin()).name("✦ " + worker.getName(), worker.getRarity().color())
                     .loreComponents(lore).build(),
-                    e -> {
-                        if (e.isShiftClick()) {
-                            withdraw(worker.getWorkerUuid());
-                        } else {
-                            gui.openWorkerDetail(viewer, worker.getWorkerUuid());
-                        }
-                    });
+                    e -> gui.openWorkerDetail(viewer, worker.getWorkerUuid()));
         }
         if (bag.isEmpty()) {
             set(22, Icon.of(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
@@ -79,12 +68,17 @@ public final class WorkerBagMenu extends Menu {
         set(47, Icon.of(Material.HOPPER).name("Deposit from Inventory", NamedTextColor.GREEN)
                 .lore("Pull loose worker contracts into the bag", NamedTextColor.GRAY).build(),
                 e -> depositAll());
-        set(49, Icon.of(Material.NETHER_STAR).name("Main Menu", NamedTextColor.GREEN).build(),
-                e -> gui.openMainHub(viewer));
+        backButton(49, "Crew", () -> gui.openWorkers(viewer));
         double expandCost = gui.plugin().getConfig().getDouble("workers.bag.expand-cost", 5000);
         int step = gui.plugin().getConfig().getInt("workers.bag.expand-step", 9);
         set(51, Icon.of(Material.ENDER_CHEST).name("Expand +" + step, NamedTextColor.AQUA)
-                .lore("Cost: " + Ui.num(expandCost), NamedTextColor.GRAY).build(), e -> expand());
+                .loreComponents(List.of(
+                        Ui.line("Cost: " + Ui.num(expandCost), NamedTextColor.GOLD),
+                        Ui.click("review expansion")))
+                .build(), e -> new ConfirmMenu(viewer, "Expand Worker Bag?",
+                        List.of("Cost: " + Ui.num(expandCost), "Capacity: +" + step),
+                        this::expand,
+                        () -> new WorkerBagMenu(viewer, gui, page).open()).open());
         if (start + PAGE_SIZE < bag.size()) {
             set(53, Icon.of(Material.ARROW).name("Next", NamedTextColor.YELLOW).build(),
                     e -> new WorkerBagMenu(viewer, gui, page + 1).open());
@@ -105,39 +99,6 @@ public final class WorkerBagMenu extends Menu {
             }
         }
         redraw();
-    }
-
-    @Override
-    public boolean clickPlayerInventory(org.bukkit.event.inventory.InventoryClickEvent event) {
-        if (!event.isShiftClick() || event.getClickedInventory() == null) {
-            return false;
-        }
-        WorkerRecord record = gui.workerService().fromItem(event.getCurrentItem());
-        if (record == null || !WorkerRecord.STATE_ITEM.equals(record.getState())) {
-            return false;
-        }
-        String error = gui.workerService().depositItem(viewer.getUniqueId(), record);
-        if (error != null) {
-            viewer.sendMessage(Component.text(error, NamedTextColor.RED));
-            return true;
-        }
-        removeOne(event);
-        viewer.sendMessage(Component.text(record.getName() + " moved to Worker Bag.",
-                NamedTextColor.GREEN));
-        redraw();
-        return true;
-    }
-
-    private void removeOne(org.bukkit.event.inventory.InventoryClickEvent event) {
-        ItemStack item = event.getCurrentItem();
-        if (item == null) {
-            return;
-        }
-        if (item.getAmount() <= 1) {
-            event.getClickedInventory().setItem(event.getSlot(), null);
-        } else {
-            item.setAmount(item.getAmount() - 1);
-        }
     }
 
     private void depositAll() {

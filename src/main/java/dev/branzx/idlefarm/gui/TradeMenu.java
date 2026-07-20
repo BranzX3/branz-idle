@@ -35,8 +35,7 @@ public final class TradeMenu extends Menu {
         if (view == null) {
             set(22, Icon.of(Material.BARRIER).name("No active trade", NamedTextColor.RED)
                     .lore("Use /idle trade <player>", NamedTextColor.GRAY).build());
-            set(49, Icon.of(Material.NETHER_STAR).name("Main Hub", NamedTextColor.GREEN).build(),
-                    event -> gui.openMainHub(viewer));
+            backButton(49, "Social", () -> gui.openSocial(viewer));
             return;
         }
         String partner = Bukkit.getOfflinePlayer(view.partner()).getName();
@@ -63,13 +62,13 @@ public final class TradeMenu extends Menu {
         set(49, Icon.of(Material.LIME_CONCRETE).name("Confirm", NamedTextColor.GREEN)
                 .lore("Both players must confirm unchanged offers", NamedTextColor.GRAY).build(), event -> {
             message(gui.tradeService().confirm(viewer));
-            if (gui.tradeService().view(viewer.getUniqueId()) == null) gui.openMainHub(viewer);
+            if (gui.tradeService().view(viewer.getUniqueId()) == null) gui.openSocial(viewer);
             else redraw();
         });
         set(51, Icon.of(Material.RED_CONCRETE).name("Cancel & Return Escrow", NamedTextColor.RED)
                 .build(), event -> {
             message(gui.tradeService().cancel(viewer));
-            gui.openMainHub(viewer);
+            gui.openSocial(viewer);
         });
     }
 
