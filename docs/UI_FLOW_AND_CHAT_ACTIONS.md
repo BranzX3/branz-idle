@@ -202,7 +202,7 @@ On login, after `StreakService.handleLogin`, send one block:
 - Escrow settlement/refund notices are informational, plus `[เปิด Warehouse]`
   when items were delivered there.
 
-### 4.7 Commissions / Projects / Expedition / Chapter — ❌
+### 4.7 Commissions / Projects / Expedition / Chapter — ✅
 
 - Commission completed (auto-settle done): one line with `[เปิด Progress]`
   (`/idle progress`, alias `commissions`, Tier S).
@@ -214,7 +214,7 @@ On login, after `StreakService.handleLogin`, send one block:
 - Starter Chapter step ready: `[รับรางวัล]` (`/idle chapter`, Tier S —
   idempotent claim).
 
-### 4.8 Social: trust and visits — ❌
+### 4.8 Social: trust and visits — ✅ (granted/revoked lines with [Visit])
 
 - Trust granted to you: `“<owner> ให้สิทธิ์ Helper ในพื้นที่ของเขา”` +
   `[ไปเยี่ยม]` (`/idle visit <owner>`, Tier S: teleport is reversible) +
@@ -223,7 +223,7 @@ On login, after `StreakService.handleLogin`, send one block:
 - Suggest-style helper in Social screens: `[/idle trust <ชื่อ>]` as a
   `suggest` link (Tier A) — already the pattern in help.
 
-### 4.9 Workers — ❌ (low priority)
+### 4.9 Workers — ✅ (safety lines carry [Open Bag])
 
 - Safety ejection (`WorkerSafetyListener`): the existing warning gains
   `[เปิดกระเป๋า Worker]` (`/idle bag`, Tier S).
@@ -281,8 +281,9 @@ tab completion and help inherit them automatically.
    registry persisted per player session).
 3. **P1 — join summary** (§4.2) ✅, buffer-full transition line (§4.3) ✅.
 4. **P1 — trade session actions** (§4.6) ✅: decline + view links.
-5. **P2 — progress moments** (§4.7): commission/project/expedition/chapter.
-6. **P2 — social + worker safety lines** (§4.8, §4.9).
+5. **P2 — progress moments** (§4.7) ✅: commission/project/expedition/chapter
+   via injectable notifiers so the design services stay headless-testable.
+6. **P2 — social + worker safety lines** (§4.8, §4.9) ✅.
 7. **P3 — admin alerts** (§4.11).
 8. **P3 — error-copy sweep** (§5): audit every `sendMessage` error for a
    missing corrective link.

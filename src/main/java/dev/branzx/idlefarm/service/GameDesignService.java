@@ -1,6 +1,7 @@
 package dev.branzx.idlefarm.service;
 
 import dev.branzx.idlefarm.IdleFarmPlugin;
+import dev.branzx.idlefarm.command.CommandLinks;
 import dev.branzx.idlefarm.node.NodeRecord;
 import dev.branzx.idlefarm.node.NodeType;
 import dev.branzx.idlefarm.service.design.ChronicleService;
@@ -21,6 +22,10 @@ import dev.branzx.idlefarm.storage.NodeStore;
 import dev.branzx.idlefarm.storage.PlayerData;
 import dev.branzx.idlefarm.storage.PlayerDataStore;
 import dev.branzx.idlefarm.worker.WorkerRecord;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 
 import java.sql.SQLException;
 import java.util.List;
@@ -102,6 +107,29 @@ public final class GameDesignService {
                 rewards, focus, builds, chronicle, seasonalChronicle, warehouse,
                 this::grantNodeExp, this::addCoins);
         this.frontier = new FrontierService(plugin, stateStore, warehouse, controls, telemetryService);
+        wireChatNotifiers();
+    }
+
+    /** Progress moments become one chat line with a click action each. */
+    private void wireChatNotifiers() {
+        commissions.setCompletionNotifier((owner, message, label, command) -> {
+            Player player = Bukkit.getPlayer(owner);
+            if (player != null) {
+                player.sendMessage(Component.text()
+                        .append(Component.text("[Progress] ", NamedTextColor.GOLD))
+                        .append(Component.text(message + " ", NamedTextColor.GREEN))
+                        .append(CommandLinks.run(label, command))
+                        .build());
+            }
+        });
+        projects.setStageNotifier((name, stage, completed) ->
+                Bukkit.broadcast(Component.text()
+                        .append(Component.text("[Project] ", NamedTextColor.GOLD))
+                        .append(Component.text(name
+                                + (completed ? " is complete!" : " reached construction stage "
+                                + stage + "!") + " ", NamedTextColor.GREEN))
+                        .append(CommandLinks.run("[View]", "/idle projects"))
+                        .build()));
     }
 
     public ProgressionRewards progressionRewards() {

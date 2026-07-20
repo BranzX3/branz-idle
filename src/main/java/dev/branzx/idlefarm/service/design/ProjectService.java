@@ -27,6 +27,18 @@ public final class ProjectService {
 
     private static final UUID SERVER_SCOPE = new UUID(0, 0);
 
+    /**
+     * Optional hook fired when the Server Project reaches a new construction
+     * stage. Injected so this service stays headless-testable; the plugin
+     * wires it to a server-wide broadcast with a click action.
+     */
+    @FunctionalInterface
+    public interface StageNotifier {
+        void stageReached(String projectName, int stage, boolean completed);
+    }
+
+    private StageNotifier stageNotifier = (name, stage, completed) -> { };
+
     private final IdleFarmPlugin plugin;
     private final Database database;
     private final GameStateStore state;
@@ -55,6 +67,12 @@ public final class ProjectService {
         this.warehouse = warehouse;
         this.nodeExp = nodeExp;
         this.world = new ProjectWorldService(plugin, nodeStore, this::projects, this::serverProject);
+    }
+
+    public void setStageNotifier(StageNotifier notifier) {
+        if (notifier != null) {
+            this.stageNotifier = notifier;
+        }
     }
 
     public void startWorldRendering() {
@@ -145,6 +163,8 @@ public final class ProjectService {
         if (ProjectWorldService.constructionStage(updated)
                 != ProjectWorldService.constructionStage(project)) {
             world.renderServer(updated);
+            stageNotifier.stageReached(updated.name(),
+                    ProjectWorldService.constructionStage(updated), updated.completed());
         }
         audit.log(owner, "SERVER_PROJECT", "{\"amount\":" + removed + ",\"season\":\""
                 + DesignText.safe(seasons.id()) + "\"}");

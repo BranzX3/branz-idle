@@ -44,6 +44,18 @@ public final class CommissionService {
 
     private static final int DAILY_SLOTS = 3;
 
+    /**
+     * Optional hook fired when a commission (or the weekly chapter) crosses
+     * its target. Injected so this service stays headless-testable; the
+     * plugin wires it to a chat line with a click action.
+     */
+    @FunctionalInterface
+    public interface CompletionNotifier {
+        void completed(UUID owner, String message, String actionLabel, String actionCommand);
+    }
+
+    private CompletionNotifier completionNotifier = (owner, message, label, command) -> { };
+
     private final IdleFarmPlugin plugin;
     private final Database database;
     private final GameStateStore state;
@@ -79,6 +91,12 @@ public final class CommissionService {
         this.nodeExp = nodeExp;
         this.coins = coins;
         loadTemplates();
+    }
+
+    public void setCompletionNotifier(CompletionNotifier notifier) {
+        if (notifier != null) {
+            this.completionNotifier = notifier;
+        }
     }
 
     private void loadTemplates() {
@@ -182,12 +200,21 @@ public final class CommissionService {
                 int current = state.getInt(owner, "DAILY", day, key, 0);
                 state.put(owner, "DAILY", day, key,
                         String.valueOf(Math.min(target, current + amount)));
+                if (current < target && current + amount >= target) {
+                    completionNotifier.completed(owner,
+                            "Commission complete: " + template.description(),
+                            "[Open Progress]", "/idle progress");
+                }
             }
         }
         if (state.claimOnce(owner, "DAILY", day, "weekly_chapter_action")) {
             int weekly = state.getInt(owner, "WEEKLY", GameClock.weekKey(), "chapter_progress", 0);
             state.put(owner, "WEEKLY", GameClock.weekKey(), "chapter_progress",
                     String.valueOf(Math.min(5, weekly + 1)));
+            if (weekly == 4) {
+                completionNotifier.completed(owner, "Weekly Chapter complete!",
+                        "[Claim]", "/idle chapter");
+            }
         }
     }
 

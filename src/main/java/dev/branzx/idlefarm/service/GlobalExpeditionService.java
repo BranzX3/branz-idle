@@ -380,7 +380,8 @@ public final class GlobalExpeditionService {
                     "{\"week\":\"" + week + "\",\"amount\":" + Math.round(amount) + "}");
         });
         scores.remove(week);
-        Bukkit.broadcast(Component.text("[Expedition] " + announce, NamedTextColor.GOLD));
+        Bukkit.broadcast(Component.text("[Expedition] " + announce + " ", NamedTextColor.GOLD)
+                .append(dev.branzx.idlefarm.command.CommandLinks.run("[Open]", "/idle expedition")));
     }
 
     private Number number(Object value, Number fallback) {

@@ -27,8 +27,9 @@ public final class WorkerSafetyListener implements Listener {
         if (isStarter(event.getItemDrop().getItemStack())) {
             event.setCancelled(true);
             event.getPlayer().sendMessage(Component.text(
-                    "The Starter Worker is account-bound and cannot be dropped.",
-                    NamedTextColor.RED));
+                    "The Starter Worker is account-bound and cannot be dropped. ",
+                    NamedTextColor.RED)
+                    .append(dev.branzx.idlefarm.command.CommandLinks.run("[Open Bag]", "/idle bag")));
         }
     }
 
@@ -48,8 +49,9 @@ public final class WorkerSafetyListener implements Listener {
         if (placingCursorIntoTop || shiftMovingFromPlayer) {
             event.setCancelled(true);
             event.getWhoClicked().sendMessage(Component.text(
-                    "The Starter Worker cannot be stored or transferred.",
-                    NamedTextColor.RED));
+                    "The Starter Worker cannot be stored or transferred. ",
+                    NamedTextColor.RED)
+                    .append(dev.branzx.idlefarm.command.CommandLinks.run("[Open Bag]", "/idle bag")));
         }
     }
 
