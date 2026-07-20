@@ -1,5 +1,6 @@
 package dev.branzx.idlefarm.gui;
 
+import dev.branzx.idlefarm.service.SkinHeadCache;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -23,15 +24,13 @@ public final class Icon {
         return new Icon(material);
     }
 
-    /** A PLAYER_HEAD textured with the given player-name skin. */
-    public static Icon head(String skinName) {
-        Icon icon = new Icon(Material.PLAYER_HEAD);
-        if (icon.item.getItemMeta() instanceof org.bukkit.inventory.meta.SkullMeta skull) {
-            skull.setOwningPlayer(org.bukkit.Bukkit.getOfflinePlayer(
-                    skinName == null || skinName.isBlank() ? "Steve" : skinName));
-            icon.item.setItemMeta(skull);
-        }
-        return icon;
+    /** A cached PLAYER_HEAD textured with the given player-name skin. */
+    public static Icon head(SkinHeadCache cache, String skinName) {
+        return new Icon(cache.createHead(skinName));
+    }
+
+    private Icon(ItemStack item) {
+        this.item = item;
     }
 
     public Icon name(String text, NamedTextColor color) {

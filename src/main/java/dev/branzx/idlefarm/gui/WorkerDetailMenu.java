@@ -53,7 +53,7 @@ public final class WorkerDetailMenu extends Menu {
             set(i, Icon.filler());
         }
 
-        set(4, Icon.head(worker.getSkin())
+        set(4, Icon.head(gui.skinHeadCache(), worker.getSkin())
                 .name("✦ " + worker.getName(), worker.getRarity().color())
                 .loreComponents(gui.workerService().workerLore(worker)).build());
 

@@ -49,7 +49,7 @@ public final class LeaderboardMenu extends Menu {
                 case 0 -> Icon.of(Material.GOLD_BLOCK);
                 case 1 -> Icon.of(Material.IRON_BLOCK);
                 case 2 -> Icon.of(Material.COPPER_BLOCK);
-                default -> Icon.head(data.getName());
+                default -> Icon.head(gui.skinHeadCache(), data.getName());
             };
             boolean self = data.getUuid().equals(viewer.getUniqueId());
             set(slots[i], icon

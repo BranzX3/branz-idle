@@ -8,6 +8,7 @@ import dev.branzx.idlefarm.service.TrustService;
 import dev.branzx.idlefarm.service.WarehouseService;
 import dev.branzx.idlefarm.service.WorkerNpcManager;
 import dev.branzx.idlefarm.service.WorkerService;
+import dev.branzx.idlefarm.service.SkinHeadCache;
 import dev.branzx.idlefarm.storage.NodeStore;
 import dev.branzx.idlefarm.storage.PlayerDataStore;
 import dev.branzx.idlefarm.storage.WorkerStore;
@@ -32,6 +33,7 @@ public final class GuiManager implements Listener {
     private final WorkerStore workerStore;
     private final PlayerDataStore dataStore;
     private final WorkerService workerService;
+    private final SkinHeadCache skinHeadCache;
     private final WarehouseService warehouseService;
     private final ClaimService claimService;
     private final TrustService trustService;
@@ -63,12 +65,14 @@ public final class GuiManager implements Listener {
                       dev.branzx.idlefarm.service.CreditService creditService,
                       dev.branzx.idlefarm.service.DropTableService dropTableService,
                       dev.branzx.idlefarm.service.TradeService tradeService,
-                      dev.branzx.idlefarm.service.GlobalExpeditionService expeditionService) {
+                      dev.branzx.idlefarm.service.GlobalExpeditionService expeditionService,
+                      SkinHeadCache skinHeadCache) {
         this.plugin = plugin;
         this.nodeStore = nodeStore;
         this.workerStore = workerStore;
         this.dataStore = dataStore;
         this.workerService = workerService;
+        this.skinHeadCache = skinHeadCache;
         this.warehouseService = warehouseService;
         this.claimService = claimService;
         this.trustService = trustService;
@@ -160,6 +164,10 @@ public final class GuiManager implements Listener {
 
     public WorkerService workerService() {
         return workerService;
+    }
+
+    public SkinHeadCache skinHeadCache() {
+        return skinHeadCache;
     }
 
     public WarehouseService warehouseService() {

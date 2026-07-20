@@ -127,11 +127,13 @@ public final class AdminCommands {
         String filter = args.length >= 3 ? args[2].toLowerCase(Locale.ROOT) : null;
         sender.sendMessage(Component.text("IdleFarm Admin Commands", NamedTextColor.RED));
         if (filter == null) {
-            sender.sendMessage(Component.text("/idle admin เปิด Admin Hub | /idle admin help <หมวด>",
-                    NamedTextColor.YELLOW));
-            sender.sendMessage(Component.text("หมวด: "
-                    + String.join(", ", CommandCatalog.categories(CommandCatalog.Audience.ADMIN)),
-                    NamedTextColor.GRAY));
+            sender.sendMessage(CommandLinks.run("[เปิด Admin Hub]", "/idle admin"));
+            Component categories = Component.text("หมวด: ", NamedTextColor.GRAY);
+            for (String category : CommandCatalog.categories(CommandCatalog.Audience.ADMIN)) {
+                categories = categories.append(CommandLinks.run(
+                        "[" + category + "]", "/idle admin help " + category)).append(Component.space());
+            }
+            sender.sendMessage(categories);
             return true;
         }
         List<CommandCatalog.Entry> entries =
@@ -150,8 +152,13 @@ public final class AdminCommands {
         }
         for (CommandCatalog.Entry item : entries) {
             String suffix = item.syntax().isBlank() ? "" : " " + item.syntax();
-            sender.sendMessage(Component.text("/idle admin " + item.name() + suffix,
-                            NamedTextColor.YELLOW)
+            String command = "/idle admin " + item.name();
+            boolean runsWithoutArguments = item.syntax().isBlank()
+                    || item.syntax().startsWith("[");
+            Component link = runsWithoutArguments
+                    ? CommandLinks.run(command, command)
+                    : CommandLinks.suggest(command + suffix, command + " ");
+            sender.sendMessage(link
                     .append(Component.text(" — " + item.description(), NamedTextColor.GRAY)));
         }
         return true;

@@ -34,7 +34,7 @@ public final class AdminPlayerMenu extends Menu {
     protected void build() {
         fill();
         var data = gui.dataStore().getOnline(target.getUniqueId());
-        set(4, Icon.head(name()).name(name(), NamedTextColor.YELLOW)
+        set(4, Icon.head(gui.skinHeadCache(), name()).name(name(), NamedTextColor.YELLOW)
                 .loreComponents(List.of(
                         Ui.status(target.isOnline() ? "Online" : "Offline",
                                 target.isOnline() ? NamedTextColor.GREEN : NamedTextColor.GRAY),

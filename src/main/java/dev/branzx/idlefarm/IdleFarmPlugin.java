@@ -23,6 +23,7 @@ import dev.branzx.idlefarm.service.TrustService;
 import dev.branzx.idlefarm.service.WarehouseService;
 import dev.branzx.idlefarm.service.WorkerNpcManager;
 import dev.branzx.idlefarm.service.WorkerService;
+import dev.branzx.idlefarm.service.SkinHeadCache;
 import dev.branzx.idlefarm.storage.Database;
 import dev.branzx.idlefarm.storage.NodeStore;
 import dev.branzx.idlefarm.storage.PlayerDataStore;
@@ -101,8 +102,9 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.explorationService.start();
         this.globalExpeditionService.start();
 
+        SkinHeadCache skinHeadCache = new SkinHeadCache(this);
         this.workerService = new WorkerService(this, workerStore, dataStore, database, nodeStore,
-                anchorStore, auditService, globalExpeditionService, gameDesignService);
+                anchorStore, auditService, globalExpeditionService, gameDesignService, skinHeadCache);
         this.workerService.loadPitySync();
         this.workerService.loadBagBonusSync();
 
@@ -126,7 +128,7 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.guiManager = new GuiManager(this, nodeStore, workerStore, dataStore, workerService,
                 warehouseService, claimService, trustService, explorationService, npcManager,
                 boosterService, perkService, streakService, gameDesignService, creditService,
-                dropTableService, tradeService, globalExpeditionService);
+                dropTableService, tradeService, globalExpeditionService, skinHeadCache);
         // Deliberate cycle: AdminCommands opens admin menus through the
         // GuiManager; its constructor registers itself back via setAdminTools.
         AdminCommands adminCommands = new AdminCommands(this, nodeStore, workerStore, schematicService,

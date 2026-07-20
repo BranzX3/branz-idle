@@ -12,13 +12,11 @@ import dev.branzx.idlefarm.worker.WorkerRecord;
 import dev.branzx.idlefarm.worker.WorkerStats;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
@@ -54,6 +52,7 @@ public final class WorkerService {
     private final PlayerDataStore playerDataStore;
     private final dev.branzx.idlefarm.storage.Database database;
     private final NamespacedKey workerKey;
+    private final SkinHeadCache skinHeadCache;
     // owner -> rarity -> accumulated fail count (pity)
     private final java.util.Map<UUID, java.util.Map<Rarity, Integer>> pity =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -62,8 +61,9 @@ public final class WorkerService {
                          dev.branzx.idlefarm.storage.Database database,
                          dev.branzx.idlefarm.storage.NodeStore nodeStore, NodeAnchorStore anchorStore,
                          AuditService auditService, GlobalExpeditionService globalExpeditionService,
-                         GameDesignService gameDesignService) {
-        this(plugin, workerStore, playerDataStore, database, new NamespacedKey(plugin, "worker_uuid"));
+                         GameDesignService gameDesignService, SkinHeadCache skinHeadCache) {
+        this(plugin, workerStore, playerDataStore, database, new NamespacedKey(plugin, "worker_uuid"),
+                skinHeadCache);
         this.nodeStore = nodeStore;
         this.anchorStore = anchorStore;
         this.auditService = auditService;
@@ -74,11 +74,18 @@ public final class WorkerService {
     /** Test seam: collaborators stay null and every use is null-guarded. */
     WorkerService(IdleFarmPlugin plugin, WorkerStore workerStore, PlayerDataStore playerDataStore,
                   dev.branzx.idlefarm.storage.Database database, NamespacedKey workerKey) {
+        this(plugin, workerStore, playerDataStore, database, workerKey, null);
+    }
+
+    private WorkerService(IdleFarmPlugin plugin, WorkerStore workerStore, PlayerDataStore playerDataStore,
+                          dev.branzx.idlefarm.storage.Database database, NamespacedKey workerKey,
+                          SkinHeadCache skinHeadCache) {
         this.plugin = plugin;
         this.workerStore = workerStore;
         this.playerDataStore = playerDataStore;
         this.database = database;
         this.workerKey = workerKey;
+        this.skinHeadCache = skinHeadCache;
     }
 
     private AuditService auditService;
@@ -351,12 +358,10 @@ public final class WorkerService {
     // ---- item token ----
 
     public ItemStack createItem(WorkerRecord record) {
-        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+        ItemStack item = skinHeadCache == null
+                ? new ItemStack(Material.PLAYER_HEAD)
+                : skinHeadCache.createHead(record.getSkin());
         ItemMeta meta = item.getItemMeta();
-        // Head texture follows the worker's skin for instant recognition.
-        if (meta instanceof SkullMeta skull) {
-            skull.setOwningPlayer(Bukkit.getOfflinePlayer(record.getSkin()));
-        }
         meta.getPersistentDataContainer().set(workerKey, PersistentDataType.STRING,
                 record.getWorkerUuid().toString());
         meta.displayName(Component.text("✦ ", record.getRarity().color())

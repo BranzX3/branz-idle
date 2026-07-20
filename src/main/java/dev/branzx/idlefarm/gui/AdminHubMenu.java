@@ -32,7 +32,7 @@ public final class AdminHubMenu extends Menu {
     @Override
     protected void build() {
         fill();
-        set(4, Icon.head(viewer.getName())
+        set(4, Icon.head(gui.skinHeadCache(), viewer.getName())
                 .name("Admin: " + viewer.getName(), NamedTextColor.RED)
                 .loreComponents(List.of(
                         Ui.line("เลือกงานตาม flow ด้านล่าง", NamedTextColor.GRAY),

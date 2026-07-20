@@ -343,7 +343,7 @@ public final class NodeDetailMenu extends Menu {
         lore.add(Ui.line(stateBadge(worker.getState()), stateColor(worker.getState())));
         lore.add(Ui.line("Click: manage worker", NamedTextColor.DARK_GRAY));
         lore.add(Ui.line("Shift-click: store in Worker Bag", NamedTextColor.GREEN));
-        return Icon.head(worker.getSkin())
+        return Icon.head(gui.skinHeadCache(), worker.getSkin())
                 .name("✦ " + worker.getName(), worker.getRarity().color())
                 .loreComponents(lore).build();
     }

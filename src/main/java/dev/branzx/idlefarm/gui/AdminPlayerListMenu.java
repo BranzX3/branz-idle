@@ -43,7 +43,7 @@ public final class AdminPlayerListMenu extends Menu {
         for (int index = 0; index < PAGE_SIZE && start + index < players.size(); index++) {
             Player target = players.get(start + index);
             var data = gui.dataStore().getOnline(target.getUniqueId());
-            set(index, Icon.head(target.getName())
+            set(index, Icon.head(gui.skinHeadCache(), target.getName())
                     .name(target.getName(), NamedTextColor.GREEN)
                     .loreComponents(List.of(
                             Ui.status("Online", NamedTextColor.GREEN),

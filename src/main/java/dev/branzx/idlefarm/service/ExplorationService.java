@@ -1,6 +1,7 @@
 package dev.branzx.idlefarm.service;
 
 import dev.branzx.idlefarm.IdleFarmPlugin;
+import dev.branzx.idlefarm.command.CommandLinks;
 import dev.branzx.idlefarm.node.NodeRecord;
 import dev.branzx.idlefarm.storage.Database;
 import dev.branzx.idlefarm.storage.NodeStore;
@@ -358,7 +359,8 @@ public final class ExplorationService {
         owner.sendMessage(Component.text()
                 .append(Component.text("[Exploration] ", NamedTextColor.GOLD))
                 .append(Component.text(eventName(eventType) + " discovered at your " + node.getType()
-                        + " node! Expires in " + expiryMinutes + "m — /idle explore", NamedTextColor.YELLOW))
+                        + " node! Expires in " + expiryMinutes + "m — ", NamedTextColor.YELLOW))
+                .append(CommandLinks.run("[Open]", "/idle explore"))
                 .build());
     }
 
@@ -528,7 +530,8 @@ public final class ExplorationService {
             owner.sendMessage(Component.text()
                     .append(Component.text("[Exploration] ", NamedTextColor.GOLD))
                     .append(Component.text(eventName(event.eventType) + " finished — " + event.grade
-                            + "! Claim with /idle explore claim", NamedTextColor.GREEN))
+                            + "! ", NamedTextColor.GREEN))
+                    .append(CommandLinks.run("[Claim]", "/idle explore claim"))
                     .build());
         }
     }

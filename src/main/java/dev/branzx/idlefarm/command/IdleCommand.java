@@ -133,14 +133,17 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         String filter = args.length >= 2 ? args[1].toLowerCase(Locale.ROOT) : null;
         sender.sendMessage(Component.text("IdleFarm Commands", NamedTextColor.GOLD));
         if (filter == null) {
-            sender.sendMessage(Component.text("ผู้เล่น: /idle เปิด Hub | /idle help <หมวด>",
-                    NamedTextColor.YELLOW));
-            sender.sendMessage(Component.text("หมวด: "
-                    + String.join(", ", CommandCatalog.categories(CommandCatalog.Audience.PLAYER)),
-                    NamedTextColor.GRAY));
+            sender.sendMessage(Component.text("ผู้เล่น: ", NamedTextColor.GRAY)
+                    .append(CommandLinks.run("[เปิด Hub]", "/idle")));
+            Component categories = Component.text("หมวด: ", NamedTextColor.GRAY);
+            for (String category : CommandCatalog.categories(CommandCatalog.Audience.PLAYER)) {
+                categories = categories.append(CommandLinks.run(
+                        "[" + category + "]", "/idle help " + category)).append(Component.space());
+            }
+            sender.sendMessage(categories);
             if (hasAnyAdminPermission(sender)) {
-                sender.sendMessage(Component.text("ผู้ดูแล: /idle admin เปิด Admin Hub",
-                        NamedTextColor.RED));
+                sender.sendMessage(Component.text("ผู้ดูแล: ", NamedTextColor.RED)
+                        .append(CommandLinks.run("[เปิด Admin Hub]", "/idle admin")));
             }
             return true;
         }
@@ -160,8 +163,13 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         for (CommandCatalog.Entry entry : entries) {
             String suffix = entry.syntax().isBlank() ? "" : " " + entry.syntax();
-            sender.sendMessage(Component.text("/idle " + entry.name() + suffix,
-                            NamedTextColor.YELLOW)
+            String command = "/idle " + entry.name();
+            boolean runsWithoutArguments = entry.syntax().isBlank()
+                    || (entry.syntax().startsWith("[") && !entry.name().equals("trade"));
+            Component link = runsWithoutArguments
+                    ? CommandLinks.run(command, command)
+                    : CommandLinks.suggest(command + suffix, command + " ");
+            sender.sendMessage(link
                     .append(Component.text(" — " + entry.description(), NamedTextColor.GRAY)));
         }
         return true;
@@ -261,8 +269,8 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         List<NodeRecord> owned = nodeStore.getByOwner(player.getUniqueId());
         if (owned.isEmpty()) {
-            sender.sendMessage(Component.text("You have no nodes yet. Start with /idle claim residential",
-                    NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("You have no nodes yet. ", NamedTextColor.YELLOW)
+                    .append(CommandLinks.run("[Claim Residential]", "/idle claim residential")));
             return true;
         }
         sender.sendMessage(Component.text("=== Your Nodes (" + owned.size() + ") ===", NamedTextColor.YELLOW));
@@ -844,15 +852,21 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
                     sender.sendMessage(Component.text("No event at this node right now.", NamedTextColor.GRAY));
                 } else {
                     long now = System.currentTimeMillis();
-                    String detail = switch (event.getState()) {
-                        case "AVAILABLE" -> "waiting — expires in "
-                                + Math.max(0, (event.getExpiresAt() - now) / 60000) + "m. /idle explore start [team]";
-                        case "RUNNING" -> "team away — returns in "
-                                + Math.max(0, (event.getEndsAt() - now) / 60000) + "m";
-                        default -> event.getGrade() + " result ready! /idle explore claim";
+                    Component detail = switch (event.getState()) {
+                        case "AVAILABLE" -> Component.text("waiting — expires in "
+                                        + Math.max(0, (event.getExpiresAt() - now) / 60000) + "m. ",
+                                NamedTextColor.YELLOW)
+                                .append(CommandLinks.run("[Start]", "/idle explore start"));
+                        case "RUNNING" -> Component.text("team away — returns in "
+                                + Math.max(0, (event.getEndsAt() - now) / 60000) + "m",
+                                NamedTextColor.YELLOW);
+                        default -> Component.text(event.getGrade() + " result ready! ",
+                                        NamedTextColor.YELLOW)
+                                .append(CommandLinks.run("[Claim]", "/idle explore claim"));
                     };
                     sender.sendMessage(Component.text(exploration.eventName(event.getEventType())
-                            + " [" + event.getState() + "] " + detail, NamedTextColor.YELLOW));
+                                    + " [" + event.getState() + "] ", NamedTextColor.YELLOW)
+                            .append(detail));
                 }
             }
             case "prepare" -> {

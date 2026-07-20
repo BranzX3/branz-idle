@@ -1,9 +1,12 @@
 package dev.branzx.idlefarm.service;
 
 import dev.branzx.idlefarm.IdleFarmPlugin;
+import dev.branzx.idlefarm.command.CommandLinks;
 import dev.branzx.idlefarm.storage.Database;
 import dev.branzx.idlefarm.storage.TradeEscrowStore;
 import dev.branzx.idlefarm.worker.WorkerRecord;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -79,8 +82,11 @@ public final class TradeService implements Listener {
             return Result.fail("One of you is already trading.");
         }
         requests.put(target.getUniqueId(), requester.getUniqueId());
-        target.sendMessage("§e" + requester.getName() + " requested a protected trade. "
-                + "Use /idle trade accept " + requester.getName());
+        target.sendMessage(Component.text(
+                        requester.getName() + " requested a protected trade. ",
+                        NamedTextColor.YELLOW)
+                .append(CommandLinks.run("[Accept]",
+                        "/idle trade accept " + requester.getName())));
         return Result.ok("Trade request sent to " + target.getName() + ".");
     }
 

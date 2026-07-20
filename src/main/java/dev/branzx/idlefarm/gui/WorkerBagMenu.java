@@ -53,7 +53,7 @@ public final class WorkerBagMenu extends Menu {
             List<Component> lore = new ArrayList<>(gui.workerService().workerLore(worker));
             lore.add(Ui.line("Click: manage worker", NamedTextColor.DARK_GRAY));
             lore.add(Ui.line("Shift-click: move to inventory", NamedTextColor.GREEN));
-            set(i, Icon.head(worker.getSkin()).name("✦ " + worker.getName(), worker.getRarity().color())
+            set(i, Icon.head(gui.skinHeadCache(), worker.getSkin()).name("✦ " + worker.getName(), worker.getRarity().color())
                     .loreComponents(lore).build(),
                     e -> {
                         if (e.isShiftClick()) {
