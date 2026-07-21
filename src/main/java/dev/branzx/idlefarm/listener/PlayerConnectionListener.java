@@ -83,6 +83,8 @@ public final class PlayerConnectionListener implements Listener {
         }
         List<NodeRecord> fullNodes = production.stream()
                 .filter(node -> NodeRecord.STATE_STORAGE_FULL.equals(node.getState())).toList();
+        long pendingCollect = production.stream()
+                .mapToLong(node -> node.storageTotal() + node.bulkStorageTotal()).sum();
         NodeRecord claimable = null;
         NodeRecord waiting = null;
         if (exploration != null) {
@@ -98,11 +100,20 @@ public final class PlayerConnectionListener implements Listener {
                 }
             }
         }
-        if (fullNodes.isEmpty() && claimable == null && waiting == null) {
+        if (fullNodes.isEmpty() && claimable == null && waiting == null && pendingCollect <= 0) {
             return;
         }
         player.sendMessage(Component.text("[IdleFarm] While you were away:",
                 NamedTextColor.GOLD));
+        // Full buffers already prompt collection; only surface a general
+        // "supplies gathered" line when nothing is stopped but output waits.
+        if (fullNodes.isEmpty() && pendingCollect > 0) {
+            player.sendMessage(Component.text()
+                    .append(Component.text("  Your crews gathered " + pendingCollect
+                            + " resource(s) waiting to collect. ", NamedTextColor.AQUA))
+                    .append(CommandLinks.run("[Open Nodes]", "/idle nodes"))
+                    .build());
+        }
         if (!fullNodes.isEmpty()) {
             var line = Component.text()
                     .append(Component.text("  " + fullNodes.size()
