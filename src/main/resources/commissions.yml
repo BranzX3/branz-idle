@@ -1,5 +1,11 @@
 # Daily commission catalog. The board selects three eligible entries from the
 # player's Focused Node level using a deterministic daily seed.
+#
+# Two-lane note (docs/BALANCE_BIBLE.md §3): the `produce` and `expedition`
+# actions count discovery-lane output only, so their targets are unchanged.
+# The `collect` and `delivery` actions measure whatever leaves the buffer /
+# fills the Warehouse, which now includes the high-volume bulk lane, so those
+# targets are scaled up to keep the "≈2 hours of collectable output" intent.
 templates:
   produce_basic:
     action: produce
@@ -14,8 +20,8 @@ templates:
   collect_safe:
     action: collect
     unlock-level: 3
-    target: 64
-    target-per-bracket: 16
+    target: 512
+    target-per-bracket: 128
     description: "Collect output from your Focused {node} Node"
     reward:
       kind: COINS
@@ -34,8 +40,8 @@ templates:
   collect_large:
     action: collect
     unlock-level: 10
-    target: 128
-    target-per-bracket: 24
+    target: 1024
+    target-per-bracket: 192
     description: "Complete a large collection from your Focused Node"
     reward:
       kind: NODE_EXP
@@ -71,8 +77,8 @@ templates:
   delivery:
     action: delivery
     unlock-level: 20
-    target: 64
-    target-per-bracket: 8
+    target: 512
+    target-per-bracket: 64
     description: "Deliver a mixed unlocked-resource bundle"
     reward:
       kind: CHRONICLE_POINTS

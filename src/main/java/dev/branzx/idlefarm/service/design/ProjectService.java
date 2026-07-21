@@ -85,9 +85,26 @@ public final class ProjectService {
 
     public List<Project> projects(UUID owner) {
         return List.of(
-                project(owner, "storehouse", "Expanded Storehouse", "OAK_LOG", 512),
-                project(owner, "expedition_dock", "Expedition Dock", "WOOL", 384),
-                project(owner, "chronicle_hall", "Chronicle Hall", "STONE", 1_024));
+                personalProject(owner, "storehouse", "Expanded Storehouse", "OAK_LOG", 512),
+                personalProject(owner, "expedition_dock", "Expedition Dock", "WOOL", 384),
+                personalProject(owner, "chronicle_hall", "Chronicle Hall", "STONE", 1_024));
+    }
+
+    /** Reads one personal project's tunables from config, falling back to the
+     *  pre-bulk-lane literals when the section is absent. */
+    private Project personalProject(UUID owner, String id, String defaultName,
+                                    String defaultMaterial, int defaultTarget) {
+        String base = "projects.personal." + id + ".";
+        String name = valueOr(plugin.getConfig().getString(base + "name"), defaultName);
+        String material = valueOr(plugin.getConfig().getString(base + "material"), defaultMaterial)
+                .toUpperCase(Locale.ROOT);
+        int configured = plugin.getConfig().getInt(base + "target", defaultTarget);
+        int target = configured > 0 ? configured : defaultTarget;
+        return project(owner, id, name, material, target);
+    }
+
+    private static String valueOr(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 
     public Result contributeProject(UUID owner, String id, int requested) {

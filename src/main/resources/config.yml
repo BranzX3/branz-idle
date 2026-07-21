@@ -512,7 +512,9 @@ exploration:
   # is online.
   spawn-chance-per-check: 0.02
   max-waiting-events: 3
-  preparation-kit-cost: 16
+  # Bulk commons are now abundant (docs/BALANCE_BIBLE.md §3); the kit stays a
+  # meaningful recurring commons sink rather than a rounding error.
+  preparation-kit-cost: 128
   # Levels per bracket: bracket = level/size + 1.
   bracket-size: 10
   vanilla-brackets: 10
@@ -708,10 +710,28 @@ live-ops:
         objectives-first: 50
 
 projects:
+  # Personal Settlement Projects. Targets for commons materials (logs, stone)
+  # are scaled to the bulk lane (docs/BALANCE_BIBLE.md §3); the Expedition Dock
+  # uses Wool, a discovery-lane material, so its target stays hand-paced.
+  personal:
+    storehouse:
+      name: "Expanded Storehouse"
+      material: OAK_LOG
+      target: 4096
+    expedition_dock:
+      name: "Expedition Dock"
+      material: WOOL
+      target: 384
+    chronicle_hall:
+      name: "Chronicle Hall"
+      material: STONE
+      target: 8192
   server:
     material: cobblestone
-    target: 100000
-    daily-cap: 1024
+    # Community-scale commons sink: scaled with the bulk lane so one player's
+    # far larger output cannot trivially cap the daily contribution.
+    target: 800000
+    daily-cap: 8192
 
 # Schematic capture: air blocks farther than this many blocks (chebyshev)
 # from any solid block are NOT captured, so pasting a building never

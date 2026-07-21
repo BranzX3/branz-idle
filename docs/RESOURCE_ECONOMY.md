@@ -56,7 +56,10 @@ Rules:
 
 - One free reroll per slot.
 - Requirements scale by unlocked pool and recent output.
-- Requested amount is no more than 20% of expected daily production.
+- Requested amount is no more than 20% of expected daily production. Because
+  the bulk lane (Balance Bible §3) multiplies commons output, `collect` and
+  `delivery` targets are scaled to bulk volume, while `produce` and
+  `expedition` targets — which measure discovery-lane output only — are not.
 - Never request capped rare resources.
 - Unfinished commissions roll into catch-up at 50% after the day ends.
 - No Credit rerolls and no premium reward multiplier.
