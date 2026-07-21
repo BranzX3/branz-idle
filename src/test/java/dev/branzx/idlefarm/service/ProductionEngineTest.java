@@ -59,7 +59,8 @@ class ProductionEngineTest {
         when(config.getInt("production.buffer-capacity-per-tier", 256)).thenReturn(256);
         // Discovery lane disabled (base rate 0) to isolate the bulk lane.
         when(config.getDouble("production.base-items-per-hour.mining", 30.0)).thenReturn(0.0);
-        when(config.getDouble("production.bulk.base-per-hour.mining", 0.0)).thenReturn(70.0);
+        // Default arg is now the shipped design value, so the stub must match it.
+        when(config.getDouble("production.bulk.base-per-hour.mining", 70.0)).thenReturn(70.0);
         when(config.getDouble("production.level-power-per-level", 0.02)).thenReturn(0.02);
         when(config.getDouble("production.bulk.diligence-factor", 2.0)).thenReturn(2.0);
         when(config.getDouble("production.bulk.rarity-mult.common", 1.0)).thenReturn(1.0);
@@ -83,9 +84,12 @@ class ProductionEngineTest {
                 null, null, null, null, null, null, null).run();
 
         // One Common Lv.1 worker for one hour: 70 × 1.02 = 71.4 → floor 71,
-        // all routed to the default mining common (no commons config mocked).
+        // split across the built-in mining mix (70/20/10) with the rounding
+        // remainder going to the heaviest common.
         assertEquals(71, node.bulkStorageTotal());
-        assertEquals(71, node.getBulkStorage().get("COBBLESTONE"));
+        assertEquals(50, node.getBulkStorage().get("COBBLESTONE"));
+        assertEquals(14, node.getBulkStorage().get("COBBLED_DEEPSLATE"));
+        assertEquals(7, node.getBulkStorage().get("ANDESITE"));
         assertEquals(0, node.storageTotal());
         assertTrue(node.getBulkLastTickAt() > oldAnchor);
         assertEquals(NodeRecord.STATE_ACTIVE, node.getState());

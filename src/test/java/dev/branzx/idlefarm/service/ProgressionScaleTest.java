@@ -68,20 +68,50 @@ class ProgressionScaleTest {
         assertEquals(200, new ProgressionScale(plugin).levelCap());
     }
 
+    /**
+     * Regression guard: a config.yml predating the bulk lane never receives
+     * the new section, so the built-in defaults must keep the lane running
+     * rather than silently disabling it.
+     */
     @Test
-    void bulkConfigValidatorFlagsMissingBaseRateButAcceptsDisabledLanes() {
+    void bulkLaneRunsOnBuiltInDefaultsWhenConfigHasNoBulkSection() {
+        ProgressionScale scale = new ProgressionScale(configWithRealDefaultBehaviour());
+        assertEquals(70.0, scale.bulkBasePerHour(NodeType.MINING));
+        assertEquals(15.0, scale.bulkBasePerHour(NodeType.HUNTER));
+
+        NodeRecord node = new NodeRecord(1, UUID.randomUUID(), new ChunkKey("world", 0, 0),
+                NodeType.MINING, 1, "ACTIVE", 64, System.currentTimeMillis(), null);
+        assertTrue(scale.bulkCommons(node).containsKey("COBBLESTONE"));
+        assertEquals(3, scale.bulkCommons(node).size());
+    }
+
+    @Test
+    void bulkValidatorWarnsAboutDefaultsAndRespectsAnExplicitZero() {
+        IdleFarmPlugin plugin = configWithRealDefaultBehaviour();
+        // Nothing configured: every production family reports that it is
+        // running on defaults, but stays enabled.
+        // Two notices per production family: the base rate and the commons mix.
+        var problems = new ProgressionScale(plugin).validateBulkConfig();
+        assertEquals(10, problems.size());
+        assertTrue(problems.stream().allMatch(p -> p.contains("built-in default")));
+
+        // An explicit zero is still an intentional disable, so it is silent.
+        when(plugin.getConfig().isSet("production.bulk.base-per-hour.mining")).thenReturn(true);
+        when(plugin.getConfig().getDouble("production.bulk.base-per-hour.mining", 70.0))
+                .thenReturn(0.0);
+        assertTrue(new ProgressionScale(plugin).validateBulkConfig().stream()
+                .noneMatch(p -> p.startsWith("MINING")));
+    }
+
+    /** Mock whose getDouble honours the supplied default, as Bukkit does. */
+    private IdleFarmPlugin configWithRealDefaultBehaviour() {
         IdleFarmPlugin plugin = mock(IdleFarmPlugin.class);
         FileConfiguration config = mock(FileConfiguration.class);
         when(plugin.getConfig()).thenReturn(config);
-        // Unstubbed getDouble returns 0.0 => every production type reads as an
-        // intentionally disabled lane, so a fully-zero config is clean.
-        assertTrue(new ProgressionScale(plugin).validateBulkConfig().isEmpty());
-
-        // A negative sentinel means the base-per-hour key is absent entirely.
-        when(config.getDouble("production.bulk.base-per-hour.mining", -1)).thenReturn(-1.0);
-        var problems = new ProgressionScale(plugin).validateBulkConfig();
-        assertEquals(1, problems.size());
-        assertTrue(problems.get(0).startsWith("MINING"));
+        when(config.getDouble(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyDouble()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+        return plugin;
     }
 
     private ProgressionScale scaleWithDesignDefaults() {

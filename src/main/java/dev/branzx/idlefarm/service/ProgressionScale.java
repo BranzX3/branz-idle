@@ -78,9 +78,7 @@ public final class ProgressionScale {
      * so the lane reads as "a worker with a real tool gathering commons".
      */
     public double bulkRatePerHour(NodeRecord node, List<WorkerRecord> crew) {
-        double base = plugin.getConfig().getDouble(
-                "production.bulk.base-per-hour."
-                        + node.getType().name().toLowerCase(Locale.ROOT), 0.0);
+        double base = bulkBasePerHour(node.getType());
         if (base <= 0 || crew.isEmpty()) {
             return 0;
         }
@@ -122,19 +120,72 @@ public final class ProgressionScale {
             }
         }
         if (commons.isEmpty()) {
-            commons.put(defaultBulkCommon(node), 1.0);
+            return defaultBulkCommons(node);
         }
         return commons;
     }
 
-    private String defaultBulkCommon(NodeRecord node) {
-        return switch (node.getType().name()) {
-            case "FARMING" -> "WHEAT";
-            case "WOODCUTTING" -> "OAK_LOG";
-            case "LIVESTOCK" -> "BEEF";
-            case "HUNTER" -> "ROTTEN_FLESH";
-            default -> "COBBLESTONE";
+    /**
+     * Bulk base rate for a family. The code default is the shipped design
+     * value, not zero: a server whose config.yml predates the bulk lane never
+     * receives the new section (Bukkit does not overwrite an existing config),
+     * and defaulting to zero would silently disable the lane everywhere. An
+     * explicit {@code 0} in config still disables it.
+     */
+    public double bulkBasePerHour(dev.branzx.idlefarm.node.NodeType type) {
+        return plugin.getConfig().getDouble(
+                "production.bulk.base-per-hour." + type.name().toLowerCase(Locale.ROOT),
+                defaultBulkBase(type));
+    }
+
+    private double defaultBulkBase(dev.branzx.idlefarm.node.NodeType type) {
+        return switch (type) {
+            case MINING -> 70.0;
+            case FARMING -> 45.0;
+            case WOODCUTTING -> 35.0;
+            case LIVESTOCK -> 18.0;
+            case HUNTER -> 15.0;
+            default -> 0.0;
         };
+    }
+
+    /**
+     * Family commons used when config carries no list, mirroring the shipped
+     * config.yml weights so an un-migrated server produces the intended mix
+     * rather than a single material.
+     */
+    private Map<String, Double> defaultBulkCommons(NodeRecord node) {
+        Map<String, Double> commons = new LinkedHashMap<>();
+        switch (node.getType()) {
+            case MINING -> {
+                commons.put("COBBLESTONE", 70.0);
+                commons.put("COBBLED_DEEPSLATE", 20.0);
+                commons.put("ANDESITE", 10.0);
+            }
+            case FARMING -> {
+                commons.put("WHEAT", 40.0);
+                commons.put("CARROT", 30.0);
+                commons.put("POTATO", 30.0);
+            }
+            case WOODCUTTING -> {
+                commons.put("OAK_LOG", 50.0);
+                commons.put("BIRCH_LOG", 30.0);
+                commons.put("SPRUCE_LOG", 20.0);
+            }
+            case LIVESTOCK -> {
+                commons.put("BEEF", 40.0);
+                commons.put("PORKCHOP", 30.0);
+                commons.put("CHICKEN", 30.0);
+            }
+            case HUNTER -> {
+                commons.put("ROTTEN_FLESH", 40.0);
+                commons.put("BONE", 30.0);
+                commons.put("STRING", 20.0);
+                commons.put("ARROW", 10.0);
+            }
+            default -> commons.put("COBBLESTONE", 1.0);
+        }
+        return commons;
     }
 
     /**
@@ -151,21 +202,22 @@ public final class ProgressionScale {
                 continue;
             }
             String lower = type.name().toLowerCase(Locale.ROOT);
-            double base = plugin.getConfig().getDouble("production.bulk.base-per-hour." + lower, -1);
-            if (base < 0) {
-                problems.add(type.name() + ": no production.bulk.base-per-hour entry "
-                        + "(lane disabled for this type).");
-                continue;
+            boolean baseConfigured = plugin.getConfig().isSet("production.bulk.base-per-hour." + lower);
+            double base = bulkBasePerHour(type);
+            if (!baseConfigured) {
+                problems.add(type.name() + ": no production.bulk.base-per-hour entry; running on the "
+                        + "built-in default (" + base + "/hour). Add the production.bulk section to "
+                        + "config.yml to tune it.");
             }
-            if (base == 0) {
-                // Intentionally disabled; nothing else to check for this type.
+            if (base <= 0) {
+                // Explicitly disabled; nothing else to check for this type.
                 continue;
             }
             var section = plugin.getConfig().getConfigurationSection(
                     "production.bulk.commons." + lower);
             if (section == null || section.getKeys(false).isEmpty()) {
-                problems.add(type.name() + ": bulk lane active (base=" + base
-                        + ") but no production.bulk.commons list; using a single default common.");
+                problems.add(type.name() + ": no production.bulk.commons list; using the built-in "
+                        + "default mix.");
                 continue;
             }
             boolean anyPositive = false;
