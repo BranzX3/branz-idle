@@ -3,6 +3,7 @@ package dev.branzx.idlefarm;
 import dev.branzx.idlefarm.command.AdminCommands;
 import dev.branzx.idlefarm.command.IdleCommand;
 import dev.branzx.idlefarm.gui.GuiManager;
+import dev.branzx.idlefarm.gui.Lang;
 import dev.branzx.idlefarm.gui.MenuItemService;
 import dev.branzx.idlefarm.schematic.SchematicRegistry;
 import dev.branzx.idlefarm.listener.PlayerConnectionListener;
@@ -62,6 +63,8 @@ public final class IdleFarmPlugin extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
         migrateLegacyBalanceConfig();
+        addMissingConfigDefaults();
+        Lang.init(this);
 
         // ---- persistence layer ----
         this.database = new Database(this);
@@ -205,6 +208,23 @@ public final class IdleFarmPlugin extends JavaPlugin {
             saveConfig();
             getLogger().info("Migrated legacy progression balance to the game-design scale.");
         }
+    }
+
+    /**
+     * Writes newly-introduced config keys into an existing config.yml.
+     *
+     * <p>{@code saveDefaultConfig()} only writes the file when it is absent, so
+     * on a server that already has one a new option is invisible: the code
+     * falls back to its default and the admin never learns the option exists.
+     * Only genuinely missing keys are added, so admin tuning is preserved.
+     */
+    private void addMissingConfigDefaults() {
+        if (getConfig().isSet("language")) {
+            return;
+        }
+        getConfig().set("language", Lang.FALLBACK);
+        saveConfig();
+        getLogger().info("Added 'language' to config.yml (see lang/ for translations).");
     }
 
     @Override

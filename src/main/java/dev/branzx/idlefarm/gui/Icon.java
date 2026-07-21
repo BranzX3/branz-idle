@@ -40,6 +40,14 @@ public final class Icon {
         return this;
     }
 
+    /** Reuses an already-styled name, e.g. when restyling an existing icon. */
+    public Icon nameComponent(Component text) {
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(text.decoration(TextDecoration.ITALIC, false));
+        item.setItemMeta(meta);
+        return this;
+    }
+
     public Icon lore(List<String> lines, NamedTextColor color) {
         ItemMeta meta = item.getItemMeta();
         List<Component> lore = new ArrayList<>();
@@ -72,8 +80,4 @@ public final class Icon {
         return item;
     }
 
-    /** Gray glass filler used for empty frame slots. */
-    public static ItemStack filler() {
-        return Icon.of(Material.GRAY_STAINED_GLASS_PANE).name(" ", NamedTextColor.DARK_GRAY).build();
-    }
 }

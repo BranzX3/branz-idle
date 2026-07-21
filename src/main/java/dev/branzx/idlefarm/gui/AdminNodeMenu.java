@@ -27,7 +27,6 @@ public final class AdminNodeMenu extends Menu {
 
     @Override
     protected void build() {
-        fill();
         if (!viewer.hasPermission("idlefarm.admin")
                 && !viewer.hasPermission("idlefarm.admin.operations")) {
             set(22, Icon.of(Material.BARRIER).name("ไม่มีสิทธิ์ Node Operations",

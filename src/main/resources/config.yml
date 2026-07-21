@@ -1,5 +1,10 @@
 # IdleFarm configuration
 
+# Player-facing text is loaded from lang/<language>.yml in the plugin folder.
+# "en" ships with the plugin; add your own file to translate. Any key missing
+# from your file falls back to the bundled English value.
+language: en
+
 # Permanent hotbar access to the platform-appropriate IdleFarm UI.
 menu-item:
   enabled: true
@@ -486,12 +491,23 @@ streak:
   max-multiplier-days: 7
 
 warehouse:
-  # Starting warehouse capacity (total item count).
+  # Vault (discovery lane) capacity: rolled finds, rares, event loot. Small on
+  # purpose — scarcity here is the reward, and the discovery lane produces in
+  # the tens per hour.
   base-capacity: 2000
-  # Capacity added per expansion purchase.
+  # Vault capacity added per expansion purchase.
   expand-step: 1000
-  # Money cost per expansion.
+  # Money cost per expansion. One purchase raises BOTH pools.
   expand-cost: 5000.0
+  # Silo (bulk lane) capacity: family commons, kept apart from the Vault so
+  # high-volume cobblestone can never crowd out a diamond. Sized against the
+  # lane it serves (docs/BALANCE_BIBLE.md §3): a midgame Tier-5 mining node
+  # with five Rare Lv.50 workers produces ~2,900/hour, so the base holds
+  # roughly a day and a half of one strong node.
+  silo:
+    base-capacity: 120000
+    # Silo capacity added by the same expansion purchase as the Vault.
+    expand-step: 20000
 
 nodes:
   # Tier upgrade cost = base × factor^(currentTier-1). Exponential per spec.

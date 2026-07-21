@@ -47,9 +47,6 @@ public final class PoolBrowserMenu extends Menu {
 
     @Override
     protected void build() {
-        for (int i = 0; i < rows() * 9; i++) {
-            set(i, Icon.filler());
-        }
         if (type == null) {
             int slot = 10;
             for (NodeType t : NodeType.values()) {

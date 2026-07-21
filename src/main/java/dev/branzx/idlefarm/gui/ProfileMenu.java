@@ -25,12 +25,11 @@ public final class ProfileMenu extends Menu {
 
     @Override
     protected Component title() {
-        return Component.text("IdleFarm | Profile", NamedTextColor.YELLOW);
+        return Component.text(Lang.get("menu.profile.title"), NamedTextColor.YELLOW);
     }
 
     @Override
     protected void build() {
-        fill();
         PlayerData data = gui.dataStore().getOnline(viewer.getUniqueId());
         String currency = gui.plugin().getConfig().getString("currency-name", "Coins");
         double balance = data == null ? 0 : data.getBalance();
@@ -38,7 +37,7 @@ public final class ProfileMenu extends Menu {
         int streak = gui.streakService() == null ? 0
                 : gui.streakService().currentStreak(viewer.getUniqueId());
 
-        set(4, Icon.head(gui.skinHeadCache(), viewer.getName())
+        set(SUMMARY_SLOT, Icon.head(gui.skinHeadCache(), viewer.getName())
                 .name(viewer.getName(), NamedTextColor.YELLOW)
                 .loreComponents(List.of(
                         Ui.line(Ui.num(balance) + " " + currency, NamedTextColor.GOLD),
@@ -57,13 +56,18 @@ public final class ProfileMenu extends Menu {
                         Ui.click("open Node Control")))
                 .build(), event -> gui.openNodes(viewer));
 
-        int stored = gui.warehouseService().total(viewer.getUniqueId());
-        int capacity = gui.warehouseService().getCapacity(viewer.getUniqueId());
+        var warehouse = gui.warehouseService();
+        int vault = warehouse.vaultTotal(viewer.getUniqueId());
+        int vaultCapacity = warehouse.vaultCapacity(viewer.getUniqueId());
+        int silo = warehouse.siloTotal(viewer.getUniqueId());
+        int siloCapacity = warehouse.siloCapacity(viewer.getUniqueId());
         set(13, Icon.of(Material.CHEST)
                 .name("Storage", NamedTextColor.GOLD)
                 .loreComponents(List.of(
-                        Ui.bar("Warehouse", capacity == 0 ? 0 : stored / (double) capacity,
-                                NamedTextColor.GOLD, stored + "/" + capacity),
+                        Ui.bar("Vault", vaultCapacity == 0 ? 0 : vault / (double) vaultCapacity,
+                                NamedTextColor.GOLD, vault + "/" + vaultCapacity),
+                        Ui.bar("Silo", siloCapacity == 0 ? 0 : silo / (double) siloCapacity,
+                                NamedTextColor.AQUA, silo + "/" + siloCapacity),
                         Ui.click("open Warehouse")))
                 .build(), event -> gui.openWarehouse(viewer, viewer.getUniqueId()));
 
@@ -89,6 +93,11 @@ public final class ProfileMenu extends Menu {
                         Ui.line("/idle trade <player>", NamedTextColor.GRAY),
                         Ui.line("/idle balance shows a chat summary", NamedTextColor.GRAY)))
                 .build());
-        backToHub(gui);
+        navBarToHub(gui);
+    }
+
+    @Override
+    protected Material frameMaterial() {
+        return Material.YELLOW_STAINED_GLASS_PANE;
     }
 }

@@ -28,7 +28,7 @@ public final class NodeBuildMenu extends Menu {
 
     @Override
     protected Component title() {
-        return Component.text("Node Build & Type Perks", NamedTextColor.LIGHT_PURPLE);
+        return Component.text(Lang.get("menu.nodebuild.title"), NamedTextColor.LIGHT_PURPLE);
     }
 
     private NodeRecord node() {
@@ -38,7 +38,6 @@ public final class NodeBuildMenu extends Menu {
 
     @Override
     protected void build() {
-        for (int i = 0; i < rows() * 9; i++) set(i, Icon.filler());
         NodeRecord node = node();
         GameDesignService design = gui.gameDesignService();
         if (node == null || design == null) {
@@ -94,48 +93,47 @@ public final class NodeBuildMenu extends Menu {
                     .build(), event -> {
                 if (node.getExplorationLevel() < level) return;
                 new AdminOptionMenu(viewer, "Choose Type Perk Lv." + level, choices,
-                        selected -> confirmTypePerk(node, level, selected),
-                        this::open).open();
+                        selected -> applyTypePerk(node, level, selected),
+                        this::open, true).open();
             });
         }
 
-        set(49, Icon.of(Material.ARROW).name("Back", NamedTextColor.GREEN).build(),
-                event -> gui.openNodeDetail(viewer, node));
+        navBar(Lang.get("menu.exploration.back"), () -> gui.openNodeDetail(viewer, node));
     }
 
     private void buildChoice(int slot, NodeRecord node, String tier, String choice,
                              Material material, String effect) {
-        set(slot, Icon.of(material).name(pretty(choice), NamedTextColor.LIGHT_PURPLE)
+        setDangerConfirm(slot, Icon.of(material)
+                .name(pretty(choice), NamedTextColor.LIGHT_PURPLE)
                 .loreComponents(List.of(
                         Ui.line(effect, NamedTextColor.GRAY),
-                        Ui.line("Click: preview & confirm", NamedTextColor.DARK_GRAY))).build(),
-                event -> new ConfirmMenu(viewer, "Choose " + pretty(choice) + "?",
-                        List.of(effect, "Respecs may cost Coins and start a 7-day cooldown."),
-                        () -> {
-                            GameDesignService.Result result = gui.gameDesignService()
-                                    .selectBuild(viewer.getUniqueId(), node, tier, choice);
-                            viewer.sendMessage(Component.text(result.message(),
-                                    result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-                            new NodeBuildMenu(viewer, gui, nodeId).open();
-                        },
-                        () -> new NodeBuildMenu(viewer, gui, nodeId).open()).open());
-    }
-
-    private void confirmTypePerk(NodeRecord node, int level, String choice) {
-        new ConfirmMenu(viewer, "Choose " + pretty(choice) + "?",
-                List.of("Node-type perk at Lv." + level, "The node keeps all EXP and discoveries."),
+                        Ui.line("Respecs may cost Coins and start a 7-day cooldown.",
+                                NamedTextColor.DARK_GRAY),
+                        Ui.click("choose this path"))).build(),
                 () -> {
                     GameDesignService.Result result = gui.gameDesignService()
-                            .selectTypePerk(viewer.getUniqueId(), node, level, choice);
+                            .selectBuild(viewer.getUniqueId(), node, tier, choice);
                     viewer.sendMessage(Component.text(result.message(),
                             result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
                     new NodeBuildMenu(viewer, gui, nodeId).open();
-                },
-                () -> new NodeBuildMenu(viewer, gui, nodeId).open()).open();
+                });
+    }
+
+    private void applyTypePerk(NodeRecord node, int level, String choice) {
+        GameDesignService.Result result = gui.gameDesignService()
+                .selectTypePerk(viewer.getUniqueId(), node, level, choice);
+        viewer.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        new NodeBuildMenu(viewer, gui, nodeId).open();
     }
 
     private String pretty(String value) {
         String normalized = value.toLowerCase().replace('_', ' ');
         return Character.toUpperCase(normalized.charAt(0)) + normalized.substring(1);
+    }
+
+    @Override
+    protected Material frameMaterial() {
+        return Material.GREEN_STAINED_GLASS_PANE;
     }
 }

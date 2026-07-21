@@ -22,89 +22,89 @@ public final class ShopMenu extends Menu {
 
     @Override
     protected int rows() {
-        return 4;
+        return 6;
     }
 
     @Override
     protected Component title() {
-        return Component.text("IdleFarm | Upgrades", NamedTextColor.GOLD);
+        return Component.text(Lang.get("menu.shop.title"), NamedTextColor.GOLD);
     }
 
     @Override
     protected void build() {
-        fill();
-        set(4, Icon.of(Material.EMERALD)
-                .name("Boosters & Convenience", NamedTextColor.GOLD)
-                .lore("Every purchase is reviewed before Coins are spent",
-                        NamedTextColor.GRAY).build());
+        set(SUMMARY_SLOT, Icon.of(Material.EMERALD)
+                .name(Lang.get("menu.shop.summary"), NamedTextColor.GOLD)
+                .lore(Lang.get("menu.shop.hint"), NamedTextColor.GRAY).build());
 
-        booster(11, BoosterService.MONEY, Material.GOLD_INGOT, "Money Booster");
-        booster(13, BoosterService.PRODUCTION, Material.REDSTONE, "Production Booster");
-        perk(20, PerkService.AUTO_COLLECT, Material.HOPPER, "Auto-Collect",
-                List.of("Periodically sends Node buffers", "to your Warehouse"));
-        perk(22, PerkService.REMOTE_COLLECT, Material.ENDER_EYE, "Remote Collect",
-                List.of("Adds Quick Collect All", "to the Home screen"));
+        // One grid, boosters then perks: adding a new purchasable means
+        // appending here, not finding free slots.
+        booster(CONTENT_GRID[0], BoosterService.MONEY, Material.GOLD_INGOT, "money");
+        booster(CONTENT_GRID[1], BoosterService.PRODUCTION, Material.REDSTONE, "production");
+        perk(CONTENT_GRID[2], PerkService.AUTO_COLLECT, Material.HOPPER, "auto-collect");
+        perk(CONTENT_GRID[3], PerkService.REMOTE_COLLECT, Material.ENDER_EYE, "remote-collect");
 
-        backToHub(gui);
+        navBarToHub(gui);
     }
 
-    private void booster(int slot, String type, Material material, String label) {
+    private void booster(int slot, String type, Material material, String key) {
         BoosterService boosters = gui.boosterService();
         long remaining = boosters.remainingMillis(viewer.getUniqueId(), type);
         double cost = boosters.cost(type);
         List<Component> lore = new ArrayList<>();
-        lore.add(Ui.line("x" + boosters.boostMultiplier(type) + " for "
-                + boosters.durationMinutes(type) + "m", NamedTextColor.AQUA));
-        lore.add(Ui.line("Cost: " + Ui.num(cost), NamedTextColor.GOLD));
+        lore.add(Lang.line("menu.shop.booster.effect", NamedTextColor.AQUA,
+                "multiplier", boosters.boostMultiplier(type),
+                "minutes", boosters.durationMinutes(type)));
+        lore.add(Lang.line("menu.shop.cost", NamedTextColor.GOLD, "cost", Ui.num(cost)));
         lore.add(remaining > 0
-                ? Ui.status("ACTIVE | " + Ui.time(remaining) + " LEFT", NamedTextColor.GREEN)
-                : Ui.status("INACTIVE", NamedTextColor.DARK_GRAY));
-        lore.add(Ui.click("review purchase"));
-        set(slot, Icon.of(material).name(label, NamedTextColor.YELLOW)
-                .loreComponents(lore).build(), event ->
-                new ConfirmMenu(viewer, "Buy " + label + "?",
-                        List.of("Cost: " + Ui.num(cost),
-                                "Duration: " + boosters.durationMinutes(type) + " minutes",
-                                remaining > 0
-                                        ? "Adds time to the active booster"
-                                        : "Activates immediately"),
-                        () -> buyBooster(type, label),
-                        () -> new ShopMenu(viewer, gui).open()).open());
+                ? Ui.status(Lang.get("menu.shop.booster.active",
+                        "time", Ui.time(remaining)), NamedTextColor.GREEN)
+                : Ui.status(Lang.get("menu.shop.booster.inactive"), NamedTextColor.DARK_GRAY));
+        lore.add(Lang.line(remaining > 0 ? "menu.shop.booster.extends"
+                : "menu.shop.booster.starts", NamedTextColor.GRAY));
+        lore.add(Lang.click("menu.shop.buy"));
+        setConfirm(slot, Icon.of(material)
+                .name(Lang.get("menu.shop.booster." + key), NamedTextColor.YELLOW)
+                .loreComponents(lore).build(), () -> {
+                    String error = gui.boosterService().buy(viewer.getUniqueId(), type);
+                    viewer.sendMessage(Component.text(error == null
+                                    ? Lang.get("menu.shop.booster.bought",
+                                            "name", Lang.get("menu.shop.booster." + key))
+                                    : error,
+                            error == null ? NamedTextColor.GREEN : NamedTextColor.RED));
+                    redraw();
+                });
     }
 
-    private void buyBooster(String type, String label) {
-        String error = gui.boosterService().buy(viewer.getUniqueId(), type);
-        viewer.sendMessage(Component.text(error == null ? label + " activated." : error,
-                error == null ? NamedTextColor.GREEN : NamedTextColor.RED));
-        new ShopMenu(viewer, gui).open();
-    }
-
-    private void perk(int slot, String perk, Material material, String label,
-                      List<String> description) {
+    private void perk(int slot, String perk, Material material, String key) {
         PerkService perks = gui.perkService();
         boolean owned = perks.has(viewer.getUniqueId(), perk);
         double cost = perks.cost(perk);
         List<Component> lore = new ArrayList<>();
-        description.forEach(line -> lore.add(Ui.line(line, NamedTextColor.GRAY)));
-        lore.add(owned ? Ui.status("OWNED", NamedTextColor.GREEN)
-                : Ui.line("Cost: " + Ui.num(cost), NamedTextColor.GOLD));
-        if (!owned) {
-            lore.add(Ui.click("review purchase"));
+        lore.add(Lang.line("menu.shop.perk." + key + ".effect", NamedTextColor.GRAY));
+        lore.add(owned ? Ui.status(Lang.get("menu.shop.perk.owned"), NamedTextColor.GREEN)
+                : Lang.line("menu.shop.cost", NamedTextColor.GOLD, "cost", Ui.num(cost)));
+        var icon = Icon.of(material)
+                .name(Lang.get("menu.shop.perk." + key + ".name"),
+                        owned ? NamedTextColor.GREEN : NamedTextColor.AQUA);
+        if (owned) {
+            set(slot, icon.loreComponents(lore).build());
+            return;
         }
-        set(slot, Icon.of(material)
-                .name(label, owned ? NamedTextColor.GREEN : NamedTextColor.AQUA)
-                .loreComponents(lore).build(), owned ? null : event ->
-                        new ConfirmMenu(viewer, "Unlock " + label + "?",
-                                List.of("Cost: " + Ui.num(cost),
-                                        "Permanent convenience unlock"),
-                                () -> buyPerk(perk, label),
-                                () -> new ShopMenu(viewer, gui).open()).open());
+        lore.add(Lang.line("menu.shop.perk.permanent", NamedTextColor.DARK_GRAY));
+        lore.add(Lang.click("menu.shop.buy"));
+        setConfirm(slot, icon.loreComponents(lore).build(), () -> {
+            String error = gui.perkService().buy(viewer.getUniqueId(), perk);
+            viewer.sendMessage(Component.text(error == null
+                            ? Lang.get("menu.shop.perk.bought",
+                                    "name", Lang.get("menu.shop.perk." + key + ".name"))
+                            : error,
+                    error == null ? NamedTextColor.GREEN : NamedTextColor.RED));
+            redraw();
+        });
     }
 
-    private void buyPerk(String perk, String label) {
-        String error = gui.perkService().buy(viewer.getUniqueId(), perk);
-        viewer.sendMessage(Component.text(error == null ? label + " unlocked." : error,
-                error == null ? NamedTextColor.GREEN : NamedTextColor.RED));
-        new ShopMenu(viewer, gui).open();
+    @Override
+    protected Material frameMaterial() {
+        return Material.YELLOW_STAINED_GLASS_PANE;
     }
 }

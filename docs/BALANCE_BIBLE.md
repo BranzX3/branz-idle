@@ -164,6 +164,39 @@ Bulk-lane commons are stored as counts and materialized into item stacks
 only on withdrawal. Endgame territories hold six-figure common stocks;
 physical item stacks must never be the storage representation.
 
+#### Two pools: Vault and Silo
+
+The two lanes differ by two orders of magnitude, so they cannot share one
+capacity counter. A Tier-5 mining node with five Rare Lv.50 workers at
+diligence 20 runs at `70 × 5 × (3.0 × 2.0 × 1.4) = 2,940` commons/hour —
+about 70,000 per day from one node — while the discovery lane is measured in
+tens per hour. With a single pool, commons fill all storage within the hour
+and rare finds bounce; buying storage cannot keep up either, since supply
+scales multiplicatively with the crew while a purchased step is flat.
+
+| Pool | Holds | Base | Per expansion |
+|---|---|---:|---:|
+| Vault | Discovery finds, event loot, rares | 2,000 | +1,000 |
+| Silo | Bulk-lane family commons | 120,000 | +20,000 |
+
+- One expansion purchase (5,000 Coins) raises **both** pools, so the sink
+  stays meaningful instead of buying a rounding error against the bulk lane.
+- Silo capacity is *derived* from the number of expansions bought, not
+  stored separately: `silo_base + expansions × silo_step`.
+- The Silo base holds roughly a day and a half of one strong midgame node,
+  which is the intended stockpiling window for the commons sinks (Server
+  Project 800,000 cobblestone, Chronicle Hall 8,192 stone, Storehouse 4,096
+  logs).
+- Classification is the bulk-commons table itself: any material any family
+  can produce on the bulk lane lives in the Silo, everything else in the
+  Vault. The lanes already have separate node buffers; storage keeps that
+  separation instead of merging the two.
+- Reads stay unified — commissions, projects and crafting look materials up
+  by name across both pools. Only capacity is accounted per pool.
+- A non-positive configured Silo capacity falls back to the shipped value.
+  Zero would silently discard every common produced, and Bukkit never adds
+  the new section to an existing `config.yml`.
+
 ## 4. Rare-resource caps
 
 Weights alone do not safely control valuable vanilla items because high-tier
@@ -220,7 +253,7 @@ The existing payout of 10 Coins/minute equals 600/hour.
 | Three secondary Tier-2 upgrades | 3,000 |
 | 20 worker hires | 5,000 |
 | Fuse catalysts/respec | 6,000 |
-| Warehouse expansion | 5,000 |
+| Warehouse expansion (Vault +1,000 and Silo +20,000) | 5,000 |
 | Bag/utility/cosmetic choices | 8,000 |
 | Total typical spend | 42,872 |
 

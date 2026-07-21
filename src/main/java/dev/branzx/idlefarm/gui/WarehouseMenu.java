@@ -34,10 +34,21 @@ public final class WarehouseMenu extends Menu {
         return 6;
     }
 
+    /**
+     * Unframed on purpose: the item grid owns slots 0-44, so a border would
+     * only appear in whatever gaps a half-full page happens to leave, which
+     * reads as broken rather than as a frame.
+     */
+    @Override
+    protected Material frameMaterial() {
+        return null;
+    }
+
     @Override
     protected Component title() {
-        return Component.text("Warehouse " + gui.warehouseService().total(owner) + "/"
-                + gui.warehouseService().getCapacity(owner), NamedTextColor.GOLD);
+        // Capacity is read off the Storage icon on the bottom bar; the title
+        // only ever says which screen you are on.
+        return Component.text(Lang.get("menu.warehouse.title"), NamedTextColor.GOLD);
     }
 
     @Override
@@ -75,55 +86,69 @@ public final class WarehouseMenu extends Menu {
                     });
         }
 
-        for (int i = 45; i < 54; i++) {
-            set(i, Icon.filler());
-        }
-        if (page > 0) {
-            set(45, Icon.of(Material.ARROW).name("Previous", NamedTextColor.YELLOW).build(),
-                    e -> new WarehouseMenu(viewer, gui, owner, page - 1).open());
-        }
-        set(49, Icon.of(Material.NETHER_STAR).name("Main Menu", NamedTextColor.GREEN).build(),
-                e -> gui.openMainHub(viewer));
-        set(46, Icon.of(Material.HOPPER)
-                .name("Deposit Items", NamedTextColor.GREEN)
+        // This screen is the one exception to the slot-4 summary card: the item
+        // grid needs all 45 slots, so Vault/Silo live in the title and in the
+        // Storage icon on the bottom bar instead.
+        navBarToHub(gui);
+        set(navRow() + 1, Icon.of(Material.HOPPER)
+                .name(Lang.get("menu.warehouse.deposit.name"), NamedTextColor.GREEN)
                 .loreComponents(List.of(
-                        Ui.line("Choose an inventory stack", NamedTextColor.GRAY),
-                        Ui.line("Works with touch and controller", NamedTextColor.DARK_GRAY)))
+                        Lang.line("menu.warehouse.deposit.hint", NamedTextColor.GRAY),
+                        Lang.line("menu.warehouse.deposit.cross-platform",
+                                NamedTextColor.DARK_GRAY)))
                 .build(), e -> new DepositMenu().open());
-        set(47, Icon.of(Material.HOPPER_MINECART)
-                .name("Deposit All", NamedTextColor.GREEN)
+        setConfirm(navRow() + 2, Icon.of(Material.HOPPER_MINECART)
+                .name(Lang.get("menu.warehouse.deposit-all.name"), NamedTextColor.GREEN)
                 .loreComponents(List.of(
-                        Ui.line("Deposit every eligible stack", NamedTextColor.GRAY),
-                        Ui.line("Custom items stay in your inventory", NamedTextColor.DARK_GRAY)))
-                .build(), e -> {
+                        Lang.line("menu.warehouse.deposit-all.hint", NamedTextColor.GRAY),
+                        Lang.line("menu.warehouse.deposit-all.custom",
+                                NamedTextColor.DARK_GRAY),
+                        Lang.click("menu.warehouse.deposit-all.click")))
+                .build(), () -> {
                     depositAll();
                     redraw();
                 });
-        int stored = gui.warehouseService().total(owner);
-        int capacity = gui.warehouseService().getCapacity(owner);
-        set(50, Icon.of(Material.BOOK)
-                .name("Storage", stored >= capacity ? NamedTextColor.RED : NamedTextColor.GOLD)
+        // Two bars, because the two pools fill at completely different speeds:
+        // a player reading one merged number cannot tell which one is stopping
+        // their production.
+        int vault = gui.warehouseService().vaultTotal(owner);
+        int vaultCapacity = gui.warehouseService().vaultCapacity(owner);
+        int silo = gui.warehouseService().siloTotal(owner);
+        int siloCapacity = gui.warehouseService().siloCapacity(owner);
+        boolean anyFull = vault >= vaultCapacity || silo >= siloCapacity;
+        set(navRow() + 6, Icon.of(Material.BOOK)
+                .name(Lang.get("menu.warehouse.storage.name"),
+                        anyFull ? NamedTextColor.RED : NamedTextColor.GOLD)
                 .loreComponents(List.of(
-                        Ui.bar("Storage", capacity == 0 ? 0 : stored / (double) capacity,
-                                stored >= capacity ? NamedTextColor.RED : NamedTextColor.GOLD,
-                                Ui.num(stored) + "/" + Ui.num(capacity)),
-                        Ui.line("Click items in your inventory to deposit", NamedTextColor.GRAY)))
+                        Ui.bar(Lang.get("menu.warehouse.bar-vault"),
+                                vaultCapacity == 0 ? 0 : vault / (double) vaultCapacity,
+                                vault >= vaultCapacity ? NamedTextColor.RED : NamedTextColor.GOLD,
+                                Ui.num(vault) + "/" + Ui.num(vaultCapacity)),
+                        Lang.line("menu.warehouse.vault-holds", NamedTextColor.DARK_GRAY),
+                        Ui.bar(Lang.get("menu.warehouse.bar-silo"),
+                                siloCapacity == 0 ? 0 : silo / (double) siloCapacity,
+                                silo >= siloCapacity ? NamedTextColor.RED : NamedTextColor.AQUA,
+                                Ui.num(silo) + "/" + Ui.num(siloCapacity)),
+                        Lang.line("menu.warehouse.silo-holds", NamedTextColor.DARK_GRAY),
+                        Lang.line("menu.warehouse.storage.hint", NamedTextColor.GRAY)))
                 .build());
         double expandCost = gui.plugin().getConfig().getDouble("warehouse.expand-cost", 5000);
         int expandStep = gui.plugin().getConfig().getInt("warehouse.expand-step", 1000);
-        set(48, Icon.of(Material.ENDER_CHEST).name("Expand +" + expandStep, NamedTextColor.AQUA)
+        int siloStep = gui.plugin().getConfig().getInt("warehouse.silo.expand-step", 20_000);
+        setConfirm(navRow() + 7, Icon.of(Material.ENDER_CHEST)
+                .name(Lang.get("menu.warehouse.expand.name"), NamedTextColor.AQUA)
                 .loreComponents(List.of(
-                        Ui.line("Cost: " + formatAmount(expandCost), NamedTextColor.GOLD),
-                        Ui.click("review expansion"))).build(),
-                e -> new ConfirmMenu(viewer, "Expand Warehouse?",
-                        List.of("Cost: " + formatAmount(expandCost),
-                                "Capacity: +" + expandStep),
-                        this::expand,
-                        () -> new WarehouseMenu(viewer, gui, owner, page).open()).open());
-        if (start + PAGE_SIZE < entries.size()) {
-            set(53, Icon.of(Material.ARROW).name("Next", NamedTextColor.YELLOW).build(),
-                    e -> new WarehouseMenu(viewer, gui, owner, page + 1).open());
-        }
+                        Lang.line("menu.warehouse.expand.vault", NamedTextColor.GOLD,
+                                "amount", Ui.num(expandStep)),
+                        Lang.line("menu.warehouse.expand.silo", NamedTextColor.AQUA,
+                                "amount", Ui.num(siloStep)),
+                        Lang.line("menu.warehouse.expand.cost", NamedTextColor.GOLD,
+                                "cost", formatAmount(expandCost)),
+                        Lang.click("menu.warehouse.expand.click"))).build(),
+                this::expand);
+
+        pager(page, Math.max(1, (entries.size() + PAGE_SIZE - 1) / PAGE_SIZE),
+                target -> new WarehouseMenu(viewer, gui, owner, target).open());
     }
 
     private void promptExact(String key, Material material) {
@@ -176,10 +201,10 @@ public final class WarehouseMenu extends Menu {
         var data = gui.dataStore().getOnline(viewer.getUniqueId());
         boolean ok = data != null && owner.equals(viewer.getUniqueId())
                 && gui.warehouseService().expandCapacity(owner, data);
-        viewer.sendMessage(Component.text(ok ? "Warehouse expanded!" : "Not enough money to expand.",
+        viewer.sendMessage(Component.text(Lang.get(ok
+                        ? "menu.warehouse.expand.done" : "menu.warehouse.expand.too-poor"),
                 ok ? NamedTextColor.GREEN : NamedTextColor.RED));
-        // ConfirmMenu closed the inventory; reopen either way.
-        open();
+        redraw();
     }
 
     @Override
@@ -298,7 +323,6 @@ public final class WarehouseMenu extends Menu {
 
         @Override
         protected void build() {
-            fill();
             int have = gui.warehouseService().getContents(owner)
                     .getOrDefault(key.toUpperCase(Locale.ROOT), 0);
             Material icon = material == null ? Material.PRISMARINE_SHARD : material;
@@ -335,7 +359,6 @@ public final class WarehouseMenu extends Menu {
 
         @Override
         protected void build() {
-            fill();
             int shown = 0;
             for (int inventorySlot = 0; inventorySlot < viewer.getInventory().getSize()
                     && shown < 45; inventorySlot++) {

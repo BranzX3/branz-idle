@@ -19,7 +19,8 @@ public final class WorkerDetailMenu extends Menu {
     private final Runnable onBack;
 
     public WorkerDetailMenu(Player viewer, GuiManager gui, UUID workerUuid) {
-        this(viewer, gui, workerUuid, "Back to Bag", () -> gui.openWorkerBag(viewer));
+        this(viewer, gui, workerUuid, Lang.get("menu.workers.bag.title"),
+                () -> gui.openWorkerBag(viewer));
     }
 
     public WorkerDetailMenu(Player viewer, GuiManager gui, UUID workerUuid,
@@ -31,15 +32,24 @@ public final class WorkerDetailMenu extends Menu {
         this.onBack = onBack;
     }
 
+    /** Identity row, stats row, actions row, nav row. */
+    private static final int LOCK_SLOT = 19;
+    private static final int CHARM_SLOT = 21;
+    private static final int NOTES_SLOT = 23;
+    private static final int RENAME_SLOT = 28;
+    private static final int SKIN_SLOT = 30;
+    private static final int MOVE_SLOT = 32;
+
     @Override
     protected int rows() {
-        return 3;
+        // Five rows so the card, its stats and its actions each get a row
+        // instead of being scattered across three.
+        return 5;
     }
 
     @Override
     protected Component title() {
-        WorkerRecord w = gui.workerStore().get(workerUuid);
-        return Component.text(w == null ? "Worker" : w.getName(), NamedTextColor.DARK_AQUA);
+        return Component.text(Lang.get("menu.worker.title"), NamedTextColor.DARK_AQUA);
     }
 
     @Override
@@ -49,16 +59,13 @@ public final class WorkerDetailMenu extends Menu {
             viewer.closeInventory();
             return;
         }
-        for (int i = 0; i < rows() * 9; i++) {
-            set(i, Icon.filler());
-        }
-
-        set(4, Icon.head(gui.skinHeadCache(), worker.getSkin())
-                .name("✦ " + worker.getName(), worker.getRarity().color())
+        set(SUMMARY_SLOT, Icon.head(gui.skinHeadCache(), worker.getSkin())
+                .name(worker.getName(), worker.getRarity().color())
                 .loreComponents(gui.workerService().workerLore(worker)).build());
 
-        set(11, Icon.of(Material.NAME_TAG).name("Rename", NamedTextColor.GREEN)
-                .lore("Free — type a new name in chat", NamedTextColor.GRAY).build(),
+        set(RENAME_SLOT, Icon.of(Material.NAME_TAG)
+                .name(Lang.get("menu.worker.rename.name"), NamedTextColor.GREEN)
+                .lore(Lang.get("menu.worker.rename.hint"), NamedTextColor.GRAY).build(),
                 e -> gui.chatPrompt().request(viewer,
                         "Enter a new name for " + worker.getName(),
                         input -> {
@@ -70,7 +77,7 @@ public final class WorkerDetailMenu extends Menu {
                         this::open));
 
         boolean canSkin = viewer.hasPermission("idlefarm.skin");
-        set(13, Icon.of(canSkin ? Material.PLAYER_HEAD : Material.BARRIER)
+        set(SKIN_SLOT, Icon.of(canSkin ? Material.PLAYER_HEAD : Material.BARRIER)
                 .name("Change Skin", canSkin ? NamedTextColor.AQUA : NamedTextColor.DARK_GRAY)
                 .lore(canSkin ? "Type a player username in chat"
                         : "Requires a rank", NamedTextColor.GRAY).build(),
@@ -88,7 +95,7 @@ public final class WorkerDetailMenu extends Menu {
                 && gui.gameDesignService().isWorkerLocked(worker.getWorkerUuid());
         boolean starter = gui.gameDesignService() != null
                 && gui.gameDesignService().isStarterWorker(worker.getWorkerUuid());
-        set(17, Icon.of(locked ? Material.REDSTONE_TORCH : Material.LEVER)
+        set(LOCK_SLOT, Icon.of(locked ? Material.REDSTONE_TORCH : Material.LEVER)
                 .name(locked ? "Favorite / Locked" : "Lock Worker",
                         locked ? NamedTextColor.RED : NamedTextColor.YELLOW)
                 .lore("Locked workers cannot fuse, trade, or withdraw", NamedTextColor.GRAY).build(),
@@ -105,7 +112,7 @@ public final class WorkerDetailMenu extends Menu {
                     .workerCharm(viewer.getUniqueId(), worker.getWorkerUuid());
             List<String> charms = List.of("SURVEY_COMPASS", "HEAVY_GLOVES",
                     "LUCKY_TOKEN", "TRAIL_BOOTS", "NONE");
-            set(20, Icon.of(Material.HEART_OF_THE_SEA).name("Charm: " + Ui.pretty(currentCharm),
+            set(CHARM_SLOT, Icon.of(Material.HEART_OF_THE_SEA).name("Charm: " + Ui.pretty(currentCharm),
                             NamedTextColor.LIGHT_PURPLE)
                     .lore("Choose a situational Charm", NamedTextColor.GRAY).build(),
                     e -> new AdminOptionMenu(viewer, "Choose Charm", charms,
@@ -117,7 +124,7 @@ public final class WorkerDetailMenu extends Menu {
                                 open();
                             }, this::open).open());
             long notes = gui.gameDesignService().trainingNotes(viewer.getUniqueId());
-            set(21, Icon.of(Material.EXPERIENCE_BOTTLE)
+            set(NOTES_SLOT, Icon.of(Material.EXPERIENCE_BOTTLE)
                     .name("Training Notes: " + notes, NamedTextColor.GREEN)
                     .lore("Click: apply all returned Fuse EXP", NamedTextColor.GRAY).build(),
                     e -> {
@@ -129,29 +136,29 @@ public final class WorkerDetailMenu extends Menu {
                     });
         }
 
-        // Withdraw is only meaningful for a tradeable, unlocked bag worker.
+        // Withdraw is only meaningful for a tradeable, unlocked bag worker. It
+        // hands a real item back, so it asks twice.
         if (worker.isInBag() && !locked && !starter) {
-            set(15, Icon.of(Material.HOPPER).name("Withdraw as Item", NamedTextColor.GOLD)
-                    .lore("Take out to trade or carry", NamedTextColor.GRAY).build(),
-                    e -> {
+            setDangerConfirm(MOVE_SLOT, Icon.of(Material.HOPPER)
+                    .name(Lang.get("menu.worker.withdraw.name"), NamedTextColor.GOLD)
+                    .loreComponents(List.of(
+                            Lang.line("menu.worker.withdraw.hint", NamedTextColor.GRAY),
+                            Lang.click("menu.worker.withdraw.click"))).build(),
+                    () -> {
                         ItemStack item = gui.workerService().withdraw(viewer.getUniqueId(), worker);
                         if (item != null) {
-                            var leftover = viewer.getInventory().addItem(item);
-                            for (ItemStack overflow : leftover.values()) {
-                                viewer.getWorld().dropItemNaturally(viewer.getLocation(), overflow);
-                            }
+                            giveOrDrop(item);
                         }
                         gui.openWorkerBag(viewer);
                     });
         } else if (worker.getAssignedNodeId() != null) {
-            set(15, Icon.of(Material.CHEST_MINECART)
-                    .name("Store in Worker Bag", NamedTextColor.GREEN)
-                    .lore("Return this worker from its Node", NamedTextColor.GRAY).build(),
+            set(MOVE_SLOT, Icon.of(Material.CHEST_MINECART)
+                    .name(Lang.get("menu.worker.store.name"), NamedTextColor.GREEN)
+                    .lore(Lang.get("menu.worker.store.hint"), NamedTextColor.GRAY).build(),
                     e -> storeAssignedWorker(worker));
         }
 
-        set(22, Icon.of(Material.NETHER_STAR).name(backLabel, NamedTextColor.GREEN).build(),
-                e -> onBack.run());
+        navBar(backLabel, onBack);
     }
 
     private void storeAssignedWorker(WorkerRecord worker) {
@@ -178,5 +185,10 @@ public final class WorkerDetailMenu extends Menu {
         for (ItemStack overflow : leftover.values()) {
             viewer.getWorld().dropItemNaturally(viewer.getLocation(), overflow);
         }
+    }
+
+    @Override
+    protected Material frameMaterial() {
+        return Material.MAGENTA_STAINED_GLASS_PANE;
     }
 }

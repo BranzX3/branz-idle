@@ -23,12 +23,12 @@ public final class ResidentialMenu extends Menu {
 
     @Override
     protected int rows() {
-        return 4;
+        return 5;
     }
 
     @Override
     protected Component title() {
-        return Component.text("IdleFarm | Residential", NamedTextColor.YELLOW);
+        return Component.text(Lang.get("menu.residential.title"), NamedTextColor.YELLOW);
     }
 
     @Override
@@ -38,7 +38,6 @@ public final class ResidentialMenu extends Menu {
             viewer.closeInventory();
             return;
         }
-        fill();
         set(4, Icon.of(Material.OAK_DOOR)
                 .name("Home Plot", NamedTextColor.YELLOW)
                 .loreComponents(List.of(
@@ -75,15 +74,19 @@ public final class ResidentialMenu extends Menu {
                         Ui.click("open Progress")))
                 .build(), event -> gui.openProgress(viewer));
 
-        set(27, Icon.of(Material.FILLED_MAP)
-                .name("Territory Map", NamedTextColor.GREEN).build(),
+        set(29, Icon.of(Material.FILLED_MAP)
+                .name(Lang.get("menu.territory.title"), NamedTextColor.GREEN).build(),
                 event -> gui.openTerritoryMap(viewer));
-        set(31, Icon.of(Material.TNT)
+        setDangerConfirm(33, Icon.of(Material.TNT)
                 .name("Unclaim Home Plot", NamedTextColor.RED)
                 .loreComponents(List.of(
                         Ui.line("Territory must remain connected", NamedTextColor.GRAY),
-                        Ui.click("review destructive action")))
-                .build(), event -> confirmUnclaim(node));
+                        Ui.line("The oldest home anchor may relocate", NamedTextColor.GRAY),
+                        Ui.line("Building restoration rules apply", NamedTextColor.GRAY),
+                        Ui.click("unclaim this plot")))
+                .build(), () -> unclaim(node));
+
+        navBarToHub(gui);
     }
 
     private NodeRecord node() {
@@ -92,18 +95,16 @@ public final class ResidentialMenu extends Menu {
                 .findFirst().orElse(null);
     }
 
-    private void confirmUnclaim(NodeRecord node) {
-        new ConfirmMenu(viewer, "Unclaim this Residential plot?",
-                List.of("Territory must remain connected",
-                        "The oldest home anchor may relocate",
-                        "Building restoration rules apply"),
-                () -> {
-                    var result = gui.claimService().unclaim(viewer.getUniqueId(),
-                            viewer.getWorld(), node.getChunk());
-                    viewer.sendMessage(Component.text(result.message(),
-                            result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-                    gui.openTerritoryMap(viewer);
-                },
-                () -> new ResidentialMenu(viewer, gui, nodeId).open()).open();
+    private void unclaim(NodeRecord node) {
+        var result = gui.claimService().unclaim(viewer.getUniqueId(),
+                viewer.getWorld(), node.getChunk());
+        viewer.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        gui.openTerritoryMap(viewer);
+    }
+
+    @Override
+    protected Material frameMaterial() {
+        return Material.GREEN_STAINED_GLASS_PANE;
     }
 }

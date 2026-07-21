@@ -11,8 +11,28 @@ import org.bukkit.entity.Player;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Unified Journal, Commissions, Chronicle, Projects and season surface. */
+/**
+ * Progression index.
+ *
+ * <p>This screen used to stack five unrelated systems — commissions, the weekly
+ * chapter, achievements, projects and the discovery journal — into unlabelled
+ * rows where identical-looking buttons did completely different things: one
+ * claimed a reward, its neighbour rerolled and lost today's progress, and the
+ * journal row could not be clicked at all. Each system now owns a screen, and
+ * this page answers only two questions: what are these, and what can I do now.
+ */
 public final class ProgressMenu extends Menu {
+
+    /** One card per system, centred on the same column as the summary. */
+    private static final int COMMISSIONS_SLOT = 19;
+    private static final int CHRONICLE_SLOT = 21;
+    private static final int PROJECTS_SLOT = 23;
+    private static final int JOURNAL_SLOT = 25;
+
+    /** Read-outs and the one claim that has no screen of its own. */
+    private static final int CHAPTER_SLOT = 29;
+    private static final int SEASON_SLOT = 31;
+    private static final int CREDITS_SLOT = 33;
 
     private final GuiManager gui;
 
@@ -28,180 +48,174 @@ public final class ProgressMenu extends Menu {
 
     @Override
     protected Component title() {
-        return Component.text("Pioneer Chronicle", NamedTextColor.DARK_AQUA);
+        return Component.text(Lang.get("menu.progress.title"), NamedTextColor.DARK_AQUA);
     }
 
     @Override
     protected void build() {
-        fill();
         GameDesignService design = gui.gameDesignService();
-        if (design == null) return;
+        if (design == null) {
+            return;
+        }
+        tabBar(progressTabs(gui), 0);
 
-        Long focusedId = design.focusedNode(viewer.getUniqueId());
-        NodeRecord focused = focusedId == null ? null : gui.nodeStore().getByOwner(viewer.getUniqueId())
-                .stream().filter(node -> node.getId() == focusedId).findFirst().orElse(null);
-        if (focused == null) {
-            set(4, Icon.of(Material.COMPASS).name("No Focused Node", NamedTextColor.YELLOW)
-                    .lore("Open a Production Node and select Focus", NamedTextColor.GRAY).build(),
-                    event -> gui.openNodes(viewer));
+        List<GameDesignService.Commission> commissions = design.commissions(viewer.getUniqueId());
+        List<GameDesignService.Achievement> achievements =
+                design.achievements(viewer.getUniqueId());
+        long commissionsReady = commissions.stream()
+                .filter(c -> c.current() >= c.target() && !c.claimed()).count();
+        long achievementsReady = achievements.stream()
+                .filter(a -> a.completed() && !a.claimed()).count();
+
+        drawSummary(design, commissionsReady, achievementsReady);
+        drawSectionCards(design, commissions, achievements,
+                commissionsReady, achievementsReady);
+        drawReadouts(design);
+        navBarToHub(gui);
+    }
+
+    /** Answers "what can I do right now" before the player reads anything else. */
+    private void drawSummary(GameDesignService design, long commissionsReady,
+                             long achievementsReady) {
+        long total = commissionsReady + achievementsReady;
+        List<Component> lore = new ArrayList<>();
+        if (total > 0) {
+            lore.add(Lang.line("menu.progress.summary.ready", NamedTextColor.GOLD,
+                    "count", total));
+            if (commissionsReady > 0) {
+                lore.add(Lang.line("menu.progress.summary.commissions", NamedTextColor.YELLOW,
+                        "count", commissionsReady));
+            }
+            if (achievementsReady > 0) {
+                lore.add(Lang.line("menu.progress.summary.achievements", NamedTextColor.AQUA,
+                        "count", achievementsReady));
+            }
         } else {
-            set(4, Icon.of(Material.COMPASS).name("Focused: " + pretty(focused.getType().name()),
-                            NamedTextColor.AQUA)
-                    .loreComponents(List.of(
-                            Ui.line("Exploration Lv." + focused.getExplorationLevel(), NamedTextColor.LIGHT_PURPLE),
-                            Ui.line("Tier " + focused.getTier(), NamedTextColor.GRAY),
-                            Ui.line("Click: open node", NamedTextColor.DARK_GRAY))).build(),
-                    event -> gui.openNodeDetail(viewer, focused));
+            lore.add(Lang.line("menu.progress.summary.nothing", NamedTextColor.GRAY));
         }
 
-        int commissionSlot = 9;
-        for (GameDesignService.Commission commission : design.commissions(viewer.getUniqueId())) {
-            boolean done = commission.current() >= commission.target();
-            Material icon = commission.claimed() ? Material.LIME_DYE
-                    : done ? Material.WRITABLE_BOOK : Material.PAPER;
-            set(commissionSlot++, Icon.of(icon)
-                            .name("Daily: " + pretty(commission.id()),
-                                    commission.claimed() ? NamedTextColor.GREEN : NamedTextColor.YELLOW)
-                            .loreComponents(List.of(
-                                    Ui.line(commission.description(), NamedTextColor.GRAY),
-                                    Ui.bar("Progress", commission.current() / (double) commission.target(),
-                                            done ? NamedTextColor.GREEN : NamedTextColor.YELLOW,
-                                            commission.current() + "/" + commission.target()),
-                                    Ui.line("Reward: " + commission.reward(), NamedTextColor.GOLD),
-                                    Ui.line(commission.claimed() ? "Claimed"
-                                                    : done ? "Claim reward"
-                                                    : "Review today's free reroll",
-                                            commission.claimed() ? NamedTextColor.DARK_GREEN : NamedTextColor.DARK_GRAY)))
-                            .build(),
-                    event -> {
-                        if (commission.claimed()) return;
-                        if (done) {
-                            message(design.claimCommission(viewer.getUniqueId(), commission.id()));
-                            redraw();
-                        } else {
-                            new ConfirmMenu(viewer, "Use free reroll?",
-                                    List.of(commission.description(),
-                                            "Current progress will be replaced."),
-                                    () -> {
-                                        message(design.rerollCommission(
-                                                viewer.getUniqueId(), commission.id()));
-                                        open();
-                                    }, this::open).open();
-                        }
-                    });
+        NodeRecord focused = focusedNode(design);
+        lore.add(focused == null
+                ? Lang.line("menu.progress.summary.no-focus", NamedTextColor.DARK_GRAY)
+                : Lang.line("menu.progress.summary.focus", NamedTextColor.DARK_GRAY,
+                        "type", pretty(focused.getType().name()),
+                        "level", focused.getExplorationLevel()));
+
+        set(SUMMARY_SLOT, Icon.of(total > 0 ? Material.BELL : Material.WRITABLE_BOOK)
+                .name(Lang.get("menu.progress.summary.name"),
+                        total > 0 ? NamedTextColor.GOLD : NamedTextColor.AQUA)
+                .loreComponents(lore).build());
+    }
+
+    /**
+     * Four cards, one per system. Each says what it holds and what a click does,
+     * so no card can be mistaken for another system's button.
+     */
+    private void drawSectionCards(GameDesignService design,
+                                  List<GameDesignService.Commission> commissions,
+                                  List<GameDesignService.Achievement> achievements,
+                                  long commissionsReady, long achievementsReady) {
+        set(COMMISSIONS_SLOT, Icon.of(commissionsReady > 0
+                        ? Material.WRITABLE_BOOK : Material.PAPER)
+                .name(Lang.get("menu.progress.card.commissions"),
+                        commissionsReady > 0 ? NamedTextColor.GOLD : NamedTextColor.YELLOW)
+                .loreComponents(List.of(
+                        Lang.line("menu.progress.card.commissions-what", NamedTextColor.GRAY),
+                        Lang.line("menu.progress.card.count", NamedTextColor.AQUA,
+                                "count", commissions.size()),
+                        Lang.line("menu.progress.card.ready", NamedTextColor.GOLD,
+                                "count", commissionsReady),
+                        Lang.click("menu.progress.card.commissions-click")))
+                .build(), event -> new CommissionsMenu(viewer, gui).open());
+
+        set(CHRONICLE_SLOT, Icon.of(achievementsReady > 0
+                        ? Material.FIREWORK_STAR : Material.WRITTEN_BOOK)
+                .name(Lang.get("menu.progress.card.chronicle"),
+                        achievementsReady > 0 ? NamedTextColor.GOLD : NamedTextColor.AQUA)
+                .loreComponents(List.of(
+                        Lang.line("menu.progress.card.chronicle-what", NamedTextColor.GRAY),
+                        Lang.line("menu.progress.card.count", NamedTextColor.AQUA,
+                                "count", achievements.size()),
+                        Lang.line("menu.progress.card.ready", NamedTextColor.GOLD,
+                                "count", achievementsReady),
+                        Lang.click("menu.progress.card.chronicle-click")))
+                .build(), event -> new ChronicleMenu(viewer, gui, 0).open());
+
+        List<GameDesignService.Project> projects = design.projects(viewer.getUniqueId());
+        GameDesignService.Project server = design.serverProject();
+        set(PROJECTS_SLOT, Icon.of(Material.SCAFFOLDING)
+                .name(Lang.get("menu.progress.card.projects"), NamedTextColor.GOLD)
+                .loreComponents(List.of(
+                        Lang.line("menu.progress.card.projects-what", NamedTextColor.GRAY),
+                        Lang.line("menu.progress.card.count", NamedTextColor.AQUA,
+                                "count", projects.size()),
+                        Lang.line("menu.progress.card.projects-server", NamedTextColor.YELLOW,
+                                "stage", ProjectsMenu.stageOf(server)),
+                        Lang.click("menu.progress.card.projects-click")))
+                .build(), event -> new ProjectsMenu(viewer, gui).open());
+
+        int discovered = 0;
+        for (NodeType type : NodeType.values()) {
+            if (type.isProduction()) {
+                discovered += design.discoveries(viewer.getUniqueId(), type).size();
+            }
         }
-        var rewardCatalog = design.progressionRewards();
-        set(16, Icon.of(Material.ENCHANTED_BOOK).name("Weekly Node Chapter", NamedTextColor.GOLD)
-                .lore("5 active days → " + rewardCatalog.weeklyChapterExp()
-                                + " Node EXP + " + rewardCatalog.weeklyChapterCoins() + " Coins",
-                        NamedTextColor.GRAY).build(),
-                event -> {
-                    GameDesignService.Result result = design.claimWeeklyChapter(viewer.getUniqueId());
-                    message(result);
+        set(JOURNAL_SLOT, Icon.of(Material.KNOWLEDGE_BOOK)
+                .name(Lang.get("menu.progress.card.journal"), NamedTextColor.LIGHT_PURPLE)
+                .loreComponents(List.of(
+                        Lang.line("menu.progress.card.journal-what", NamedTextColor.GRAY),
+                        Lang.line("menu.progress.card.journal-count", NamedTextColor.AQUA,
+                                "count", discovered),
+                        Lang.click("menu.progress.card.journal-click")))
+                .build(), event -> new JournalMenu(viewer, gui, null).open());
+    }
+
+    private void drawReadouts(GameDesignService design) {
+        var rewards = design.progressionRewards();
+        setConfirm(CHAPTER_SLOT, Icon.of(Material.ENCHANTED_BOOK)
+                .name(Lang.get("menu.progress.chapter.name"), NamedTextColor.GOLD)
+                .loreComponents(List.of(
+                        Lang.line("menu.progress.chapter.what", NamedTextColor.GRAY),
+                        Lang.line("menu.progress.chapter.reward", NamedTextColor.AQUA,
+                                "exp", rewards.weeklyChapterExp(),
+                                "coins", rewards.weeklyChapterCoins()),
+                        Lang.click("menu.progress.chapter.click")))
+                .build(), () -> {
+                    message(design.claimWeeklyChapter(viewer.getUniqueId()));
                     redraw();
                 });
 
-        // Highlight reel: claimable first, then nearest goals; the full
-        // paginated Chronicle lives in its own menu.
-        List<GameDesignService.Achievement> achievements =
-                new ArrayList<>(design.achievements(viewer.getUniqueId()));
-        achievements.sort(java.util.Comparator
-                .comparing((GameDesignService.Achievement a) -> !(a.completed() && !a.claimed()))
-                .thenComparing(GameDesignService.Achievement::claimed));
-        int achievementSlot = 18;
-        for (GameDesignService.Achievement achievement : achievements) {
-            if (achievementSlot >= 26) break;
-            Material material = achievement.claimed() ? Material.LIME_DYE
-                    : achievement.completed() ? Material.FIREWORK_STAR : Material.GRAY_DYE;
-            set(achievementSlot++, Icon.of(material)
-                    .name(achievement.name(), achievement.completed()
-                            ? NamedTextColor.GREEN : NamedTextColor.GRAY)
-                    .loreComponents(List.of(
-                            Ui.line(pretty(achievement.category()) + " track", NamedTextColor.LIGHT_PURPLE),
-                            Ui.line(achievement.description(), NamedTextColor.GRAY),
-                            Ui.line("+" + achievement.points() + " Chronicle Points", NamedTextColor.AQUA),
-                            Ui.line(achievement.claimed() ? "Claimed"
-                                            : achievement.completed() ? "Click to claim" : "Incomplete",
-                                    NamedTextColor.DARK_GRAY))).build(), event -> {
-                GameDesignService.Result result =
-                        design.claimAchievement(viewer.getUniqueId(), achievement.id());
-                message(result);
-                redraw();
-            });
-        }
-        long claimable = achievements.stream().filter(a -> a.completed() && !a.claimed()).count();
-        set(26, Icon.of(Material.WRITTEN_BOOK).name("Full Chronicle", NamedTextColor.GOLD)
+        set(SEASON_SLOT, Icon.of(Material.CLOCK)
+                .name(Lang.get("menu.progress.season.name", "season", design.seasonId()),
+                        NamedTextColor.AQUA)
                 .loreComponents(List.of(
-                        Ui.line(achievements.size() + " achievements across all tracks",
-                                NamedTextColor.GRAY),
-                        Ui.line(claimable + " ready to claim", NamedTextColor.AQUA),
-                        Ui.line("Click to browse", NamedTextColor.DARK_GRAY))).build(),
-                event -> new ChronicleMenu(viewer, gui, 0).open());
-
-        int projectSlot = 27;
-        for (GameDesignService.Project project : design.projects(viewer.getUniqueId())) {
-            set(projectSlot++, Icon.of(project.completed() ? Material.BEACON : Material.SCAFFOLDING)
-                    .name(project.name(), project.completed() ? NamedTextColor.GREEN : NamedTextColor.GOLD)
-                    .loreComponents(List.of(
-                            Ui.line("Input: " + pretty(project.material()), NamedTextColor.GRAY),
-                            Ui.line("World construction: Stage " + projectStage(project) + "/4",
-                                    NamedTextColor.AQUA),
-                            Ui.bar("Construction", project.current() / (double) project.target(),
-                                    NamedTextColor.GOLD, project.current() + "/" + project.target()),
-                            Ui.line(project.completed() ? "Completed beside your Residential Node"
-                                            : "Next stage at " + nextProjectThreshold(project)
-                                                    + " • click to contribute up to 64",
-                                    NamedTextColor.DARK_GRAY))).build(),
-                    event -> confirmProjectContribution(project));
-        }
-        GameDesignService.Project serverProject = design.serverProject();
-        set(32, Icon.of(serverProject.completed() ? Material.BEACON : Material.BELL)
-                .name(serverProject.name(), NamedTextColor.YELLOW)
-                .loreComponents(List.of(
-                        Ui.line("Server-wide seven-day resource sink", NamedTextColor.GRAY),
-                        Ui.line("World monument: Stage " + projectStage(serverProject) + "/4",
-                                NamedTextColor.AQUA),
-                        Ui.bar("Community", serverProject.current() / (double) serverProject.target(),
-                                NamedTextColor.YELLOW,
-                                serverProject.current() + "/" + serverProject.target()),
-                        Ui.line("Click: contribute up to 64 " + pretty(serverProject.material()),
-                                NamedTextColor.DARK_GRAY))).build(),
-                event -> confirmServerContribution(serverProject));
-
-        int journalSlot = 36;
-        for (NodeType type : NodeType.values()) {
-            if (!type.isProduction()) continue;
-            var entries = design.discoveries(viewer.getUniqueId(), type);
-            List<Component> lore = new ArrayList<>();
-            lore.add(Ui.line(entries.size() + " resources discovered", NamedTextColor.AQUA));
-            entries.entrySet().stream().limit(4).forEach(entry ->
-                    lore.add(Ui.line("• " + pretty(entry.getKey()) + " ×" + entry.getValue(),
-                            NamedTextColor.GRAY)));
-            lore.add(Ui.line("Undiscovered entries remain silhouettes", NamedTextColor.DARK_GRAY));
-            set(journalSlot++, Icon.of(icon(type)).name(pretty(type.name()) + " Journal",
-                            NamedTextColor.LIGHT_PURPLE)
-                    .loreComponents(lore).build());
-        }
+                        Lang.line("menu.progress.season.week", NamedTextColor.GRAY,
+                                "week", design.seasonWeek(), "phase", design.seasonPhase()),
+                        Lang.line("menu.progress.season.modifier", NamedTextColor.YELLOW,
+                                "modifier", pretty(design.seasonModifier())),
+                        Lang.line("menu.progress.season.points", NamedTextColor.LIGHT_PURPLE,
+                                "points", design.chroniclePoints(viewer.getUniqueId()),
+                                "seasonal", design.seasonalChroniclePoints(viewer.getUniqueId()))))
+                .build());
 
         long credits = gui.creditService() == null ? 0
                 : gui.creditService().balance(viewer.getUniqueId());
-        set(46, Icon.of(Material.AMETHYST_SHARD).name("Credits", NamedTextColor.LIGHT_PURPLE)
+        set(CREDITS_SLOT, Icon.of(Material.AMETHYST_SHARD)
+                .name(Lang.get("menu.progress.credits.name", "credits", credits),
+                        NamedTextColor.LIGHT_PURPLE)
                 .loreComponents(List.of(
-                        Ui.line(credits + " Credits", NamedTextColor.GOLD),
-                        Ui.line("Non-transferable • no cash-out", NamedTextColor.GRAY),
-                        Ui.line("Never buys EXP, RNG, or tradable power", NamedTextColor.DARK_GRAY))).build());
-        set(48, Icon.of(Material.CLOCK).name("Season " + design.seasonId(), NamedTextColor.AQUA)
-                .loreComponents(List.of(
-                        Ui.line("Week " + design.seasonWeek() + "/12 • " + design.seasonPhase(),
-                                NamedTextColor.GRAY),
-                        Ui.line("Modifier: " + pretty(design.seasonModifier()), NamedTextColor.YELLOW)))
+                        Lang.line("menu.progress.credits.rules", NamedTextColor.GRAY),
+                        Lang.line("menu.progress.credits.never", NamedTextColor.DARK_GRAY)))
                 .build());
-        backToHub(gui);
-        set(52, Icon.of(Material.EXPERIENCE_BOTTLE)
-                .name("Chronicle Points: " + design.chroniclePoints(viewer.getUniqueId()),
-                        NamedTextColor.AQUA)
-                .lore("Season Points: " + design.seasonalChroniclePoints(viewer.getUniqueId()),
-                        NamedTextColor.LIGHT_PURPLE).build());
+    }
+
+    private NodeRecord focusedNode(GameDesignService design) {
+        Long id = design.focusedNode(viewer.getUniqueId());
+        if (id == null) {
+            return null;
+        }
+        return gui.nodeStore().getByOwner(viewer.getUniqueId()).stream()
+                .filter(node -> node.getId() == id).findFirst().orElse(null);
     }
 
     private void message(GameDesignService.Result result) {
@@ -209,66 +223,14 @@ public final class ProgressMenu extends Menu {
                 result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
     }
 
-    private void confirmProjectContribution(GameDesignService.Project project) {
-        new ConfirmMenu(viewer, "Contribute to " + project.name() + "?",
-                List.of("Consumes up to 64 " + pretty(project.material()),
-                        "Items are taken from Warehouse",
-                        "Contribution cannot be withdrawn"),
-                () -> {
-                    message(gui.gameDesignService().contributeProject(
-                            viewer.getUniqueId(), project.id(), 64));
-                    new ProgressMenu(viewer, gui).open();
-                },
-                () -> new ProgressMenu(viewer, gui).open()).open();
-    }
-
-    private void confirmServerContribution(GameDesignService.Project project) {
-        new ConfirmMenu(viewer, "Contribute to the Server Project?",
-                List.of("Consumes up to 64 " + pretty(project.material()),
-                        "Items are taken from Warehouse",
-                        "Contribution cannot be withdrawn"),
-                () -> {
-                    message(gui.gameDesignService().contributeServerProject(
-                            viewer.getUniqueId(), 64));
-                    new ProgressMenu(viewer, gui).open();
-                },
-                () -> new ProgressMenu(viewer, gui).open()).open();
-    }
-
-    private Material icon(NodeType type) {
-        return switch (type) {
-            case MINING -> Material.IRON_PICKAXE;
-            case FARMING -> Material.WHEAT;
-            case WOODCUTTING -> Material.OAK_LOG;
-            case LIVESTOCK -> Material.LEATHER;
-            case HUNTER -> Material.BOW;
-            default -> Material.BOOK;
-        };
-    }
-
-    private int projectStage(GameDesignService.Project project) {
-        if (project.current() <= 0 || project.target() <= 0) return 0;
-        double ratio = project.current() / (double) project.target();
-        if (ratio >= 1.0) return 4;
-        if (ratio >= 0.75) return 3;
-        if (ratio >= 0.50) return 2;
-        if (ratio >= 0.25) return 1;
-        return 0;
-    }
-
-    private int nextProjectThreshold(GameDesignService.Project project) {
-        int stage = projectStage(project);
-        double ratio = switch (stage) {
-            case 0 -> 0.25;
-            case 1 -> 0.50;
-            case 2 -> 0.75;
-            default -> 1.0;
-        };
-        return (int) Math.ceil(project.target() * ratio);
-    }
-
-    private String pretty(String value) {
+    static String pretty(String value) {
         String normalized = value.toLowerCase().replace('_', ' ');
-        return Character.toUpperCase(normalized.charAt(0)) + normalized.substring(1);
+        return normalized.isEmpty() ? normalized
+                : Character.toUpperCase(normalized.charAt(0)) + normalized.substring(1);
+    }
+
+    @Override
+    protected Material frameMaterial() {
+        return Material.CYAN_STAINED_GLASS_PANE;
     }
 }

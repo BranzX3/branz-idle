@@ -22,16 +22,16 @@ public final class SeasonalChronicleMenu extends Menu {
     @Override protected int rows() { return 6; }
 
     @Override protected Component title() {
-        return Component.text("Seasonal Chronicle", NamedTextColor.LIGHT_PURPLE);
+        return Component.text(Lang.get("menu.progress.tab.seasonal"), NamedTextColor.LIGHT_PURPLE);
     }
 
     @Override
     protected void build() {
-        fill();
         GameDesignService design = gui.gameDesignService();
         if (design == null) return;
         var schedule = design.seasonSchedule();
-        set(4, Icon.of(Material.CLOCK).name(design.seasonId(), NamedTextColor.GOLD)
+        tabBar(progressTabs(gui), 2);
+        set(SUMMARY_SLOT, Icon.of(Material.CLOCK).name(design.seasonId(), NamedTextColor.GOLD)
                 .loreComponents(List.of(
                         Ui.line("Week " + schedule.week() + " • " + schedule.phase(),
                                 NamedTextColor.YELLOW),
@@ -92,7 +92,12 @@ public final class SeasonalChronicleMenu extends Menu {
                 redraw();
             });
         }
-        set(49, Icon.of(Material.ARROW).name("Permanent Chronicle", NamedTextColor.GREEN).build(),
-                event -> new ChronicleMenu(viewer, gui, 0).open());
+        navBar(Lang.get("menu.progress.tab.chronicle"),
+                () -> new ChronicleMenu(viewer, gui, 0).open());
+    }
+
+    @Override
+    protected Material frameMaterial() {
+        return Material.CYAN_STAINED_GLASS_PANE;
     }
 }

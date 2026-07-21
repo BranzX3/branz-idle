@@ -33,7 +33,7 @@ public final class TerritoryMapMenu extends Menu {
 
     @Override
     protected Component title() {
-        return Component.text("IdleFarm | Territory", NamedTextColor.DARK_GREEN);
+        return Component.text(Lang.get("menu.territory.title"), NamedTextColor.DARK_GREEN);
     }
 
     @Override
@@ -56,47 +56,44 @@ public final class TerritoryMapMenu extends Menu {
                 } else if (node.getOwnerUuid().equals(viewer.getUniqueId())) {
                     drawOwned(slot, node, current);
                 } else {
-                    set(slot, Icon.of(Material.RED_STAINED_GLASS_PANE)
-                            .name("Claimed Territory", NamedTextColor.RED)
-                            .lore("Owned by another player", NamedTextColor.GRAY)
+                    set(slot, Icon.of(Material.RED_DYE)
+                            .name(Lang.get("menu.territory.tile.taken"), NamedTextColor.RED)
+                            .lore(Lang.get("menu.territory.tile.taken-hint"),
+                                    NamedTextColor.GRAY)
                             .build());
                 }
             }
         }
 
-        for (int slot = 45; slot < 54; slot++) {
-            set(slot, Icon.filler());
-        }
-        set(45, Icon.of(Material.GRASS_BLOCK)
-                .name("All Nodes", NamedTextColor.GREEN)
-                .lore("Open the status-first Node list", NamedTextColor.GRAY)
+        set(navRow() + 1, Icon.of(Material.GRASS_BLOCK)
+                .name(Lang.get("menu.territory.nodes.name"), NamedTextColor.GREEN)
+                .lore(Lang.get("menu.territory.nodes.hint"), NamedTextColor.GRAY)
                 .build(), event -> gui.openNodes(viewer));
-        set(49, Icon.of(Material.NETHER_STAR)
-                .name("Back to Hub", NamedTextColor.GREEN)
-                .build(), event -> gui.openMainHub(viewer));
-        set(53, Icon.of(Material.COMPASS)
-                .name("Recenter Map", NamedTextColor.AQUA)
-                .lore("Center the map on your current chunk", NamedTextColor.GRAY)
+        set(navRow() + 7, Icon.of(Material.COMPASS)
+                .name(Lang.get("menu.territory.recenter.name"), NamedTextColor.AQUA)
+                .lore(Lang.get("menu.territory.recenter.hint"), NamedTextColor.GRAY)
                 .build(), event -> new TerritoryMapMenu(viewer, gui).open());
+        navBarToHub(gui);
     }
 
     private void drawEmpty(int slot, ChunkKey key, boolean current) {
         boolean firstClaim = !gui.claimService().hasResidential(viewer.getUniqueId());
         boolean claimable = firstClaim ? current : adjacentToOwn(key);
-        Material material = claimable
-                ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE;
+        // Dye, not stained glass: glass now reads as "background" everywhere
+        // else, and these tiles are the actual content of this screen.
+        Material material = claimable ? Material.LIME_DYE : Material.GRAY_DYE;
         List<Component> lore = claimable
                 ? List.of(
-                        Ui.line("Unclaimed", NamedTextColor.GRAY),
-                        Ui.click(firstClaim ? "build your Residential plot" : "claim this chunk"))
+                        Lang.line("menu.territory.tile.free", NamedTextColor.GRAY),
+                        Lang.click(firstClaim ? "menu.territory.tile.click-first"
+                                : "menu.territory.tile.click-claim"))
                 : List.of(
-                        Ui.line("Unclaimed", NamedTextColor.GRAY),
-                        Ui.line(firstClaim ? "Stand in this chunk to begin"
-                                        : "Must touch your existing territory",
+                        Lang.line("menu.territory.tile.free", NamedTextColor.GRAY),
+                        Lang.line(firstClaim ? "menu.territory.tile.stand-here"
+                                        : "menu.territory.tile.must-touch",
                                 NamedTextColor.DARK_GRAY));
         set(slot, Icon.of(material)
-                .name((current ? "YOU ARE HERE | " : "")
-                                + key.x() + ", " + key.z(),
+                .name(tileName(current, key.x() + ", " + key.z()),
                         claimable ? NamedTextColor.GREEN : NamedTextColor.GRAY)
                 .loreComponents(lore).build(),
                 claimable ? event -> new ClaimTypeMenu(viewer, gui, key).open() : null);
@@ -123,17 +120,21 @@ public final class TerritoryMapMenu extends Menu {
         };
         List<Component> lore = node.getType().isProduction()
                 ? List.of(
-                        Ui.line("Tier " + node.getTier() + " | " + node.getState(),
-                                NamedTextColor.GRAY),
-                        Ui.click("open Node Control"))
+                        Lang.line("menu.territory.tile.owned", NamedTextColor.GRAY,
+                                "tier", node.getTier(), "state", node.getState()),
+                        Lang.click("menu.territory.tile.click-node"))
                 : List.of(
-                        Ui.status("HOME PLOT", NamedTextColor.YELLOW),
-                        Ui.click("open Residential controls"));
+                        Ui.status(Lang.get("menu.territory.tile.home"), NamedTextColor.YELLOW),
+                        Lang.click("menu.territory.tile.click-home"));
         return Icon.of(material)
-                .name((current ? "YOU ARE HERE | " : "")
-                                + Ui.pretty(node.getType().name()),
+                .name(tileName(current, Ui.pretty(node.getType().name())),
                         current ? NamedTextColor.AQUA : NamedTextColor.GREEN)
                 .loreComponents(lore).build();
+    }
+
+    /** Marks the chunk the player is standing in so the map has an anchor. */
+    private String tileName(boolean current, String label) {
+        return current ? Lang.get("menu.territory.tile.you-are-here", "label", label) : label;
     }
 
     private boolean adjacentToOwn(ChunkKey key) {
@@ -146,22 +147,9 @@ public final class TerritoryMapMenu extends Menu {
         return false;
     }
 
-    private void confirmUnclaim(NodeRecord node) {
-        double refund = gui.claimService().claimCost(node.getType())
-                * gui.plugin().getConfig()
-                .getDouble("claims.unclaim-refund-ratio", 0.5);
-        new ConfirmMenu(viewer, "Unclaim " + Ui.pretty(node.getType().name()) + "?",
-                List.of("Refund: " + refund,
-                        "Exploration progress will be lost",
-                        "Workers return as contracts",
-                        "Buffer must be empty"),
-                () -> {
-                    var result = gui.claimService().unclaim(viewer.getUniqueId(),
-                            viewer.getWorld(), node.getChunk());
-                    viewer.sendMessage(Component.text(result.message(),
-                            result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-                    new TerritoryMapMenu(viewer, gui).open();
-                },
-                () -> new TerritoryMapMenu(viewer, gui).open()).open();
+
+    @Override
+    protected Material frameMaterial() {
+        return Material.GREEN_STAINED_GLASS_PANE;
     }
 }

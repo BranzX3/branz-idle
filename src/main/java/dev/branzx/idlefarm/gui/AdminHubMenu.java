@@ -31,7 +31,6 @@ public final class AdminHubMenu extends Menu {
 
     @Override
     protected void build() {
-        fill();
         set(4, Icon.head(gui.skinHeadCache(), viewer.getName())
                 .name("Admin | " + viewer.getName(), NamedTextColor.RED)
                 .loreComponents(List.of(
@@ -106,7 +105,7 @@ public final class AdminHubMenu extends Menu {
                             Ui.click("inspect current Node first")))
                     .build(), event -> new AdminNodeMenu(viewer, gui).open());
         }
-        backToHub(gui);
+        navBarToHub(gui);
     }
 
     private List<Component> nodeLore() {

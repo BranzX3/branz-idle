@@ -31,7 +31,6 @@ public final class AdminReportMenu extends Menu {
 
     @Override
     protected void build() {
-        fill();
         int start = page * 45;
         for (int index = 0; index < 45 && start + index < lines.size(); index++) {
             String line = lines.get(start + index);

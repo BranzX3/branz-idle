@@ -145,9 +145,11 @@ public final class BedrockMenuRenderer implements MenuRenderer, ChatPrompt.Nativ
         List<String> lines = new ArrayList<>();
         for (int slot = 0; slot < menu.getInventory().getSize() && lines.size() < 8; slot++) {
             if (actionSlots.contains(slot)) continue;
+            // Skip by blank name rather than by material: the border panes are
+            // decoration and carry no name, while the Trade divider is a pane
+            // that spells out both players' confirmation state and must show.
             ItemStack item = menu.getInventory().getItem(slot);
-            if (item == null || item.getType().isAir()
-                    || item.getType().name().contains("GLASS_PANE")) continue;
+            if (item == null || item.getType().isAir()) continue;
             String name = itemName(item);
             if (!name.isBlank() && !lines.contains(name)) lines.add(name);
         }

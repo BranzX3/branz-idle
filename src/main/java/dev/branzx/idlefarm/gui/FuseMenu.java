@@ -14,16 +14,37 @@ import java.util.UUID;
 
 /**
  * Click-driven fuse station (no item movement, so no placeholder/loss bugs).
- * Two "select" slots open a {@link WorkerPickerMenu}; picked workers stay as
- * items in the inventory and are only consumed when the Fuse button rolls.
- * Slot B is filtered to slot A's rarity.
+ * Picked workers stay as items in the inventory and are only consumed when the
+ * Fuse button rolls.
+ *
+ * <p>The screen is split: the left half is the fuse apparatus (two slots, the
+ * preview, the button) and the right half lists the workers that can actually
+ * go in it. Choosing no longer bounces through a separate picker screen, and
+ * the candidate list is filtered to what will really fuse — once slot A holds
+ * a Rare, only other Rares are offered, so a click can never produce an error.
  */
 public final class FuseMenu extends Menu {
 
-    private static final int LEFT = 11;
-    private static final int RIGHT = 15;
-    private static final int INFO = 13;
-    private static final int FUSE_BTN = 31;
+    // Everything lives inside the glass border, so columns 1-7 only. The left
+    // apparatus takes columns 1-3, a glass rule holds column 4, and the
+    // candidate pool takes columns 5-7.
+
+    /** Left: pick two, read the odds, press the button — top to bottom. */
+    private static final int SLOT_A = 19;
+    private static final int PLUS = 20;
+    private static final int SLOT_B = 21;
+    private static final int INFO = 29;
+    private static final int FUSE_BTN = 38;
+
+    /** Column 4: a rule that makes the two halves unmistakable. */
+    private static final int[] DIVIDER = {13, 22, 31, 40};
+
+    /** Right: the workers that can actually go in, three per row. */
+    private static final int[] CANDIDATES = {
+            14, 15, 16,
+            23, 24, 25,
+            32, 33, 34,
+            41, 42, 43};
 
     private final GuiManager gui;
     private UUID pickedA;
@@ -36,19 +57,16 @@ public final class FuseMenu extends Menu {
 
     @Override
     protected int rows() {
-        return 5;
+        return 6;
     }
 
     @Override
     protected Component title() {
-        return Component.text("Fuse Station", NamedTextColor.LIGHT_PURPLE);
+        return Component.text(Lang.get("menu.fuse.title"), NamedTextColor.LIGHT_PURPLE);
     }
 
     @Override
     protected void build() {
-        for (int i = 0; i < rows() * 9; i++) {
-            set(i, Icon.filler());
-        }
         WorkerRecord a = resolve(pickedA);
         WorkerRecord b = resolve(pickedB);
         // Drop stale picks (item left inventory / got assigned elsewhere).
@@ -59,53 +77,148 @@ public final class FuseMenu extends Menu {
             pickedB = null;
         }
 
-        drawSlot(LEFT, a, "Worker A", null, chosen -> {
-            pickedA = chosen.workerUuid();
-            // Changing A may invalidate B's rarity match.
-            if (pickedB != null) {
-                WorkerRecord bb = resolve(pickedB);
-                if (bb == null || bb.getRarity() != chosen.record().getRarity()) {
-                    pickedB = null;
-                }
-            }
-        });
-        Rarity filterB = a == null ? null : a.getRarity();
-        drawSlot(RIGHT, b, "Worker B", filterB, chosen -> pickedB = chosen.workerUuid());
+        set(SUMMARY_SLOT, Icon.of(Material.SMITHING_TABLE)
+                .name(Lang.get("menu.fuse.title"), NamedTextColor.LIGHT_PURPLE)
+                .loreComponents(List.of(
+                        Lang.line("menu.fuse.summary", NamedTextColor.GRAY),
+                        Lang.line("menu.fuse.summary-filter", NamedTextColor.DARK_GRAY)))
+                .build());
 
+        drawDivider();
+        drawSlot(SLOT_A, a, "menu.fuse.slot-a");
+        set(PLUS, Icon.of(Material.NETHER_STAR)
+                .name(Lang.get("menu.fuse.plus"), NamedTextColor.DARK_GRAY).build());
+        drawSlot(SLOT_B, b, "menu.fuse.slot-b");
+        drawCandidates(a, b);
         refreshInfo(a, b);
 
-        backButton(40, "Crew", () -> gui.openWorkers(viewer));
+        navBar(Lang.get("menu.workers.back"), () -> gui.openWorkers(viewer));
     }
 
-    private void drawSlot(int slot, WorkerRecord picked, String label, Rarity filter,
-                          java.util.function.Consumer<WorkerPickerMenu.Choice> onPick) {
-        if (picked != null) {
-            List<Component> lore = new ArrayList<>(gui.workerService().workerLore(picked));
-            lore.add(Ui.line("Click to clear", NamedTextColor.DARK_GRAY));
-            set(slot, Icon.head(gui.skinHeadCache(), picked.getSkin())
-                    .name("✦ " + picked.getName(), picked.getRarity().color())
-                    .loreComponents(lore).build(), e -> {
-                if (slot == LEFT) {
-                    pickedA = null;
-                    pickedB = null; // clearing A drops B's rarity lock
+    /**
+     * A labelled glass rule down the middle. The border rule says glass is
+     * never background, and this is not: it is the thing that tells the player
+     * the two halves are different tools rather than one long list.
+     */
+    private void drawDivider() {
+        for (int slot : DIVIDER) {
+            set(slot, Icon.of(Material.PURPLE_STAINED_GLASS_PANE)
+                    .name(Lang.get("menu.fuse.divider"), NamedTextColor.DARK_PURPLE)
+                    .build());
+        }
+    }
+
+    private void drawSlot(int slot, WorkerRecord picked, String labelKey) {
+        if (picked == null) {
+            set(slot, Icon.of(Material.ITEM_FRAME)
+                    .name(Lang.get(labelKey), NamedTextColor.AQUA)
+                    .lore(Lang.get("menu.fuse.slot-empty"), NamedTextColor.GRAY).build());
+            return;
+        }
+        List<Component> lore = new ArrayList<>(gui.workerService().workerLore(picked));
+        lore.add(Lang.click("menu.fuse.slot-clear"));
+        set(slot, Icon.head(gui.skinHeadCache(), picked.getSkin())
+                .name(picked.getName(), picked.getRarity().color())
+                .loreComponents(lore).build(), event -> {
+            if (slot == SLOT_A) {
+                pickedA = null;
+                pickedB = null; // clearing A drops B's rarity lock
+            } else {
+                pickedB = null;
+            }
+            redraw();
+        });
+    }
+
+    /**
+     * Candidates are whatever could still legally go into the next empty slot:
+     * anything fusable at all while A is empty, then only A's rarity.
+     */
+    private void drawCandidates(WorkerRecord a, WorkerRecord b) {
+        if (a != null && b != null) {
+            // Both slots full. Say so, rather than leaving half the screen
+            // blank and letting it read as a loading failure.
+            set(CANDIDATES[1], Icon.of(Material.LIME_DYE)
+                    .name(Lang.get("menu.fuse.ready.name"), NamedTextColor.GREEN)
+                    .loreComponents(List.of(
+                            Lang.line("menu.fuse.ready.hint", NamedTextColor.GRAY),
+                            Lang.line("menu.fuse.ready.clear", NamedTextColor.DARK_GRAY)))
+                    .build());
+            return;
+        }
+        Rarity required = a == null ? null : a.getRarity();
+        List<WorkerRecord> pool = candidates(required);
+        if (pool.isEmpty()) {
+            set(CANDIDATES[1], Icon.of(Material.BARRIER)
+                    .name(Lang.get("menu.fuse.no-candidates"), NamedTextColor.RED)
+                    .lore(Lang.get("menu.fuse.no-candidates-hint"), NamedTextColor.GRAY)
+                    .build());
+            return;
+        }
+        if (pool.size() > CANDIDATES.length) {
+            // No paging here; be honest that the list is truncated.
+            set(CANDIDATES[CANDIDATES.length - 1], Icon.of(Material.PAPER)
+                    .name(Lang.get("menu.fuse.more",
+                            "count", pool.size() - CANDIDATES.length + 1),
+                            NamedTextColor.GRAY)
+                    .lore(Lang.get("menu.fuse.more-hint"), NamedTextColor.DARK_GRAY).build());
+        }
+        int shown = pool.size() > CANDIDATES.length
+                ? CANDIDATES.length - 1 : pool.size();
+        for (int i = 0; i < shown; i++) {
+            WorkerRecord worker = pool.get(i);
+            List<Component> lore = new ArrayList<>(gui.workerService().workerLore(worker));
+            lore.add(Lang.click("menu.fuse.pick"));
+            set(CANDIDATES[i], Icon.head(gui.skinHeadCache(), worker.getSkin())
+                    .name(worker.getName(), worker.getRarity().color())
+                    .loreComponents(lore).build(), event -> {
+                if (pickedA == null) {
+                    pickedA = worker.getWorkerUuid();
                 } else {
-                    pickedB = null;
+                    pickedB = worker.getWorkerUuid();
                 }
                 redraw();
             });
-        } else {
-            set(slot, Icon.of(Material.ITEM_FRAME).name("Select " + label, NamedTextColor.AQUA)
-                    .lore(filter == null ? "Click to choose a worker"
-                            : "Click to choose a " + filter + " worker", NamedTextColor.GRAY).build(),
-                    e -> new WorkerPickerMenu(viewer, gui, filter,
-                            slot == RIGHT ? pickedA : null,
-                            "Choose " + label,
-                            chosen -> {
-                                onPick.accept(chosen);
-                                open(); // back to the fuse station with the pick applied
-                            },
-                            this::open).open());
         }
+    }
+
+    /**
+     * Bag plus loose inventory contracts that are actually fusable: matching
+     * the required rarity if one is set, never already picked, and never a
+     * rarity with nothing above it.
+     */
+    private List<WorkerRecord> candidates(Rarity required) {
+        List<WorkerRecord> pool = new ArrayList<>();
+        java.util.Set<UUID> seen = new java.util.HashSet<>();
+        List<WorkerRecord> sources = new ArrayList<>(
+                gui.workerStore().getBag(viewer.getUniqueId()));
+        for (var item : viewer.getInventory().getContents()) {
+            WorkerRecord record = gui.workerService().fromItem(item);
+            if (record != null && WorkerRecord.STATE_ITEM.equals(record.getState())) {
+                sources.add(record);
+            }
+        }
+        for (WorkerRecord record : sources) {
+            if (!seen.add(record.getWorkerUuid())) {
+                continue;
+            }
+            if (record.getWorkerUuid().equals(pickedA)
+                    || record.getWorkerUuid().equals(pickedB)) {
+                continue;
+            }
+            if (record.getRarity().next() == null) {
+                continue; // nothing to fuse up into
+            }
+            if (required != null && record.getRarity() != required) {
+                continue;
+            }
+            pool.add(record);
+        }
+        pool.sort((x, y) -> {
+            int rarity = y.getRarity().ordinal() - x.getRarity().ordinal();
+            return rarity != 0 ? rarity : y.getLevel() - x.getLevel();
+        });
+        return pool;
     }
 
     private void refreshInfo(WorkerRecord a, WorkerRecord b) {
@@ -113,10 +226,11 @@ public final class FuseMenu extends Menu {
         String error = validate(a, b);
         if (error != null) {
             lore.add(Ui.line(error, NamedTextColor.GRAY));
-            set(INFO, Icon.of(Material.GRAY_DYE).name("Select two workers", NamedTextColor.GRAY)
+            set(INFO, Icon.of(Material.GRAY_DYE)
+                    .name(Lang.get("menu.fuse.not-ready"), NamedTextColor.GRAY)
                     .loreComponents(lore).build());
-            set(FUSE_BTN, Icon.of(Material.RED_STAINED_GLASS_PANE)
-                    .name("Fuse (not ready)", NamedTextColor.RED).build());
+            set(FUSE_BTN, Icon.of(Material.GRAY_DYE)
+                    .name(Lang.get("menu.fuse.button-locked"), NamedTextColor.RED).build());
             return;
         }
         Rarity rarity = a.getRarity();
@@ -132,33 +246,31 @@ public final class FuseMenu extends Menu {
                 .getDouble("workers.fuse.pity-per-fail", 0.1) * 100) + "% next time", NamedTextColor.GRAY));
         lore.add(Ui.divider());
         lore.add(Ui.line("Fail: protected base survives; duplicate is consumed", NamedTextColor.YELLOW));
-        set(INFO, Icon.of(Material.SMITHING_TABLE).name("Fuse Preview", NamedTextColor.LIGHT_PURPLE)
+        set(INFO, Icon.of(Material.SMITHING_TABLE)
+                .name(Lang.get("menu.fuse.preview"), NamedTextColor.LIGHT_PURPLE)
                 .loreComponents(lore).build());
-        set(FUSE_BTN, Icon.of(Material.LIME_STAINED_GLASS_PANE)
-                .name("* FUSE — " + Math.round(chance * 100) + "% *", NamedTextColor.GREEN)
-                .lore("Click to roll!", NamedTextColor.GRAY).build(),
-                e -> confirmFuse(a, b, chance));
-    }
-
-    private void confirmFuse(WorkerRecord base, WorkerRecord duplicate, double chance) {
-        new ConfirmMenu(viewer, "Fuse these Workers?",
-                List.of("Success chance: " + Math.round(chance * 100) + "%",
-                        "Base: " + base.getName() + " (protected on failure)",
-                        "Duplicate: " + duplicate.getName() + " (will be consumed)",
-                        "Returned EXP becomes Training Notes"),
-                () -> doFuse(base, duplicate),
-                this::open).open();
+        setDangerConfirm(FUSE_BTN, Icon.of(Material.NETHER_STAR)
+                .name(Lang.get("menu.fuse.button", "chance", Math.round(chance * 100)),
+                        NamedTextColor.GREEN)
+                .loreComponents(List.of(
+                        Lang.line("menu.fuse.base", NamedTextColor.GRAY,
+                                "name", a.getName()),
+                        Lang.line("menu.fuse.duplicate", NamedTextColor.RED,
+                                "name", b.getName()),
+                        Lang.line("menu.fuse.exp", NamedTextColor.GRAY),
+                        Lang.click("menu.fuse.roll")))
+                .build(), () -> doFuse(a, b));
     }
 
     private String validate(WorkerRecord a, WorkerRecord b) {
         if (a == null || b == null) {
-            return "Select two worker contracts.";
+            return Lang.get("menu.fuse.need-two");
         }
         if (a.getRarity() != b.getRarity()) {
-            return "Both workers must share the same rarity.";
+            return Lang.get("menu.fuse.same-rarity");
         }
         if (a.getRarity().next() == null) {
-            return "Legendary workers cannot be fused.";
+            return Lang.get("menu.fuse.max-rarity");
         }
         return null;
     }
@@ -171,10 +283,10 @@ public final class FuseMenu extends Menu {
         boolean bItem = WorkerRecord.STATE_ITEM.equals(b.getState());
         WorkerService.Result result = gui.workerService().fuse(viewer.getUniqueId(), List.of(a, b));
         if (aItem && gui.workerStore().get(a.getWorkerUuid()) == null) {
-            WorkerPickerMenu.consumeFromInventory(viewer, gui, a.getWorkerUuid());
+            WorkerListMenu.consumeFromInventory(viewer, gui, a.getWorkerUuid());
         }
         if (bItem && gui.workerStore().get(b.getWorkerUuid()) == null) {
-            WorkerPickerMenu.consumeFromInventory(viewer, gui, b.getWorkerUuid());
+            WorkerListMenu.consumeFromInventory(viewer, gui, b.getWorkerUuid());
         }
         if (result.success() && result.item() != null) {
             giveOrDrop(result.item());
@@ -183,8 +295,7 @@ public final class FuseMenu extends Menu {
                 result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
         pickedA = null;
         pickedB = null;
-        // ConfirmMenu closed the inventory; reopen so the player can fuse again.
-        open();
+        redraw();
     }
 
     private WorkerRecord resolve(UUID uuid) {
@@ -221,5 +332,10 @@ public final class FuseMenu extends Menu {
         for (var overflow : leftover.values()) {
             viewer.getWorld().dropItemNaturally(viewer.getLocation(), overflow);
         }
+    }
+
+    @Override
+    protected Material frameMaterial() {
+        return Material.MAGENTA_STAINED_GLASS_PANE;
     }
 }

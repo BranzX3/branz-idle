@@ -108,8 +108,12 @@ public final class ProgressionScale {
 
     /** Weighted family commons for the bulk lane; never empty. */
     public Map<String, Double> bulkCommons(NodeRecord node) {
+        return bulkCommons(node.getType());
+    }
+
+    public Map<String, Double> bulkCommons(dev.branzx.idlefarm.node.NodeType type) {
         var section = plugin.getConfig().getConfigurationSection(
-                "production.bulk.commons." + node.getType().name().toLowerCase(Locale.ROOT));
+                "production.bulk.commons." + type.name().toLowerCase(Locale.ROOT));
         Map<String, Double> commons = new LinkedHashMap<>();
         if (section != null) {
             for (String key : section.getKeys(false)) {
@@ -120,9 +124,26 @@ public final class ProgressionScale {
             }
         }
         if (commons.isEmpty()) {
-            return defaultBulkCommons(node);
+            return defaultBulkCommons(type);
         }
         return commons;
+    }
+
+    /**
+     * Every material the bulk lane can produce, across all production families.
+     * This is the classifier that routes a material to the Silo instead of the
+     * Vault (docs/BALANCE_BIBLE.md §3): the two lanes already have separate
+     * buffers on the node, and storage keeps that separation.
+     */
+    public java.util.Set<String> allBulkCommons() {
+        java.util.Set<String> all = new java.util.LinkedHashSet<>();
+        for (dev.branzx.idlefarm.node.NodeType type
+                : dev.branzx.idlefarm.node.NodeType.values()) {
+            if (type.isProduction()) {
+                all.addAll(bulkCommons(type).keySet());
+            }
+        }
+        return all;
     }
 
     /**
@@ -154,9 +175,9 @@ public final class ProgressionScale {
      * config.yml weights so an un-migrated server produces the intended mix
      * rather than a single material.
      */
-    private Map<String, Double> defaultBulkCommons(NodeRecord node) {
+    private Map<String, Double> defaultBulkCommons(dev.branzx.idlefarm.node.NodeType type) {
         Map<String, Double> commons = new LinkedHashMap<>();
-        switch (node.getType()) {
+        switch (type) {
             case MINING -> {
                 commons.put("COBBLESTONE", 70.0);
                 commons.put("COBBLED_DEEPSLATE", 20.0);

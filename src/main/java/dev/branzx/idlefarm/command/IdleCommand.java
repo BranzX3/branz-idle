@@ -535,9 +535,16 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(Component.text(line, NamedTextColor.AQUA));
         }
         if (remaining > 0) {
-            sender.sendMessage(Component.text("Collected " + collected + " to Warehouse; "
-                    + remaining + " left (warehouse full). ", NamedTextColor.YELLOW)
-                    .append(CommandLinks.run("[Open Warehouse]", "/idle warehouse")));
+            // Name the pool that is actually blocking: the two fill at very
+            // different speeds and the fix differs.
+            boolean siloFull = warehouseService.siloFreeSpace(player.getUniqueId()) <= 0;
+            boolean vaultFull = warehouseService.freeSpace(player.getUniqueId()) <= 0;
+            String which = siloFull && vaultFull ? "Vault และ Silo เต็ม"
+                    : siloFull ? "Silo (commons) เต็ม"
+                    : vaultFull ? "Vault (ของหายาก) เต็ม" : "ที่เก็บไม่พอ";
+            sender.sendMessage(Component.text("เก็บได้ " + collected + " ชิ้น เหลือค้าง "
+                    + remaining + " — " + which + ". ", NamedTextColor.YELLOW)
+                    .append(CommandLinks.run("[เปิด Warehouse]", "/idle warehouse")));
         } else {
             sender.sendMessage(Component.text("Collected " + collected + " items to Warehouse.",
                     NamedTextColor.GREEN));

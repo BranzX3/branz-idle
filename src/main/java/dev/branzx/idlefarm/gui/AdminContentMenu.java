@@ -25,7 +25,6 @@ public final class AdminContentMenu extends Menu {
 
     @Override
     protected void build() {
-        fill();
         var status = gui.dropTableService().status();
         set(4, Icon.of(Material.BOOKSHELF).name("Content Workflow", NamedTextColor.LIGHT_PURPLE)
                 .loreComponents(List.of(

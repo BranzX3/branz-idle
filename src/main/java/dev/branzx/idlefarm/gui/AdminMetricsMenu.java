@@ -39,7 +39,6 @@ public final class AdminMetricsMenu extends Menu {
 
     @Override
     protected void build() {
-        fill();
         set(4, Icon.of(Material.GOLD_INGOT).name("Coin Supply", NamedTextColor.GOLD)
                 .loreComponents(List.of(
                         Ui.line("Players: " + Ui.num(dashboard.players()), NamedTextColor.GRAY),

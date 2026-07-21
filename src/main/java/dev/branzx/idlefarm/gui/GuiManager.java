@@ -272,7 +272,7 @@ public final class GuiManager implements Listener {
     }
 
     public void openWorkerBag(Player player) {
-        new WorkerBagMenu(player, this, 0).open();
+        WorkerListMenu.bag(player, this, 0).open();
     }
 
     public void openWorkerDetail(Player player, java.util.UUID workerUuid) {
@@ -283,8 +283,9 @@ public final class GuiManager implements Listener {
         new LeaderboardMenu(player, this).open();
     }
 
+    /** Trust now lives inside Social, which lists the roster directly. */
     public void openTrust(Player player) {
-        new TrustMenu(player, this).open();
+        new SocialMenu(player, this).open();
     }
 
     public void openSocial(Player player) {

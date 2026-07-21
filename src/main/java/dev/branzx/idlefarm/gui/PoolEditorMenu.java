@@ -81,13 +81,6 @@ public final class PoolEditorMenu extends Menu {
                     .lore("Adds the main-hand item with weight 10", NamedTextColor.GRAY).build(),
                     e -> addHeld());
         }
-        for (int i = slot; i < 45; i++) {
-            set(i, Icon.filler());
-        }
-
-        for (int i = 45; i < 54; i++) {
-            set(i, Icon.filler());
-        }
         set(49, Icon.of(Material.BARRIER).name("Close", NamedTextColor.RED)
                 .lore("Changes are already saved", NamedTextColor.GRAY).build(),
                 e -> viewer.closeInventory());

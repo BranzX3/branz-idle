@@ -1,0 +1,654 @@
+# IdleFarm language file (English).
+#
+# Select the active language with `language:` in config.yml. This file is the
+# fallback layer: any key missing from another language falls back to the value
+# here, so translations never render blank after an update.
+#
+# Placeholders are written as {name} and are substituted by the plugin.
+# Keys are grouped by screen. Do not rename keys -- only the values.
+
+ui:
+  # {action} is the per-button hint below, e.g. "open Node Control".
+  click: "Click: {action}"
+
+menu:
+  home:
+    title: "IdleFarm | Home"
+
+    profile:
+      # {balance} is pre-formatted (1.2k / 3.4M), {currency} comes from config.yml.
+      balance: "{balance} {currency}"
+      # {nodes} production nodes, {streak} consecutive login days.
+      summary: "{nodes} nodes | {streak}d streak"
+      boost: "Production boost: {time}"
+      click: "show account details in chat"
+
+    # The single recommended action shown under the profile head.
+    next:
+      first-node:
+        name: "Next: Build your first Node"
+        hint: "Choose an adjacent chunk and Node type"
+        click: "open Territory"
+      collect:
+        name: "Next: Collect a full buffer"
+        hint: "{type} production is stopped"
+        click: "open this Node"
+      exploration:
+        name: "Next: Exploration is ready"
+        hint: "{type} has an event or reward waiting"
+        click: "open this Node"
+      worker:
+        name: "Next: Assign a Worker"
+        hint: "{type} cannot produce without a crew"
+        click: "open this Node"
+      idle:
+        name: "All systems running"
+        hint: "{type} | Exploration Lv.{level}"
+        click: "open focused Node"
+
+    territory:
+      name: "Territory"
+      claimed: "{chunks} claimed chunks"
+      click: "view map or claim land"
+
+    nodes:
+      name: "Node Control"
+      # Bar labels are short on purpose -- they sit left of a 10-cell bar.
+      bar-nodes: "Nodes"
+      bar-buffers: "Buffers"
+      buffers-full: "{count} full"
+      exploration-ready: "{count} exploration ready"
+      click: "open Node Control"
+
+    warehouse:
+      name: "Warehouse"
+      bar-vault: "Vault"
+      bar-silo: "Silo"
+      click: "deposit or withdraw"
+
+    progress:
+      name: "Progress"
+      focused: "Focused: {type} Lv.{level}"
+      none: "No Focused Node selected"
+      click: "open Progress"
+
+    crew:
+      name: "Crew"
+      bar-staffed: "Staffed"
+      click: "manage your crew"
+
+    expedition:
+      name: "Weekly Expedition"
+      summary: "Week {week} | {contribution} contributed"
+      click: "view weekly event"
+
+    upgrades:
+      name: "Upgrades"
+      hint: "Boosters and perks"
+      click: "open upgrades"
+
+    social:
+      name: "Social"
+      hint: "Trust, visits and trading"
+      click: "open Social"
+
+    collect-all:
+      name: "Quick Collect All"
+      hint: "Every Node buffer to Warehouse"
+      click: "collect now"
+      result: "Collected {count} items to Warehouse."
+
+    leaderboard:
+      name: "Leaderboard"
+      hint: "See the richest players"
+
+    admin:
+      name: "Admin"
+      hint: "Open server management tools"
+
+  # Paged list of production Nodes, sorted so anything needing action is first.
+  nodes:
+    title: "IdleFarm | Nodes"
+    summary: "{count} Production Nodes"
+    attention: "{count} need attention"
+    all-normal: "All Nodes are running normally"
+    sort-hint: "Nodes needing action are shown first"
+
+    empty:
+      name: "Build your first Production Node"
+      hint: "Claim a chunk next to your Residential plot"
+      click: "open Territory Map"
+
+    map:
+      name: "Territory Map"
+      hint: "Claim land or inspect nearby chunks"
+    refresh:
+      name: "Refresh"
+      hint: "Update every Node status"
+
+    # One card per Node in the grid.
+    card:
+      place: "Tier {tier} | Chunk {x}, {z}"
+      bar-buffer: "Buffer"
+      bar-crew: "Crew"
+      bulk: "Bulk commons: {count}"
+      exploration: "Exploration Lv.{level}"
+      click: "open Node Control"
+
+    # Short status badges. Kept upper-case and brief so they read as a stamp.
+    state:
+      collect: "COLLECT BUFFER"
+      loot: "LOOT READY"
+      event: "EVENT READY"
+      no-crew: "ASSIGN A WORKER"
+      active: "ACTIVE"
+
+  # Single-Node workbench, opened from a Node card.
+  node:
+    title: "IdleFarm | Node Control"
+    all-nodes: "Nodes"
+    map:
+      name: "Territory Map"
+      hint: "View nearby chunks and claims"
+
+    upgrade:
+      name: "Upgrade to Tier {tier}"
+      slot: "Adds one Worker slot"
+      cost: "Cost: {cost}"
+      time: "Build time: {time}"
+      continues: "Production continues while building"
+      click: "buy this upgrade"
+
+    convert:
+      name: "Convert Node"
+      cost: "Cost: {cost}"
+      keeps: "Keeps Tier | Exploration level is halved"
+      empty: "Requires an empty buffer"
+      click: "choose a new type"
+
+    unclaim:
+      name: "Unclaim Node"
+      refund: "Refund: {refund}"
+      exploration: "Exploration progress will be lost"
+      workers: "Workers return as contracts"
+      empty: "Buffer must be empty"
+      click: "unclaim this Node"
+
+  # 9x5 chunk map centred on the player. Tiles are dye, not glass: they are the
+  # content of the screen, not decoration.
+  territory:
+    title: "IdleFarm | Territory"
+    nodes:
+      name: "All Nodes"
+      hint: "Open the status-first Node list"
+    recenter:
+      name: "Recenter Map"
+      hint: "Center the map on your current chunk"
+
+    tile:
+      # {label} is the chunk coordinates or the Node type.
+      you-are-here: "YOU ARE HERE | {label}"
+      free: "Unclaimed"
+      click-first: "build your Residential plot"
+      click-claim: "claim this chunk"
+      stand-here: "Stand in this chunk to begin"
+      must-touch: "Must touch your existing territory"
+      owned: "Tier {tier} | {state}"
+      click-node: "open Node Control"
+      home: "HOME PLOT"
+      click-home: "open Residential controls"
+      taken: "Claimed Territory"
+      taken-hint: "Owned by another player"
+
+  # The only screen without a slot-4 summary card: the item grid uses all 45
+  # slots, so capacity lives in the title and the Storage icon instead.
+  warehouse:
+    title: "IdleFarm | Warehouse"
+    bar-vault: "Vault"
+    bar-silo: "Silo"
+    vault-holds: "Discovery finds and event loot"
+    silo-holds: "Bulk-lane commons"
+
+    deposit:
+      name: "Deposit Items"
+      hint: "Choose an inventory stack"
+      cross-platform: "Works with touch and controller"
+    deposit-all:
+      name: "Deposit All"
+      hint: "Deposit every eligible stack"
+      custom: "Custom items stay in your inventory"
+      click: "deposit everything"
+
+    storage:
+      name: "Storage"
+      hint: "Click items in your inventory to deposit"
+
+    expand:
+      name: "Expand Warehouse"
+      vault: "Vault +{amount}"
+      silo: "Silo +{amount}"
+      cost: "Cost: {cost}"
+      click: "buy this expansion"
+      done: "Warehouse expanded!"
+      too-poor: "Not enough money to expand."
+
+  # Expedition planner for one Node. Six rows so the commit button gets its
+  # own row, away from Back and Close.
+  exploration:
+    title: "Exploration"
+    back: "Node Control"
+    header:
+      node: "{type} | Exploration Lv.{level}"
+      bracket: "Bracket {bracket}"
+
+    none:
+      name: "No Event Available"
+      hint: "Production continues while you wait"
+    running:
+      name: "Expedition in Progress"
+      badge: "RUNNING"
+      returns: "Returns in {time}"
+      away: "Committed Workers are away"
+    loot:
+      name: "{grade} Loot Ready"
+      safe: "Rewards remain safe until claimed"
+      space: "Warehouse free space: {space}"
+      click: "claim to Warehouse"
+
+    team:
+      smaller: "Smaller Team"
+      larger: "Larger Team"
+      current: "Current selection: {size}"
+      preview: "Team Preview | {workers}"
+      duration: "Duration: {time}"
+      odds: "Great {great}% | Jackpot {jackpot}%"
+      available: "Available Workers: {count}"
+
+    prep:
+      cost: "Consumes {cost} matching resources"
+      applies: "Applies to the next expedition"
+      click: "prepare next expedition"
+      speed:
+        name: "Speed Route"
+        effect: "15% shorter duration"
+      quantity:
+        name: "Quantity Kit"
+        effect: "Improves loot quantity"
+      research:
+        name: "Research Kit"
+        effect: "Adds Node EXP after completion"
+
+    send:
+      name: "Send Expedition"
+      commit: "{workers} Workers for {time}"
+      stops: "Workers stop baseline production while away"
+      guaranteed: "Loot is guaranteed"
+      click: "send this team"
+      done: "Expedition sent."
+
+  # Three views of one subject, linked by the top-left tab strip.
+  # Index of the progression systems. Each card names one system, says how much
+  # is in it, and what a click will do.
+  progress:
+    title: "IdleFarm | Progress"
+    tab:
+      overview: "Overview"
+      chronicle: "Chronicle"
+      seasonal: "Seasonal"
+
+    summary:
+      name: "Progress"
+      ready: "{count} reward(s) ready to claim"
+      commissions: "{count} daily commission(s) finished"
+      achievements: "{count} achievement(s) finished"
+      nothing: "Nothing to claim right now"
+      focus: "Focused Node: {type} Lv.{level}"
+      no-focus: "No Focused Node selected"
+
+    card:
+      count: "{count} in total"
+      ready: "{count} ready to claim"
+      commissions: "Daily Commissions"
+      commissions-what: "Small daily goals that reset each day"
+      commissions-click: "open Daily Commissions"
+      chronicle: "Achievements"
+      chronicle-what: "Permanent milestones across every track"
+      chronicle-click: "open the Chronicle"
+      projects: "Construction Projects"
+      projects-what: "Spend Warehouse items to raise buildings"
+      projects-server: "Server monument: Stage {stage}/4"
+      projects-click: "open Projects"
+      journal: "Discovery Journal"
+      journal-what: "Every resource your Nodes have found"
+      journal-count: "{count} resources discovered"
+      journal-click: "open the Journal"
+
+    chapter:
+      name: "Weekly Node Chapter"
+      what: "Awarded for 5 active days in a week"
+      reward: "{exp} Node EXP + {coins} Coins"
+      click: "claim this week's chapter"
+
+    season:
+      name: "Season {season}"
+      week: "Week {week}/12 - {phase}"
+      modifier: "Modifier: {modifier}"
+      points: "Chronicle {points} | Seasonal {seasonal}"
+
+    credits:
+      name: "{credits} Credits"
+      rules: "Non-transferable, no cash-out"
+      never: "Never buys EXP, RNG, or tradable power"
+
+    commission:
+      name: "Daily: {id}"
+      bar: "Progress"
+      reward: "Reward: {reward}"
+      claimed: "Claimed"
+      claim: "Claim reward"
+      reroll: "Reroll with today's free reroll"
+
+  commissions:
+    title: "IdleFarm | Daily Commissions"
+    summary: "{count} Daily Commissions"
+    what: "They reset each day; finished ones pay out"
+    ready: "{count} ready to claim"
+    reroll-note: "Unfinished ones can be rerolled once a day"
+    state:
+      claimed: "Already claimed"
+      claim: "Click to claim the reward"
+      reroll: "Click to reroll - loses this progress"
+
+  projects:
+    title: "IdleFarm | Projects"
+    summary: "Construction Projects"
+    what: "Contribute items to raise buildings in the world"
+    source: "Items come out of your Warehouse"
+    irreversible: "Contributions cannot be taken back"
+    none:
+      name: "No projects available"
+      hint: "Projects unlock as your settlement grows"
+    card:
+      what: "Built beside your Residential Node"
+      server-what: "Server-wide seven-day resource sink"
+      input: "Input: {material}"
+      stage: "Construction: Stage {stage}/4"
+      bar: "Built"
+      next: "Next stage at {amount}"
+      done: "Completed"
+      click: "contribute up to 64"
+
+  journal:
+    title: "IdleFarm | Journal"
+    summary: "{count} resources discovered"
+    what: "Everything your Nodes have found so far"
+    hidden: "Undiscovered entries stay hidden"
+    type: "{type}"
+    found: "{count} discovered"
+    click: "show this Journal"
+    entry: "Found {count} times"
+    pick:
+      name: "Pick a Node type"
+      hint: "Choose above to list its discoveries"
+    empty:
+      name: "Nothing discovered yet"
+      hint: "Run this Node type to fill the page"
+
+  chronicle:
+    points: "Chronicle Points: {points}"
+    ready: "{count} rewards ready to claim"
+    total: "{count} achievements across all tracks"
+
+  expedition:
+    title: "IdleFarm | Weekly Expedition"
+    summary: "Global Expedition | Week {week}"
+    yours: "Your contribution: {amount}"
+    rank: "#{rank} {player}"
+    contribution: "Contribution {amount}"
+    send:
+      name: "Send Workers!"
+      stand: "Stand in your Node and click"
+      duration: "Commits its idle workers for {minutes}m"
+      stops: "They stop producing while away"
+      click: "commit this Node's workers"
+
+  leaderboard:
+    title: "Leaderboard"
+    back: "Social"
+    loading: "Loading..."
+    summary: "Top {count} richest players"
+    rank: "#{rank} {player}"
+
+  # The crew roster and everything reached from it.
+  workers:
+    title: "IdleFarm | Crew"
+    back: "Crew"
+    summary: "{count} Workers"
+    hint: "Assigned Workers first, then your bag"
+    empty:
+      name: "No Workers yet"
+      hint: "Hire one to get started"
+
+    hire:
+      name: "Hire Worker"
+      cost: "Cost: {cost}"
+      random: "Rarity, stats and Trait are random"
+      click: "hire one Worker"
+
+    fuse:
+      name: "Fuse Station"
+      hint: "Combine two same-rarity Workers"
+      click: "open Fuse Station"
+
+    assign:
+      title: "Assign a Worker"
+
+    # Shared by the bag view and the picker: one roster, two modes.
+    list:
+      summary: "{count} Workers available"
+      bar-bag: "Bag"
+      browse-hint: "Click a Worker to manage them"
+      pick-hint: "Click a Worker to choose them"
+      click-manage: "manage this Worker"
+      click-pick: "choose this Worker"
+      empty: "No Workers available"
+      empty-filtered: "No {rarity} Workers available"
+      empty-hint: "Hire or fuse to get Workers"
+
+    bag:
+      title: "Worker Bag"
+      name: "Worker Bag"
+      stored: "{used}/{cap} stored"
+      click: "open the bag"
+      deposited: "Deposited {count} Worker(s) to the bag."
+      deposit:
+        name: "Deposit from Inventory"
+        hint: "Pull loose Worker contracts into the bag"
+      expand:
+        name: "Expand +{step}"
+        cost: "Cost: {cost}"
+        click: "buy this expansion"
+        done: "Worker bag expanded!"
+
+  # Left half is the apparatus, right half the workers that fit in it.
+  fuse:
+    divider: " "
+    plus: "+"
+    more: "+{count} more"
+    more-hint: "Fill or clear a slot to narrow the list"
+    ready:
+      name: "Both slots filled"
+      hint: "Press FUSE on the left to roll"
+      clear: "Click a slot on the left to change it"
+    title: "Fuse Station"
+    summary: "Combine two Workers of the same rarity"
+    summary-filter: "Only fusable Workers are listed"
+    slot-a: "Select Worker A"
+    slot-b: "Select Worker B"
+    slot-empty: "Pick from the list on the right"
+    slot-clear: "clear this slot"
+    pick: "put into the next free slot"
+    no-candidates: "No fusable Workers"
+    no-candidates-hint: "You need two of the same rarity"
+
+    not-ready: "Select two Workers"
+    button-locked: "Fuse (not ready)"
+    preview: "Fuse Preview"
+    button: "FUSE - {chance}%"
+    base: "Base: {name} (protected on failure)"
+    duplicate: "Duplicate: {name} (will be consumed)"
+    exp: "Returned EXP becomes Training Notes"
+    roll: "roll the fuse"
+
+    need-two: "Select two Worker contracts."
+    same-rarity: "Both Workers must share the same rarity."
+    max-rarity: "Legendary Workers cannot be fused."
+
+  worker:
+    title: "IdleFarm | Worker"
+    rename:
+      name: "Rename"
+      hint: "Free - type a new name in chat"
+    withdraw:
+      name: "Withdraw as Item"
+      hint: "Take out to trade or carry"
+      click: "withdraw this Worker"
+    store:
+      name: "Store in Worker Bag"
+      hint: "Return this Worker from its Node"
+
+  shop:
+    title: "IdleFarm | Upgrades"
+    summary: "Boosters & Convenience"
+    hint: "Every purchase asks for a second click"
+    cost: "Cost: {cost}"
+    buy: "buy this"
+    booster:
+      money: "Money Booster"
+      production: "Production Booster"
+      effect: "x{multiplier} for {minutes}m"
+      active: "ACTIVE | {time} LEFT"
+      inactive: "INACTIVE"
+      starts: "Activates immediately"
+      extends: "Adds time to the active booster"
+      bought: "{name} activated."
+    perk:
+      owned: "OWNED"
+      permanent: "Permanent convenience unlock"
+      bought: "{name} unlocked."
+      auto-collect:
+        name: "Auto-Collect"
+        effect: "Periodically sends Node buffers to your Warehouse"
+      remote-collect:
+        name: "Remote Collect"
+        effect: "Adds Quick Collect All to the Home screen"
+
+  # Trust roster lives here now; Trade and Leaderboard sit on the bottom bar.
+  social:
+    title: "IdleFarm | Social"
+    summary: "Social & Territory Access"
+    trusted-count: "{count} trusted player(s)"
+    no-build: "Visits never grant build access"
+    role: "Role: {role}"
+    click-manage: "manage role and access"
+    add: "+ {player}"
+    add-hint: "Grants Visitor access"
+    click-add: "grant Visitor"
+    none:
+      name: "No trusted players"
+      hint: "Online players appear on the right"
+    leaderboard-hint: "Compare server progress"
+
+    trade:
+      name: "Protected Trade"
+      hint: "Two-sided escrow with confirmation"
+      start: "Start with /idle trade <player>"
+      click: "open active trade"
+    visits:
+      open: "Visits: Open"
+      closed: "Visits: Closed"
+      hint: "Controls public visits to your home"
+      click: "toggle visit privacy"
+
+    access:
+      title: "Access - {player}"
+      current: "Current role: {role}"
+      visitor-1: "Can visit and use allowed doors"
+      visitor-2: "Cannot collect or manage Nodes"
+      helper-1: "Visitor access + collect buffers"
+      helper-2: "Can contribute to projects"
+      manager-1: "Helper access + Workers and events"
+      manager-2: "Cannot upgrade, convert or unclaim"
+    remove:
+      name: "Remove Access"
+      hint: "All territory access is removed immediately"
+      click: "remove this player"
+
+  trade:
+    title: "IdleFarm | Trade"
+    partner: "Partner"
+    none:
+      name: "No active trade"
+      hint: "Use /idle trade <player>"
+    # The divider row between the two escrows.
+    divider:
+      yours: "Your escrow"
+      yours-ok: "Your escrow - CONFIRMED"
+      theirs: "{player} escrow"
+      theirs-ok: "{player} escrow - CONFIRMED"
+    offer:
+      name: "Offer Held Stack"
+      hint: "Any change resets both confirmations"
+    confirm:
+      name: "Confirm"
+      hint: "Both players must confirm unchanged offers"
+      click: "confirm this trade"
+    cancel:
+      name: "Cancel & Return Escrow"
+      hint: "Everything goes back to its owner"
+
+  profile:
+    title: "IdleFarm | Profile"
+
+  claim:
+    title: "IdleFarm | Claim Land"
+
+  convert:
+    title: "IdleFarm | Convert Node"
+
+  nodebuild:
+    title: "IdleFarm | Node Build"
+
+  residential:
+    title: "IdleFarm | Home Plot"
+
+  common:
+    close:
+      name: "Close Menu"
+      hint: "Return to the game"
+    back-hub:
+      name: "Back to Hub"
+      hint: "Return to the IdleFarm overview"
+    # {destination} is the screen being returned to.
+    back:
+      name: "Back to {destination}"
+      hint: "Return without losing your place"
+    # Name of the home screen, used as {destination} above.
+    hub: "Hub"
+
+    # Paging controls, shown either side of Close on the bottom row.
+    prev: "Previous Page"
+    next: "Next Page"
+    page: "Page {page}/{total}"
+
+    # Tab strip on screens that are several views of one subject.
+    tab-active: "You are here"
+    tab-inactive: "Click to switch"
+
+    # Inline confirmation. A button keeps its own name and only swaps colour,
+    # so these lines are all the player reads before acting.
+    confirm: "Click again to confirm"
+    danger: "This cannot be undone - click to continue"
+    confirm-expiry: "Cancels after 5 seconds"
+    # Fallback name if a confirm button somehow has none.
+    action: "Confirm action"

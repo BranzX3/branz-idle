@@ -34,10 +34,7 @@ public final class NodeControlMenu extends Menu {
 
     @Override
     protected Component title() {
-        NodeRecord node = node();
-        return Component.text(node == null ? "Node Control"
-                        : "Node Control | " + Ui.pretty(node.getType().name()),
-                NamedTextColor.DARK_GREEN);
+        return Component.text(Lang.get("menu.node.title"), NamedTextColor.DARK_GREEN);
     }
 
     @Override
@@ -47,10 +44,9 @@ public final class NodeControlMenu extends Menu {
             viewer.closeInventory();
             return;
         }
-        fill();
 
         List<WorkerRecord> crew = gui.workerStore().getAssigned(node.getId());
-        set(4, summary(node, crew));
+        set(SUMMARY_SLOT, summary(node, crew));
         drawCrew(node, crew);
 
         // Primary actions: every visit uses the same three positions.
@@ -61,22 +57,20 @@ public final class NodeControlMenu extends Menu {
                 event -> new ExplorationMenu(viewer, gui, nodeId).open());
         drawUpgrade(node);
 
-        // Progression and infrequent configuration.
+        // Node settings, including the two that reshape or remove the Node.
+        // These sit together and away from the nav row so a mis-click on Back
+        // can never land on Unclaim.
         drawFocus(node);
         drawBuild(node);
         set(33, convertIcon(node),
                 event -> new ConvertTypeMenu(viewer, gui, node).open());
+        setDangerConfirm(35, unclaimIcon(node), () -> unclaim(node));
 
-        // Fixed navigation row.
-        set(36, Icon.of(Material.FILLED_MAP)
-                .name("Territory Map", NamedTextColor.GREEN)
-                .lore("View nearby chunks and claims", NamedTextColor.GRAY)
+        set(navRow() + 1, Icon.of(Material.FILLED_MAP)
+                .name(Lang.get("menu.node.map.name"), NamedTextColor.GREEN)
+                .lore(Lang.get("menu.node.map.hint"), NamedTextColor.GRAY)
                 .build(), event -> gui.openTerritoryMap(viewer));
-        set(40, Icon.of(Material.ARROW)
-                .name("All Nodes", NamedTextColor.GREEN)
-                .lore("Return to the Node list", NamedTextColor.GRAY)
-                .build(), event -> gui.openNodes(viewer));
-        set(44, unclaimIcon(node), event -> confirmUnclaim(node));
+        navBar(Lang.get("menu.node.all-nodes"), () -> gui.openNodes(viewer));
     }
 
     private NodeRecord node() {
@@ -265,31 +259,24 @@ public final class NodeControlMenu extends Menu {
             return;
         }
         double cost = gui.claimService().tierCost(node.getTier());
-        set(24, Icon.of(Material.ANVIL)
-                .name("Upgrade to Tier " + (node.getTier() + 1), NamedTextColor.AQUA)
+        setConfirm(24, Icon.of(Material.ANVIL)
+                .name(Lang.get("menu.node.upgrade.name", "tier", node.getTier() + 1),
+                        NamedTextColor.AQUA)
                 .loreComponents(List.of(
-                        Ui.line("Adds one Worker slot", NamedTextColor.GRAY),
-                        Ui.line("Cost: " + Ui.num(cost), NamedTextColor.GOLD),
-                        Ui.line("Build time: " + Ui.time(gui.claimService()
-                                .buildSeconds(node.getTier() + 1) * 1000L),
-                                NamedTextColor.AQUA),
-                        Ui.click("review purchase")))
-                .build(), event -> confirmUpgrade(node, cost));
-    }
-
-    private void confirmUpgrade(NodeRecord node, double cost) {
-        new ConfirmMenu(viewer, "Upgrade to Tier " + (node.getTier() + 1) + "?",
-                List.of("Cost: " + format(cost),
-                        "Adds one Worker slot",
-                        "Production continues while building"),
-                () -> {
-                    var result = gui.claimService()
-                            .startUpgrade(viewer.getUniqueId(), node);
+                        Lang.line("menu.node.upgrade.slot", NamedTextColor.GRAY),
+                        Lang.line("menu.node.upgrade.cost", NamedTextColor.GOLD,
+                                "cost", Ui.num(cost)),
+                        Lang.line("menu.node.upgrade.time", NamedTextColor.AQUA,
+                                "time", Ui.time(gui.claimService()
+                                        .buildSeconds(node.getTier() + 1) * 1000L)),
+                        Lang.line("menu.node.upgrade.continues", NamedTextColor.GRAY),
+                        Lang.click("menu.node.upgrade.click")))
+                .build(), () -> {
+                    var result = gui.claimService().startUpgrade(viewer.getUniqueId(), node);
                     viewer.sendMessage(Component.text(result.message(),
                             result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-                    new NodeControlMenu(viewer, gui, nodeId).open();
-                },
-                () -> new NodeControlMenu(viewer, gui, nodeId).open()).open();
+                    redraw();
+                });
     }
 
     private void drawFocus(NodeRecord node) {
@@ -335,13 +322,13 @@ public final class NodeControlMenu extends Menu {
     private ItemStack convertIcon(NodeRecord node) {
         double cost = gui.plugin().getConfig().getDouble("claims.convert-cost", 750.0);
         return Icon.of(Material.CRAFTING_TABLE)
-                .name("Convert Node", NamedTextColor.YELLOW)
+                .name(Lang.get("menu.node.convert.name"), NamedTextColor.YELLOW)
                 .loreComponents(List.of(
-                        Ui.line("Cost: " + format(cost), NamedTextColor.GOLD),
-                        Ui.line("Keeps Tier | Exploration level is halved",
-                                NamedTextColor.GRAY),
-                        Ui.line("Requires an empty buffer", NamedTextColor.GRAY),
-                        Ui.click("choose a new type")))
+                        Lang.line("menu.node.convert.cost", NamedTextColor.GOLD,
+                                "cost", format(cost)),
+                        Lang.line("menu.node.convert.keeps", NamedTextColor.GRAY),
+                        Lang.line("menu.node.convert.empty", NamedTextColor.GRAY),
+                        Lang.click("menu.node.convert.click")))
                 .build();
     }
 
@@ -350,39 +337,31 @@ public final class NodeControlMenu extends Menu {
                 * gui.plugin().getConfig()
                 .getDouble("claims.unclaim-refund-ratio", 0.5);
         return Icon.of(Material.TNT)
-                .name("Unclaim Node", NamedTextColor.RED)
+                .name(Lang.get("menu.node.unclaim.name"), NamedTextColor.RED)
                 .loreComponents(List.of(
-                        Ui.line("Refund: " + format(refund), NamedTextColor.GOLD),
-                        Ui.line("Exploration progress will be lost", NamedTextColor.RED),
-                        Ui.click("review destructive action")))
+                        Lang.line("menu.node.unclaim.refund", NamedTextColor.GOLD,
+                                "refund", format(refund)),
+                        Lang.line("menu.node.unclaim.exploration", NamedTextColor.RED),
+                        Lang.line("menu.node.unclaim.workers", NamedTextColor.GRAY),
+                        Lang.line("menu.node.unclaim.empty", NamedTextColor.GRAY),
+                        Lang.click("menu.node.unclaim.click")))
                 .build();
     }
 
-    private void confirmUnclaim(NodeRecord node) {
-        double refund = gui.claimService().claimCost(node.getType())
-                * gui.plugin().getConfig()
-                .getDouble("claims.unclaim-refund-ratio", 0.5);
-        new ConfirmMenu(viewer, "Unclaim " + Ui.pretty(node.getType().name()) + "?",
-                List.of("Refund: " + format(refund),
-                        "Exploration progress will be lost",
-                        "Workers return as contracts",
-                        "Buffer must be empty"),
-                () -> {
-                    var result = gui.claimService().unclaim(viewer.getUniqueId(),
-                            viewer.getWorld(), node.getChunk());
-                    viewer.sendMessage(Component.text(result.message(),
-                            result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-                    if (result.success()) {
-                        gui.openNodes(viewer);
-                    } else {
-                        new NodeControlMenu(viewer, gui, nodeId).open();
-                    }
-                },
-                () -> new NodeControlMenu(viewer, gui, nodeId).open()).open();
+    private void unclaim(NodeRecord node) {
+        var result = gui.claimService().unclaim(viewer.getUniqueId(),
+                viewer.getWorld(), node.getChunk());
+        viewer.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        if (result.success()) {
+            gui.openNodes(viewer);
+        } else {
+            redraw();
+        }
     }
 
     private void openAssignPicker(NodeRecord node) {
-        new WorkerPickerMenu(viewer, gui, null, null, "Assign a Worker",
+        WorkerListMenu.picker(viewer, gui, null, null, "menu.workers.assign.title",
                 choice -> {
                     WorkerRecord worker = gui.workerStore().get(choice.workerUuid());
                     boolean available = worker != null
@@ -400,7 +379,7 @@ public final class NodeControlMenu extends Menu {
                             .assign(viewer.getUniqueId(), worker, node);
                     if (result.success()) {
                         if (looseItem) {
-                            WorkerPickerMenu.consumeFromInventory(
+                            WorkerListMenu.consumeFromInventory(
                                     viewer, gui, choice.workerUuid());
                         }
                         gui.npcManager().refreshNode(node, viewer.getWorld());
@@ -470,5 +449,10 @@ public final class NodeControlMenu extends Menu {
     private String format(double value) {
         return value == Math.floor(value)
                 ? String.valueOf((long) value) : String.format("%.2f", value);
+    }
+
+    @Override
+    protected Material frameMaterial() {
+        return Material.GREEN_STAINED_GLASS_PANE;
     }
 }

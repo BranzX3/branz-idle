@@ -36,9 +36,6 @@ public final class ConfirmMenu extends Menu {
 
     @Override
     protected void build() {
-        for (int i = 0; i < rows() * 9; i++) {
-            set(i, Icon.filler());
-        }
         set(13, Icon.of(Material.PAPER).name(question, NamedTextColor.WHITE)
                 .lore(details, NamedTextColor.GRAY).build());
         set(11, Icon.of(Material.LIME_WOOL).name("Confirm", NamedTextColor.GREEN).build(),

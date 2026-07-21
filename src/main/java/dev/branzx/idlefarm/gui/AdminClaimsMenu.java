@@ -31,7 +31,6 @@ public final class AdminClaimsMenu extends Menu {
 
     @Override
     protected void build() {
-        fill();
         List<NodeRecord> nodes = gui.nodeStore().getByOwner(target.getUniqueId());
         int start = page * PAGE_SIZE;
         for (int index = 0; index < PAGE_SIZE && start + index < nodes.size(); index++) {

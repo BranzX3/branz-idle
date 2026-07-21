@@ -26,21 +26,23 @@ public final class ExpeditionMenu extends Menu {
 
     @Override
     protected int rows() {
-        return 5;
+        // Six rows: the shared CONTENT_GRID reaches slot 43, which would sit on
+        // the nav row of a five-row menu.
+        return 6;
     }
 
     @Override
     protected Component title() {
-        return Component.text("Global Expedition " + expedition.activeWeek(), NamedTextColor.GOLD);
+        return Component.text(Lang.get("menu.expedition.title"), NamedTextColor.GOLD);
     }
 
     @Override
     protected void build() {
-        fill();
 
-        // Rankings (top 10) across rows 1-2.
+        // Rankings across rows 1-2 of the standard grid, so the board keeps the
+        // same margins as every other list on the plugin.
         List<GlobalExpeditionService.Score> top = expedition.top(10);
-        int slot = 9;
+        int slot = 0;
         int rank = 1;
         for (GlobalExpeditionService.Score score : top) {
             var offline = Bukkit.getOfflinePlayer(score.owner());
@@ -51,21 +53,24 @@ public final class ExpeditionMenu extends Menu {
                 default -> Material.STONE;
             };
             boolean self = score.owner().equals(viewer.getUniqueId());
-            set(slot, Icon.of(medal)
-                    .name("#" + rank + " " + (offline.getName() == null ? "?" : offline.getName()),
+            set(CONTENT_GRID[slot], Icon.of(medal)
+                    .name(Lang.get("menu.expedition.rank", "rank", rank,
+                                    "player", offline.getName() == null ? "?" : offline.getName()),
                             self ? NamedTextColor.GREEN : NamedTextColor.WHITE)
                     .loreComponents(List.of(
-                            Ui.line("Contribution " + Ui.num(score.contribution()),
-                                    NamedTextColor.GOLD)))
+                            Lang.line("menu.expedition.contribution", NamedTextColor.GOLD,
+                                    "amount", Ui.num(score.contribution()))))
                     .build());
             slot++;
             rank++;
         }
 
-        // Your standing + commit.
+        // Your standing lives in the summary card; the commit button below
+        // carries only what the click actually does.
         long mine = expedition.contributionOf(viewer.getUniqueId());
         List<Component> mineLore = new ArrayList<>();
-        mineLore.add(Ui.line("Your contribution: " + Ui.num(mine), NamedTextColor.GOLD));
+        mineLore.add(Lang.line("menu.expedition.yours", NamedTextColor.GOLD,
+                "amount", Ui.num(mine)));
         GlobalExpeditionService.ParticipationBand next =
                 expedition.nextBand(viewer.getUniqueId());
         if (next == null) {
@@ -80,15 +85,22 @@ public final class ExpeditionMenu extends Menu {
                     + band.name() + " — " + Ui.num(band.threshold()),
                     mine >= band.threshold() ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY));
         }
-        mineLore.add(Ui.divider());
-        mineLore.add(Ui.line("Stand in your node and click:", NamedTextColor.GRAY));
-        mineLore.add(Ui.line("commits its idle workers for "
-                + expedition.commitDurationMinutes() + "m", NamedTextColor.GRAY));
-        mineLore.add(Ui.line("(they stop producing while away)", NamedTextColor.DARK_GRAY));
-        set(31, Icon.of(Material.CAMPFIRE).name("Send Workers!", NamedTextColor.GREEN)
-                .loreComponents(mineLore).build(), e -> commit());
+        set(SUMMARY_SLOT, Icon.of(Material.CAMPFIRE)
+                .name(Lang.get("menu.expedition.summary", "week", expedition.activeWeek()),
+                        NamedTextColor.GOLD)
+                .loreComponents(mineLore).build());
 
-        backToHub(gui);
+        setConfirm(31, Icon.of(Material.CAMPFIRE)
+                .name(Lang.get("menu.expedition.send.name"), NamedTextColor.GREEN)
+                .loreComponents(List.of(
+                        Lang.line("menu.expedition.send.stand", NamedTextColor.GRAY),
+                        Lang.line("menu.expedition.send.duration", NamedTextColor.GRAY,
+                                "minutes", expedition.commitDurationMinutes()),
+                        Lang.line("menu.expedition.send.stops", NamedTextColor.DARK_GRAY),
+                        Lang.click("menu.expedition.send.click")))
+                .build(), this::commit);
+
+        navBarToHub(gui);
     }
 
     private void commit() {
@@ -110,5 +122,10 @@ public final class ExpeditionMenu extends Menu {
             viewer.sendMessage(Component.text(error, NamedTextColor.RED));
         }
         redraw();
+    }
+
+    @Override
+    protected Material frameMaterial() {
+        return Material.ORANGE_STAINED_GLASS_PANE;
     }
 }

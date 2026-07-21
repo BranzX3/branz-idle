@@ -44,7 +44,6 @@ public final class AdminLogMenu extends Menu {
 
     @Override
     protected void build() {
-        fill();
         int start = page * 45;
         for (int index = 0; index < 45 && start + index < entries.size(); index++) {
             AuditService.Entry entry = entries.get(start + index);

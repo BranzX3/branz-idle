@@ -22,28 +22,33 @@ public final class LeaderboardMenu extends Menu {
 
     @Override
     protected int rows() {
-        return 4;
+        return 6;
     }
 
     @Override
     protected Component title() {
-        return Component.text("Leaderboard", NamedTextColor.GOLD);
+        return Component.text(Lang.get("menu.leaderboard.title"), NamedTextColor.GOLD);
     }
 
     @Override
     protected void build() {
-        fill();
-        backButton(31, "Social", () -> gui.openSocial(viewer));
+        navBar(Lang.get("menu.leaderboard.back"), () -> gui.openSocial(viewer));
 
         if (top == null) {
-            set(13, Icon.of(Material.CLOCK).name("Loading…", NamedTextColor.GRAY).build());
+            set(SUMMARY_SLOT, Icon.of(Material.CLOCK)
+                    .name(Lang.get("menu.leaderboard.loading"), NamedTextColor.GRAY).build());
             loadThenRefresh();
             return;
         }
 
         String currency = gui.plugin().getConfig().getString("currency-name", "Coins");
-        int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21};
-        for (int i = 0; i < top.size() && i < slots.length; i++) {
+        set(SUMMARY_SLOT, Icon.of(Material.GOLD_INGOT)
+                .name(Lang.get("menu.leaderboard.title"), NamedTextColor.GOLD)
+                .loreComponents(List.of(
+                        Lang.line("menu.leaderboard.summary", NamedTextColor.GRAY,
+                                "count", top.size())))
+                .build());
+        for (int i = 0; i < top.size() && i < CONTENT_GRID.length; i++) {
             PlayerData data = top.get(i);
             Icon icon = switch (i) {
                 case 0 -> Icon.of(Material.GOLD_BLOCK);
@@ -52,8 +57,9 @@ public final class LeaderboardMenu extends Menu {
                 default -> Icon.head(gui.skinHeadCache(), data.getName());
             };
             boolean self = data.getUuid().equals(viewer.getUniqueId());
-            set(slots[i], icon
-                    .name("#" + (i + 1) + " " + data.getName(),
+            set(CONTENT_GRID[i], icon
+                    .name(Lang.get("menu.leaderboard.rank",
+                                    "rank", i + 1, "player", data.getName()),
                             self ? NamedTextColor.GREEN : NamedTextColor.WHITE)
                     .loreComponents(List.of(Ui.line(Ui.num(data.getBalance()) + " " + currency,
                             NamedTextColor.GOLD))).build());
@@ -77,5 +83,10 @@ public final class LeaderboardMenu extends Menu {
                 }.runTask(gui.plugin());
             }
         }.runTaskAsynchronously(gui.plugin());
+    }
+
+    @Override
+    protected Material frameMaterial() {
+        return Material.ORANGE_STAINED_GLASS_PANE;
     }
 }

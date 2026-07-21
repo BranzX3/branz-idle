@@ -24,7 +24,6 @@ public final class AdminSchematicMenu extends Menu {
 
     @Override
     protected void build() {
-        fill();
         set(4, Icon.of(Material.STRUCTURE_BLOCK).name("Position-sensitive tools",
                         NamedTextColor.LIGHT_PURPLE)
                 .loreComponents(List.of(

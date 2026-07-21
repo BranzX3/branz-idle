@@ -36,7 +36,6 @@ public final class AdminPlayerListMenu extends Menu {
 
     @Override
     protected void build() {
-        fill();
         List<Player> players = new ArrayList<>(Bukkit.getOnlinePlayers());
         players.sort(Comparator.comparing(Player::getName,
                 String.CASE_INSENSITIVE_ORDER));

@@ -23,24 +23,22 @@ public final class ConvertTypeMenu extends Menu {
 
     @Override
     protected int rows() {
-        return 3;
+        return 5;
     }
 
     @Override
     protected Component title() {
-        return Component.text("Convert " + Ui.pretty(node.getType().name()),
-                NamedTextColor.GOLD);
+        return Component.text(Lang.get("menu.convert.title"), NamedTextColor.GOLD);
     }
 
     @Override
     protected void build() {
-        fill();
         option(10, NodeType.MINING, Material.IRON_PICKAXE);
         option(11, NodeType.FARMING, Material.WHEAT);
         option(13, NodeType.WOODCUTTING, Material.OAK_LOG);
         option(15, NodeType.LIVESTOCK, Material.BEEF);
         option(16, NodeType.HUNTER, Material.IRON_SWORD);
-        backButton(22, "Node Control",
+        navBar(Lang.get("menu.exploration.back"),
                 () -> new NodeControlMenu(viewer, gui, node.getId()).open());
     }
 
@@ -60,25 +58,25 @@ public final class ConvertTypeMenu extends Menu {
                 "Exploration Lv." + node.getExplorationLevel() + " -> " + resultingLevel,
                 "Workers return as contracts",
                 "Buffer must be empty");
-        set(slot, Icon.of(material)
+        setDangerConfirm(slot, Icon.of(material)
                 .name(Ui.pretty(type.name()), NamedTextColor.GREEN)
                 .loreComponents(java.util.stream.Stream.concat(
                         details.stream().map(line -> Ui.line(line, NamedTextColor.GRAY)),
-                        java.util.stream.Stream.of(Ui.click("review conversion")))
+                        java.util.stream.Stream.of(Ui.click("convert to this type")))
                         .toList())
-                .build(), event -> confirm(type, details));
+                .build(), () -> convert(type));
     }
 
-    private void confirm(NodeType type, List<String> details) {
-        new ConfirmMenu(viewer, "Convert to " + Ui.pretty(type.name()) + "?",
-                details,
-                () -> {
-                    var result = gui.claimService().convert(viewer.getUniqueId(),
-                            viewer.getWorld(), node.getChunk(), type);
-                    viewer.sendMessage(Component.text(result.message(),
-                            result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
-                    new NodeControlMenu(viewer, gui, node.getId()).open();
-                },
-                () -> new ConvertTypeMenu(viewer, gui, node).open()).open();
+    private void convert(NodeType type) {
+        var result = gui.claimService().convert(viewer.getUniqueId(),
+                viewer.getWorld(), node.getChunk(), type);
+        viewer.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        new NodeControlMenu(viewer, gui, node.getId()).open();
+    }
+
+    @Override
+    protected Material frameMaterial() {
+        return Material.GREEN_STAINED_GLASS_PANE;
     }
 }

@@ -32,7 +32,6 @@ public final class AdminPlayerMenu extends Menu {
 
     @Override
     protected void build() {
-        fill();
         var data = gui.dataStore().getOnline(target.getUniqueId());
         set(4, Icon.head(gui.skinHeadCache(), name()).name(name(), NamedTextColor.YELLOW)
                 .loreComponents(List.of(
