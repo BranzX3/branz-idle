@@ -80,12 +80,19 @@ public final class ProductionEngine extends BukkitRunnable {
         }
     }
 
-    private void tickNode(NodeRecord node, long now) {
-        List<WorkerRecord> crew = workerStore.getAssigned(node.getId()).stream()
+    /** The workers that actually drive production: assigned, not exploring,
+     *  not committed to a Global Expedition. Shared by the tick loop and the
+     *  live-rate queries the UI uses, so both see the same crew. */
+    private List<WorkerRecord> activeCrew(NodeRecord node) {
+        return workerStore.getAssigned(node.getId()).stream()
                 .filter(w -> !WorkerRecord.STATE_EXPLORING.equals(w.getState()))
                 .filter(w -> globalExpeditionService == null
                         || !globalExpeditionService.isCommitted(w.getWorkerUuid()))
                 .toList();
+    }
+
+    private void tickNode(NodeRecord node, long now) {
+        List<WorkerRecord> crew = activeCrew(node);
 
         // No workers = no production (spec: workers are the engine). The
         // anchors still advance so hiring later doesn't backfill idle time.
@@ -111,7 +118,7 @@ public final class ProductionEngine extends BukkitRunnable {
 
         // Research penalty and the stop state consider every enabled lane, so
         // capture fullness before either lane credits new items.
-        double bulkRatePerHour = scale.bulkRatePerHour(node, crew) * boost * buildMultiplier;
+        double bulkRatePerHour = bulkRatePerHour(node, crew, boost, buildMultiplier);
         boolean bulkEnabled = bulkRatePerHour > 0;
         int bulkCapacity = bulkEnabled ? bulkBufferCapacity(node, bulkRatePerHour) : 0;
         int capacity = bufferCapacity(node);
@@ -230,6 +237,32 @@ public final class ProductionEngine extends BukkitRunnable {
         double multiplier = gameDesignService == null ? 1.0 : gameDesignService.bufferMultiplier(node);
         return (int) Math.min(Integer.MAX_VALUE,
                 Math.round(scale.bulkBufferCapacity(node, bulkRatePerHour) * multiplier));
+    }
+
+    /** Bulk items/hour for the node's live crew, with boosters and build
+     *  multipliers — the exact rate the tick loop credits at. */
+    private double bulkRatePerHour(NodeRecord node, List<WorkerRecord> crew,
+                                   double boost, double buildMultiplier) {
+        return scale.bulkRatePerHour(node, crew) * boost * buildMultiplier;
+    }
+
+    /**
+     * Live bulk-buffer capacity for the node's current crew, so the UI shows
+     * the same denominator the engine fills against. Returns 0 when the lane
+     * is inactive (no crew, or the type's bulk rate is disabled), letting the
+     * caller fall back to a plain count instead of a 0/0 bar.
+     */
+    public int currentBulkCapacity(NodeRecord node) {
+        List<WorkerRecord> crew = activeCrew(node);
+        if (crew.isEmpty()) {
+            return 0;
+        }
+        double boost = boosterService == null ? 1.0
+                : boosterService.multiplier(node.getOwnerUuid(), BoosterService.PRODUCTION);
+        double buildMultiplier = gameDesignService == null ? 1.0
+                : gameDesignService.productionMultiplier(node);
+        double rate = bulkRatePerHour(node, crew, boost, buildMultiplier);
+        return rate <= 0 ? 0 : bulkBufferCapacity(node, rate);
     }
 
     /**

@@ -169,6 +169,7 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.productionEngine = new ProductionEngine(this, nodeStore, workerStore, workerService,
                 explorationService, boosterService, perkService, warehouseService, dropTableService,
                 globalExpeditionService, gameDesignService);
+        guiManager.setProductionEngine(productionEngine);
         // First run settles any downtime accrued while the server was off.
         this.productionEngine.runTaskTimer(this, 100L, productionTicks);
 

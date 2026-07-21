@@ -139,9 +139,17 @@ public final class NodeControlMenu extends Menu {
             lore.add(Ui.line("...and " + (node.getStorage().size() - 5) + " more",
                     NamedTextColor.DARK_GRAY));
         }
-        if (node.bulkStorageTotal() > 0) {
-            lore.add(Ui.line("Bulk commons: " + node.bulkStorageTotal(),
-                    NamedTextColor.AQUA));
+        int bulkTotal = node.bulkStorageTotal();
+        int bulkCapacity = gui.productionEngine() == null ? 0
+                : gui.productionEngine().currentBulkCapacity(node);
+        if (bulkCapacity > 0) {
+            lore.add(Ui.bar("Bulk", bulkTotal / (double) bulkCapacity,
+                    bulkTotal >= bulkCapacity ? NamedTextColor.RED : NamedTextColor.AQUA,
+                    bulkTotal + "/" + bulkCapacity));
+        } else if (bulkTotal > 0) {
+            // Lane inactive (no crew / disabled): capacity is undefined, so
+            // show the raw count rather than a 0/0 bar.
+            lore.add(Ui.line("Bulk commons: " + bulkTotal, NamedTextColor.AQUA));
         }
         boolean empty = node.getStorage().isEmpty() && node.getBulkStorage().isEmpty();
         lore.add(empty

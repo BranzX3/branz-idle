@@ -53,6 +53,9 @@ public final class GuiManager implements Listener {
     // admin menus, so the pair cannot both be constructor-injected.
     private dev.branzx.idlefarm.command.AdminCommands adminCommands;
     private dev.branzx.idlefarm.service.AuditService auditService;
+    // Late-bound: the ProductionEngine is created after this GuiManager, so
+    // it cannot be constructor-injected. Used for live bulk-lane capacity.
+    private dev.branzx.idlefarm.service.ProductionEngine productionEngine;
 
     public GuiManager(IdleFarmPlugin plugin, NodeStore nodeStore, WorkerStore workerStore,
                       PlayerDataStore dataStore, WorkerService workerService,
@@ -131,6 +134,14 @@ public final class GuiManager implements Listener {
 
     public dev.branzx.idlefarm.service.AuditService auditService() {
         return auditService;
+    }
+
+    public void setProductionEngine(dev.branzx.idlefarm.service.ProductionEngine productionEngine) {
+        this.productionEngine = productionEngine;
+    }
+
+    public dev.branzx.idlefarm.service.ProductionEngine productionEngine() {
+        return productionEngine;
     }
 
     /** Execute an existing audited admin action without making the admin type a command. */
