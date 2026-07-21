@@ -269,7 +269,7 @@ public final class MainHubMenu extends Menu {
     private void collectAll(List<NodeRecord> nodes) {
         int moved = 0;
         for (NodeRecord node : nodes) {
-            if (node.getStorage().isEmpty()) {
+            if (node.getStorage().isEmpty() && node.getBulkStorage().isEmpty()) {
                 continue;
             }
             int nodeMoved = gui.warehouseService().collectNode(node);

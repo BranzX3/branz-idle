@@ -133,6 +133,9 @@ public final class NodesMenu extends Menu {
                         : node.storageTotal() / (double) capacity,
                 node.storageTotal() >= capacity ? NamedTextColor.RED : NamedTextColor.GOLD,
                 node.storageTotal() + "/" + capacity));
+        if (node.bulkStorageTotal() > 0) {
+            lore.add(Ui.line("Bulk commons: " + node.bulkStorageTotal(), NamedTextColor.AQUA));
+        }
         lore.add(Ui.line("Exploration Lv." + node.getExplorationLevel(),
                 NamedTextColor.LIGHT_PURPLE));
 
