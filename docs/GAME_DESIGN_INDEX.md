@@ -37,7 +37,11 @@ the discrepancy must be resolved explicitly before coding.
 - Lv.1→100 requires 71,280 Exploration EXP.
 - Typical focused-node progress averages about 2,350 EXP/day including weekly
   rewards.
-- Tier-1 buffer target is 256 items, scaling linearly with Tier.
+- Family commons flow from a deterministic bulk lane anchored to active
+  vanilla gathering rates; rares and MMORPG materials only ever come from
+  the rolled discovery lane.
+- Tier-1 discovery-buffer target is 256 items, scaling linearly with Tier;
+  the bulk buffer is time-based (4–8 hours of current bulk rate).
 - A normal player should check a productive node two to three times per day,
   not every hour.
 - Rare vanilla items use hard daily/weekly caps in addition to low weights.

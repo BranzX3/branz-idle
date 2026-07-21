@@ -255,20 +255,27 @@ Passive production should never output raid trophies or boss-exclusive items.
 
 ## 12. Drop-table behavior
 
-Use additive pools with weight evolution:
+Production is split into a deterministic bulk lane for family commons and a
+rolled discovery lane for everything else (Balance Bible §3).
 
-- Common vanilla resources remain available at every level.
-- Higher brackets reduce their relative weight but do not remove them.
+Bulk lane:
+
+- Family commons flow at a flat rate scaled by worker rarity, level, and
+  Diligence — no rolls, no caps.
+- Commons are therefore available at every level and never leave the pool.
+
+Discovery lane uses additive pools with weight evolution:
+
+- Higher brackets add advanced resources without removing earlier ones.
 - Node Mastery Lv.60 unlocks a favored-resource preference.
 - Rare vanilla resources use account-level daily/weekly caps, not only tiny
   random weights.
 - The UI displays the current pool, next additions, and capped resources.
 
-Recommended roll composition before Lv.100:
+Recommended discovery-roll composition before Lv.100:
 
-- 65–85% common/utility resources.
-- 12–30% advanced resources.
-- 1–5% rare resources depending on bracket.
+- 85–97% advanced resources.
+- 3–15% rare resources depending on bracket.
 - Progression-breaking items: 0%.
 
 ## 13. Regular Exploration Events

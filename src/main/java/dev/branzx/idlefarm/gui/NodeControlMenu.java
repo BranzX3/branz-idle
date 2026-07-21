@@ -139,17 +139,21 @@ public final class NodeControlMenu extends Menu {
             lore.add(Ui.line("...and " + (node.getStorage().size() - 5) + " more",
                     NamedTextColor.DARK_GRAY));
         }
-        lore.add(node.getStorage().isEmpty()
+        if (node.bulkStorageTotal() > 0) {
+            lore.add(Ui.line("Bulk commons: " + node.bulkStorageTotal(),
+                    NamedTextColor.AQUA));
+        }
+        boolean empty = node.getStorage().isEmpty() && node.getBulkStorage().isEmpty();
+        lore.add(empty
                 ? Ui.status("EMPTY", NamedTextColor.DARK_GRAY)
                 : Ui.click("collect to Warehouse"));
         return Icon.of(Material.HOPPER)
-                .name("Collect", node.getStorage().isEmpty()
-                        ? NamedTextColor.GRAY : NamedTextColor.GOLD)
+                .name("Collect", empty ? NamedTextColor.GRAY : NamedTextColor.GOLD)
                 .loreComponents(lore).build();
     }
 
     private void collect(NodeRecord node) {
-        if (node.getStorage().isEmpty()) {
+        if (node.getStorage().isEmpty() && node.getBulkStorage().isEmpty()) {
             viewer.sendMessage(Component.text("This Node buffer is empty.",
                     NamedTextColor.YELLOW));
             return;

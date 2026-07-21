@@ -18,14 +18,18 @@ public final class NodeRecord {
     private volatile String state;
     /** Building origin Y captured at claim time (stable across terrain edits). */
     private final int originY;
-    /** Anchor for lazy production accrual (epoch millis). */
+    /** Anchor for lazy discovery-lane accrual (epoch millis). */
     private volatile long lastTickAt;
+    /** Anchor for lazy bulk-lane accrual (epoch millis). */
+    private volatile long bulkLastTickAt;
     private volatile int explorationLevel;
     private volatile long explorationExp;
     /** Epoch millis a tier upgrade completes; 0 = not upgrading. */
     private volatile long upgradeEndsAt;
-    /** Buffered uncollected output: material name -> count. */
+    /** Buffered uncollected discovery-lane output: material name -> count. */
     private final Map<String, Integer> storage = new ConcurrentHashMap<>();
+    /** Buffered uncollected bulk-lane commons: material name -> count. */
+    private final Map<String, Integer> bulkStorage = new ConcurrentHashMap<>();
 
     public NodeRecord(long id, UUID ownerUuid, ChunkKey chunk, NodeType type, int tier, String state,
                       int originY, long lastTickAt, String storageSerialized) {
@@ -37,11 +41,16 @@ public final class NodeRecord {
         this.state = state;
         this.originY = originY;
         this.lastTickAt = lastTickAt;
-        if (storageSerialized != null && !storageSerialized.isBlank()) {
-            for (String entry : storageSerialized.split(";")) {
+        this.bulkLastTickAt = lastTickAt;
+        deserializeInto(storage, storageSerialized);
+    }
+
+    private static void deserializeInto(Map<String, Integer> target, String serialized) {
+        if (serialized != null && !serialized.isBlank()) {
+            for (String entry : serialized.split(";")) {
                 int colon = entry.indexOf(':');
                 if (colon > 0) {
-                    storage.put(entry.substring(0, colon), Integer.parseInt(entry.substring(colon + 1)));
+                    target.put(entry.substring(0, colon), Integer.parseInt(entry.substring(colon + 1)));
                 }
             }
         }
@@ -96,8 +105,38 @@ public final class NodeRecord {
     }
 
     public String serializeStorage() {
+        return serialize(storage);
+    }
+
+    public Map<String, Integer> getBulkStorage() {
+        return bulkStorage;
+    }
+
+    public int bulkStorageTotal() {
+        return bulkStorage.values().stream().mapToInt(Integer::intValue).sum();
+    }
+
+    public String serializeBulkStorage() {
+        return serialize(bulkStorage);
+    }
+
+    /** Replaces the bulk buffer with a persisted snapshot (load path only). */
+    public void loadBulkStorage(String serialized) {
+        bulkStorage.clear();
+        deserializeInto(bulkStorage, serialized);
+    }
+
+    public long getBulkLastTickAt() {
+        return bulkLastTickAt;
+    }
+
+    public void setBulkLastTickAt(long bulkLastTickAt) {
+        this.bulkLastTickAt = bulkLastTickAt;
+    }
+
+    private static String serialize(Map<String, Integer> map) {
         StringBuilder sb = new StringBuilder();
-        for (Map.Entry<String, Integer> entry : storage.entrySet()) {
+        for (Map.Entry<String, Integer> entry : map.entrySet()) {
             if (sb.length() > 0) {
                 sb.append(';');
             }

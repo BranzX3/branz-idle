@@ -152,22 +152,27 @@ public final class WarehouseService {
         int moved = 0;
         synchronized (node) {
             int space = freeSpace(owner);
-            for (Map.Entry<String, Integer> entry : List.copyOf(node.getStorage().entrySet())) {
-                if (space <= 0) break;
-                int amount = Math.min(space, entry.getValue());
-                if (amount <= 0) continue;
-                String key = entry.getKey().toUpperCase(java.util.Locale.ROOT);
-                warehouse.merge(key, amount, Integer::sum);
-                moved += amount;
-                space -= amount;
-                if (amount == entry.getValue()) node.getStorage().remove(entry.getKey());
-                else node.getStorage().put(entry.getKey(), entry.getValue() - amount);
+            // Discovery buffer drains first: rare finds must never be crowded
+            // out of a nearly-full warehouse by high-volume bulk commons.
+            for (Map<String, Integer> buffer : List.of(node.getStorage(), node.getBulkStorage())) {
+                for (Map.Entry<String, Integer> entry : List.copyOf(buffer.entrySet())) {
+                    if (space <= 0) break;
+                    int amount = Math.min(space, entry.getValue());
+                    if (amount <= 0) continue;
+                    String key = entry.getKey().toUpperCase(java.util.Locale.ROOT);
+                    warehouse.merge(key, amount, Integer::sum);
+                    moved += amount;
+                    space -= amount;
+                    if (amount == entry.getValue()) buffer.remove(entry.getKey());
+                    else buffer.put(entry.getKey(), entry.getValue() - amount);
+                }
             }
             if (moved > 0) node.setState("ACTIVE");
         }
         if (moved <= 0) return 0;
         String warehouseJson = serialize(warehouse);
         String nodeJson = node.serializeStorage();
+        String bulkJson = node.serializeBulkStorage();
         int capacity = getCapacity(owner);
         database.submitWrite(() -> {
             try (Connection connection = database.getConnection()) {
@@ -180,10 +185,12 @@ public final class WarehouseService {
                     upsert.executeUpdate();
                 }
                 try (PreparedStatement update = connection.prepareStatement(
-                        "UPDATE idlefarm_nodes SET storage_json = ?, state = ? WHERE id = ?")) {
+                        "UPDATE idlefarm_nodes SET storage_json = ?, bulk_storage_json = ?, "
+                                + "state = ? WHERE id = ?")) {
                     update.setString(1, nodeJson);
-                    update.setString(2, node.getState());
-                    update.setLong(3, node.getId());
+                    update.setString(2, bulkJson);
+                    update.setString(3, node.getState());
+                    update.setLong(4, node.getId());
                     update.executeUpdate();
                 }
                 connection.commit();

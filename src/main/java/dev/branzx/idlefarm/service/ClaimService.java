@@ -202,8 +202,9 @@ public final class ClaimService {
             return Result.fail("Unclaiming this chunk would split your territory.");
         }
 
-        // Spec §6b: buffer must be collected first — no dupe/loss edge cases.
-        if (record.getType().isProduction() && record.storageTotal() > 0) {
+        // Spec §6b: buffers must be collected first — no dupe/loss edge cases.
+        if (record.getType().isProduction()
+                && record.storageTotal() + record.bulkStorageTotal() > 0) {
             return Result.fail("Collect this node's buffer before unclaiming.");
         }
         if (record.getType().isProduction() && globalExpeditionService != null
@@ -386,7 +387,7 @@ public final class ClaimService {
         if (record.getType() == newType) {
             return Result.fail("This node is already " + newType + ".");
         }
-        if (record.storageTotal() > 0) {
+        if (record.storageTotal() + record.bulkStorageTotal() > 0) {
             return Result.fail("Collect this node's buffer before converting.");
         }
         if (globalExpeditionService != null && globalExpeditionService.hasCommitments(record.getId())) {

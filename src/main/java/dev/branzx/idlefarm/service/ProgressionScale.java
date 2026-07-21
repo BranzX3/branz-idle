@@ -4,8 +4,10 @@ import dev.branzx.idlefarm.IdleFarmPlugin;
 import dev.branzx.idlefarm.node.NodeRecord;
 import dev.branzx.idlefarm.worker.WorkerRecord;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Single authority for the numeric progression rules shared by production,
@@ -65,6 +67,84 @@ public final class ProgressionScale {
                 plugin.getConfig().getInt("production.buffer-capacity-per-tier", 256));
         long capacity = (long) perTier * Math.max(1, node.getTier());
         return (int) Math.min(Integer.MAX_VALUE, capacity);
+    }
+
+    // ---- bulk lane (Balance Bible §3): deterministic family commons ----
+
+    /**
+     * Bulk items/hour for a crew, before boosters and build multipliers.
+     * Rarity mirrors vanilla tool dig speed and Diligence is Efficiency-like,
+     * so the lane reads as "a worker with a real tool gathering commons".
+     */
+    public double bulkRatePerHour(NodeRecord node, List<WorkerRecord> crew) {
+        double base = plugin.getConfig().getDouble(
+                "production.bulk.base-per-hour."
+                        + node.getType().name().toLowerCase(Locale.ROOT), 0.0);
+        if (base <= 0 || crew.isEmpty()) {
+            return 0;
+        }
+        double levelBonus = plugin.getConfig().getDouble("production.level-power-per-level", 0.02);
+        double diligenceFactor = plugin.getConfig().getDouble("production.bulk.diligence-factor", 2.0);
+        double power = 0;
+        for (WorkerRecord worker : crew) {
+            double rarityMult = plugin.getConfig().getDouble(
+                    "production.bulk.rarity-mult." + worker.getRarity().name().toLowerCase(Locale.ROOT),
+                    defaultBulkRarity(worker));
+            power += rarityMult * (1 + worker.getLevel() * levelBonus)
+                    * (1 + diligenceFactor * worker.getStats().diligence() / 100.0);
+        }
+        return base * power;
+    }
+
+    /**
+     * Bulk buffer holds a fixed number of hours of the node's current rate;
+     * higher tiers hold fewer hours so fill time stays constant as crews grow.
+     */
+    public int bulkBufferCapacity(NodeRecord node, double bulkRatePerHour) {
+        int tierOneHours = Math.max(1, plugin.getConfig().getInt("production.bulk.buffer-hours.tier-1", 8));
+        int minHours = Math.max(1, plugin.getConfig().getInt("production.bulk.buffer-hours.min", 4));
+        int hours = Math.max(minHours, tierOneHours - (Math.max(1, node.getTier()) - 1));
+        return (int) Math.min(Integer.MAX_VALUE, Math.ceil(hours * Math.max(0, bulkRatePerHour)));
+    }
+
+    /** Weighted family commons for the bulk lane; never empty. */
+    public Map<String, Double> bulkCommons(NodeRecord node) {
+        var section = plugin.getConfig().getConfigurationSection(
+                "production.bulk.commons." + node.getType().name().toLowerCase(Locale.ROOT));
+        Map<String, Double> commons = new LinkedHashMap<>();
+        if (section != null) {
+            for (String key : section.getKeys(false)) {
+                double weight = section.getDouble(key);
+                if (weight > 0) {
+                    commons.put(key.toUpperCase(Locale.ROOT), weight);
+                }
+            }
+        }
+        if (commons.isEmpty()) {
+            commons.put(defaultBulkCommon(node), 1.0);
+        }
+        return commons;
+    }
+
+    private String defaultBulkCommon(NodeRecord node) {
+        return switch (node.getType().name()) {
+            case "FARMING" -> "WHEAT";
+            case "WOODCUTTING" -> "OAK_LOG";
+            case "LIVESTOCK" -> "BEEF";
+            case "HUNTER" -> "ROTTEN_FLESH";
+            default -> "COBBLESTONE";
+        };
+    }
+
+    /** Vanilla dig-speed ratios (wood/stone/iron/diamond/netherite), wood = 1. */
+    private double defaultBulkRarity(WorkerRecord worker) {
+        return switch (worker.getRarity()) {
+            case COMMON -> 1.0;
+            case UNCOMMON -> 2.0;
+            case RARE -> 3.0;
+            case EPIC -> 4.0;
+            case LEGENDARY -> 4.5;
+        };
     }
 
     public int passiveResearchDailyCap() {

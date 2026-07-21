@@ -168,7 +168,58 @@ production:
     legendary: 3.0
   level-power-per-level: 0.02
   # Worker EXP per credited item (split across crew, scaled by Stamina).
+  # Bulk-lane commons never grant worker EXP; only discovery items count.
   worker-exp-per-item: 2.0
+  # Bulk lane (docs/BALANCE_BIBLE.md §3): deterministic family commons that
+  # flow "like a real player gathering", beside the rolled discovery lane.
+  # Each node keeps a separate bulk buffer and tick anchor.
+  bulk:
+    # Items/hour per node type for one Common Lv.1 worker, anchored to
+    # active vanilla gathering rates. Set a type to 0 to disable its lane.
+    base-per-hour:
+      mining: 70
+      farming: 45
+      woodcutting: 35
+      livestock: 18
+      hunter: 15
+    # Worker rarity mirrors vanilla tool dig speed
+    # (wood/stone/iron/diamond/netherite = 2/4/6/8/9, wood = 1).
+    rarity-mult:
+      common: 1.0
+      uncommon: 2.0
+      rare: 3.0
+      epic: 4.0
+      legendary: 4.5
+    # Diligence is Efficiency-like on this lane: rate × (1 + factor × dil/100).
+    diligence-factor: 2.0
+    # Bulk buffer holds this many hours of the node's current bulk rate;
+    # higher tiers hold fewer hours so fill time stays 4-8h as crews grow.
+    buffer-hours:
+      tier-1: 8
+      min: 4
+    # Family commons and their share of bulk output (weights).
+    commons:
+      mining:
+        cobblestone: 70
+        cobbled_deepslate: 20
+        andesite: 10
+      farming:
+        wheat: 40
+        carrot: 30
+        potato: 30
+      woodcutting:
+        oak_log: 50
+        birch_log: 30
+        spruce_log: 20
+      livestock:
+        beef: 40
+        porkchop: 30
+        chicken: 30
+      hunter:
+        rotten_flesh: 40
+        bone: 30
+        string: 20
+        arrow: 10
   # Weighted drop tables per node type.
   # Drop tables are bracket-gated: a node uses the highest bracket-N table
   # unlocked by its Exploration Level (bracket = level/bracket-size + 1).
@@ -461,7 +512,9 @@ exploration:
   # is online.
   spawn-chance-per-check: 0.02
   max-waiting-events: 3
-  preparation-kit-cost: 16
+  # Bulk commons are now abundant (docs/BALANCE_BIBLE.md §3); the kit stays a
+  # meaningful recurring commons sink rather than a rounding error.
+  preparation-kit-cost: 128
   # Levels per bracket: bracket = level/size + 1.
   bracket-size: 10
   vanilla-brackets: 10
@@ -657,10 +710,28 @@ live-ops:
         objectives-first: 50
 
 projects:
+  # Personal Settlement Projects. Targets for commons materials (logs, stone)
+  # are scaled to the bulk lane (docs/BALANCE_BIBLE.md §3); the Expedition Dock
+  # uses Wool, a discovery-lane material, so its target stays hand-paced.
+  personal:
+    storehouse:
+      name: "Expanded Storehouse"
+      material: OAK_LOG
+      target: 4096
+    expedition_dock:
+      name: "Expedition Dock"
+      material: WOOL
+      target: 384
+    chronicle_hall:
+      name: "Chronicle Hall"
+      material: STONE
+      target: 8192
   server:
     material: cobblestone
-    target: 100000
-    daily-cap: 1024
+    # Community-scale commons sink: scaled with the bulk lane so one player's
+    # far larger output cannot trivially cap the daily contribution.
+    target: 800000
+    daily-cap: 8192
 
 # Schematic capture: air blocks farther than this many blocks (chebyshev)
 # from any solid block are NOT captured, so pasting a building never

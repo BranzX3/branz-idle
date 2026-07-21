@@ -62,4 +62,30 @@ class WarehouseServiceTest {
                 () -> warehouse.getContents(owner).put("DIAMOND", 999));
         assertEquals(Map.of("STONE", 1), warehouse.getContents(owner));
     }
+
+    @Test
+    void collectNodeDrainsDiscoveryBeforeBulkWhenSpaceIsTight() {
+        IdleFarmPlugin plugin = mock(IdleFarmPlugin.class);
+        FileConfiguration config = mock(FileConfiguration.class);
+        when(plugin.getConfig()).thenReturn(config);
+        when(config.getInt("warehouse.base-capacity", 2000)).thenReturn(10);
+        WarehouseService warehouse = new WarehouseService(plugin, mock(Database.class));
+
+        dev.branzx.idlefarm.node.NodeRecord node = new dev.branzx.idlefarm.node.NodeRecord(
+                7, UUID.randomUUID(),
+                new dev.branzx.idlefarm.node.ChunkKey("world", 0, 0),
+                dev.branzx.idlefarm.node.NodeType.MINING, 1, "STORAGE_FULL", 64,
+                System.currentTimeMillis(), null);
+        node.getStorage().put("DIAMOND", 2);
+        node.getBulkStorage().put("COBBLESTONE", 50);
+
+        assertEquals(10, warehouse.collectNode(node));
+
+        // Rare discovery finds land first; bulk commons fill the remainder.
+        assertEquals(Map.of("DIAMOND", 2, "COBBLESTONE", 8),
+                warehouse.getContents(node.getOwnerUuid()));
+        assertTrue(node.getStorage().isEmpty());
+        assertEquals(42, node.getBulkStorage().get("COBBLESTONE"));
+        assertEquals("ACTIVE", node.getState());
+    }
 }

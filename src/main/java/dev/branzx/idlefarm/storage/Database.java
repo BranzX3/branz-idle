@@ -175,6 +175,8 @@ public final class Database {
                 exploration_exp BIGINT NOT NULL DEFAULT 0,
                 last_tick_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 storage_json MEDIUMTEXT,
+                bulk_storage_json MEDIUMTEXT,
+                bulk_last_tick_at BIGINT NOT NULL DEFAULT 0,
                 UNIQUE KEY uk_chunk (world, chunk_x, chunk_z),
                 KEY idx_owner (owner_uuid)
             )
@@ -440,6 +442,8 @@ public final class Database {
                 exploration_exp INTEGER NOT NULL DEFAULT 0,
                 last_tick_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 storage_json TEXT,
+                bulk_storage_json TEXT,
+                bulk_last_tick_at INTEGER NOT NULL DEFAULT 0,
                 UNIQUE (world, chunk_x, chunk_z)
             )
             """,
@@ -690,6 +694,30 @@ public final class Database {
             }
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to initialize database schema: " + e.getMessage());
+        }
+        migrateSchema();
+    }
+
+    /**
+     * Additive column migrations for databases created before the column
+     * existed. ALTER fails harmlessly when the column is already present
+     * (neither engine supports IF NOT EXISTS on ADD COLUMN portably).
+     */
+    private void migrateSchema() {
+        addColumnIfMissing("idlefarm_nodes", "bulk_storage_json",
+                sqlite ? "TEXT" : "MEDIUMTEXT");
+        addColumnIfMissing("idlefarm_nodes", "bulk_last_tick_at",
+                sqlite ? "INTEGER NOT NULL DEFAULT 0" : "BIGINT NOT NULL DEFAULT 0");
+    }
+
+    private void addColumnIfMissing(String table, String column, String definition) {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.executeUpdate(
+                    "ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
+        } catch (SQLException e) {
+            // Duplicate-column: the migration already ran. Any other failure
+            // surfaces immediately on the first SELECT of the column.
         }
     }
 

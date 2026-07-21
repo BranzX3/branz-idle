@@ -43,7 +43,8 @@ public final class NodeStore {
         try (Connection connection = database.getConnection()) {
             try (PreparedStatement select = connection.prepareStatement(
                     "SELECT id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state, origin_y, "
-                            + "last_tick_at, storage_json, exploration_level, exploration_exp, "
+                            + "last_tick_at, storage_json, bulk_storage_json, bulk_last_tick_at, "
+                            + "exploration_level, exploration_exp, "
                             + "upgrade_ends_at FROM idlefarm_nodes");
                  ResultSet rs = select.executeQuery()) {
                 while (rs.next()) {
@@ -62,6 +63,11 @@ public final class NodeStore {
                     record.setExplorationLevel(Math.max(1, rs.getInt("exploration_level")));
                     record.setExplorationExp(rs.getLong("exploration_exp"));
                     record.setUpgradeEndsAt(rs.getLong("upgrade_ends_at"));
+                    record.loadBulkStorage(rs.getString("bulk_storage_json"));
+                    long bulkAnchor = rs.getLong("bulk_last_tick_at");
+                    // 0 = row predates the bulk lane; start from the discovery
+                    // anchor so migration never backfills a production windfall.
+                    record.setBulkLastTickAt(bulkAnchor > 0 ? bulkAnchor : record.getLastTickAt());
                     index(record);
                     nextNodeId.accumulateAndGet(record.getId() + 1, Math::max);
                 }
@@ -131,8 +137,10 @@ public final class NodeStore {
     /** Persist production-mutable fields (state, buffer, tick anchor, tier, type). */
     public void updateProduction(NodeRecord record) {
         String storageJson = record.serializeStorage();
+        String bulkStorageJson = record.serializeBulkStorage();
         String state = record.getState();
         long lastTick = record.getLastTickAt();
+        long bulkLastTick = record.getBulkLastTickAt();
         int tier = record.getTier();
         int explorationLevel = record.getExplorationLevel();
         long explorationExp = record.getExplorationExp();
@@ -143,7 +151,8 @@ public final class NodeStore {
                  PreparedStatement update = connection.prepareStatement(
                          "UPDATE idlefarm_nodes SET state = ?, storage_json = ?, last_tick_at = ?, tier = ?, "
                                  + "exploration_level = ?, exploration_exp = ?, node_type = ?, "
-                                 + "upgrade_ends_at = ? WHERE id = ?")) {
+                                 + "upgrade_ends_at = ?, bulk_storage_json = ?, bulk_last_tick_at = ? "
+                                 + "WHERE id = ?")) {
                 update.setString(1, state);
                 update.setString(2, storageJson);
                 update.setTimestamp(3, new java.sql.Timestamp(lastTick));
@@ -152,7 +161,9 @@ public final class NodeStore {
                 update.setLong(6, explorationExp);
                 update.setString(7, nodeType);
                 update.setLong(8, upgradeEndsAt);
-                update.setLong(9, record.getId());
+                update.setString(9, bulkStorageJson);
+                update.setLong(10, bulkLastTick);
+                update.setLong(11, record.getId());
                 update.executeUpdate();
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to update node " + record.getId() + ": " + e.getMessage());
@@ -163,8 +174,10 @@ public final class NodeStore {
     /** Commits a production-state mutation and its Coin cost together. */
     public boolean updateProductionWithCost(NodeRecord record, PlayerData player, double cost) {
         String storageJson = record.serializeStorage();
+        String bulkStorageJson = record.serializeBulkStorage();
         String state = record.getState();
         long lastTick = record.getLastTickAt();
+        long bulkLastTick = record.getBulkLastTickAt();
         int tier = record.getTier();
         int explorationLevel = record.getExplorationLevel();
         long explorationExp = record.getExplorationExp();
@@ -176,7 +189,8 @@ public final class NodeStore {
             try (PreparedStatement update = connection.prepareStatement(
                     "UPDATE idlefarm_nodes SET state = ?, storage_json = ?, last_tick_at = ?, "
                             + "tier = ?, exploration_level = ?, exploration_exp = ?, node_type = ?, "
-                            + "upgrade_ends_at = ? WHERE id = ?")) {
+                            + "upgrade_ends_at = ?, bulk_storage_json = ?, bulk_last_tick_at = ? "
+                            + "WHERE id = ?")) {
                 update.setString(1, state);
                 update.setString(2, storageJson);
                 update.setTimestamp(3, new java.sql.Timestamp(lastTick));
@@ -185,7 +199,9 @@ public final class NodeStore {
                 update.setLong(6, explorationExp);
                 update.setString(7, nodeType);
                 update.setLong(8, upgradeEndsAt);
-                update.setLong(9, record.getId());
+                update.setString(9, bulkStorageJson);
+                update.setLong(10, bulkLastTick);
+                update.setLong(11, record.getId());
                 if (update.executeUpdate() != 1) throw new SQLException("Node row is missing");
             }
             try (PreparedStatement update = connection.prepareStatement(
