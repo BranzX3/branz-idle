@@ -1,8 +1,8 @@
-# IdleFarm Player and Admin UX Flows
+# Idle Player and Admin UX Flows
 
 ## 0. Cross-platform delivery
 
-- Slot 9 is reserved for the permanent `IdleFarm Menu` compass. It cannot be
+- Slot 9 is reserved for the permanent `Idle Menu` compass. It cannot be
   moved, dropped, stored, traded, crafted, or lost on death. `/idle` remains
   the fallback.
 - Java players receive the inventory renderer.

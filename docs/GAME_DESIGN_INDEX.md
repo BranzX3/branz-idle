@@ -1,6 +1,6 @@
-# IdleFarm Game Design Package
+# Idle Game Design Package
 
-This directory is the design authority for the IdleFarm player experience.
+This directory is the design authority for the Idle player experience.
 When implementation and an older product spec disagree with these documents,
 the discrepancy must be resolved explicitly before coding.
 
@@ -29,7 +29,7 @@ the discrepancy must be resolved explicitly before coding.
 | `UI_FLOW_AND_CHAT_ACTIONS.md` | Surface routing and clickable chat action spec |
 | `LIVE_OPS_AND_SEASONS.md` | Rotations, post-100 releases, telemetry |
 | `IMPLEMENTATION_ROADMAP.md` | Delivery phases and acceptance criteria |
-| `IdleFarm_Balance_Bible.xlsx` | Tunable source numbers and simulations |
+| `Idle_Balance_Bible.xlsx` | Tunable source numbers and simulations |
 
 ## Locked baseline assumptions
 

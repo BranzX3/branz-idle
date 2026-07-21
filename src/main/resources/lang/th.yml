@@ -1,4 +1,4 @@
-# IdleFarm ภาษาไทย
+# Idle ภาษาไทย
 #
 # เปิดใช้งานด้วยการตั้ง `language: th` ใน config.yml
 # คีย์ไหนที่ไม่ได้ใส่ในไฟล์นี้ จะย้อนไปใช้ค่าภาษาอังกฤษจาก lang/en.yml อัตโนมัติ
@@ -9,7 +9,7 @@ ui:
 
 menu:
   home:
-    title: "IdleFarm | หน้าหลัก"
+    title: "Idle | หน้าหลัก"
 
     profile:
       balance: "{balance} {currency}"
@@ -99,7 +99,7 @@ menu:
       hint: "เปิดเครื่องมือจัดการเซิร์ฟเวอร์"
 
   nodes:
-    title: "IdleFarm | โหนด"
+    title: "Idle | โหนด"
     summary: "โหนดผลิต {count} แห่ง"
     attention: "{count} แห่งต้องจัดการ"
     all-normal: "ทุกโหนดทำงานปกติ"
@@ -133,7 +133,7 @@ menu:
       active: "ทำงานอยู่"
 
   node:
-    title: "IdleFarm | ศูนย์ควบคุมโหนด"
+    title: "Idle | ศูนย์ควบคุมโหนด"
     all-nodes: "รายการโหนด"
     map:
       name: "แผนที่ดินแดน"
@@ -163,7 +163,7 @@ menu:
       click: "ยกเลิกการจับจองโหนดนี้"
 
   territory:
-    title: "IdleFarm | ดินแดน"
+    title: "Idle | ดินแดน"
     nodes:
       name: "รายการโหนด"
       hint: "เปิดรายการโหนดเรียงตามสถานะ"
@@ -186,7 +186,7 @@ menu:
       taken-hint: "เป็นของผู้เล่นคนอื่น"
 
   warehouse:
-    title: "IdleFarm | โกดัง"
+    title: "Idle | โกดัง"
     bar-vault: "ห้องนิรภัย"
     bar-silo: "ไซโล"
     vault-holds: "ของหายากจากการสำรวจและรางวัลอีเวนต์"
@@ -268,7 +268,7 @@ menu:
       done: "ส่งทีมออกสำรวจแล้ว"
 
   progress:
-    title: "IdleFarm | ความคืบหน้า"
+    title: "Idle | ความคืบหน้า"
     tab:
       overview: "ภาพรวม"
       chronicle: "บันทึกความสำเร็จ"
@@ -327,7 +327,7 @@ menu:
       reroll: "สุ่มใหม่ด้วยสิทธิ์ฟรีของวันนี้"
 
   commissions:
-    title: "IdleFarm | ภารกิจรายวัน"
+    title: "Idle | ภารกิจรายวัน"
     summary: "ภารกิจรายวัน {count} รายการ"
     what: "รีเซ็ตทุกวัน อันที่ทำครบแล้วกดรับรางวัลได้"
     ready: "รอรับ {count} รายการ"
@@ -338,7 +338,7 @@ menu:
       reroll: "คลิกเพื่อสุ่มใหม่ - ความคืบหน้านี้จะหาย"
 
   projects:
-    title: "IdleFarm | โครงการก่อสร้าง"
+    title: "Idle | โครงการก่อสร้าง"
     summary: "โครงการก่อสร้าง"
     what: "สมทบของเพื่อสร้างอาคารขึ้นจริงในโลก"
     source: "ของถูกหักจากโกดังของคุณ"
@@ -357,7 +357,7 @@ menu:
       click: "สมทบสูงสุด 64 ชิ้น"
 
   journal:
-    title: "IdleFarm | สมุดบันทึก"
+    title: "Idle | สมุดบันทึก"
     summary: "ค้นพบแล้ว {count} ชนิด"
     what: "ทุกอย่างที่โหนดของคุณค้นพบมาจนถึงตอนนี้"
     hidden: "สิ่งที่ยังไม่พบจะถูกซ่อนไว้"
@@ -378,7 +378,7 @@ menu:
     total: "ความสำเร็จทั้งหมด {count} รายการ"
 
   expedition:
-    title: "IdleFarm | ภารกิจประจำสัปดาห์"
+    title: "Idle | ภารกิจประจำสัปดาห์"
     summary: "ภารกิจรวมเซิร์ฟ | สัปดาห์ที่ {week}"
     yours: "คุณสมทบไปแล้ว: {amount}"
     rank: "#{rank} {player}"
@@ -398,7 +398,7 @@ menu:
     rank: "#{rank} {player}"
 
   workers:
-    title: "IdleFarm | ทีมงาน"
+    title: "Idle | ทีมงาน"
     back: "ทีมงาน"
     summary: "คนงาน {count} คน"
     hint: "คนที่ประจำโหนดขึ้นก่อน ตามด้วยในกระเป๋า"
@@ -480,7 +480,7 @@ menu:
     max-rarity: "คนงานระดับตำนานหลอมรวมต่อไม่ได้"
 
   worker:
-    title: "IdleFarm | คนงาน"
+    title: "Idle | คนงาน"
     rename:
       name: "เปลี่ยนชื่อ"
       hint: "ฟรี - พิมพ์ชื่อใหม่ในแชท"
@@ -493,7 +493,7 @@ menu:
       hint: "เรียกคนงานกลับจากโหนด"
 
   shop:
-    title: "IdleFarm | อัปเกรด"
+    title: "Idle | อัปเกรด"
     summary: "บูสเตอร์และสิทธิพิเศษ"
     hint: "ทุกการซื้อต้องกดยืนยันอีกครั้ง"
     cost: "ราคา: {cost}"
@@ -519,7 +519,7 @@ menu:
         effect: "เพิ่มปุ่มเก็บทั้งหมดที่หน้าหลัก"
 
   social:
-    title: "IdleFarm | สังคม"
+    title: "Idle | สังคม"
     summary: "สังคมและสิทธิ์เข้าดินแดน"
     trusted-count: "ผู้เล่นที่ไว้ใจ {count} คน"
     no-build: "การเยี่ยมชมไม่ให้สิทธิ์ก่อสร้าง"
@@ -559,7 +559,7 @@ menu:
       click: "ถอนสิทธิ์ผู้เล่นคนนี้"
 
   trade:
-    title: "IdleFarm | การเทรด"
+    title: "Idle | การเทรด"
     partner: "คู่ค้า"
     none:
       name: "ไม่มีการเทรดที่ทำอยู่"
@@ -581,19 +581,19 @@ menu:
       hint: "ของทุกชิ้นจะกลับไปหาเจ้าของ"
 
   profile:
-    title: "IdleFarm | โปรไฟล์"
+    title: "Idle | โปรไฟล์"
 
   claim:
-    title: "IdleFarm | จับจองที่ดิน"
+    title: "Idle | จับจองที่ดิน"
 
   convert:
-    title: "IdleFarm | เปลี่ยนชนิดโหนด"
+    title: "Idle | เปลี่ยนชนิดโหนด"
 
   nodebuild:
-    title: "IdleFarm | สายพัฒนาโหนด"
+    title: "Idle | สายพัฒนาโหนด"
 
   residential:
-    title: "IdleFarm | ที่ดินบ้าน"
+    title: "Idle | ที่ดินบ้าน"
 
   common:
     close:
@@ -601,7 +601,7 @@ menu:
       hint: "กลับเข้าเกม"
     back-hub:
       name: "กลับหน้าหลัก"
-      hint: "กลับไปหน้าภาพรวม IdleFarm"
+      hint: "กลับไปหน้าภาพรวม Idle"
     back:
       name: "กลับไป{destination}"
       hint: "กลับโดยไม่เสียตำแหน่งเดิม"

@@ -1,4 +1,4 @@
-# IdleFarm Comprehensive UI Flow and Chat Click Actions
+# Idle Comprehensive UI Flow and Chat Click Actions
 
 Companion to `UX_FLOWS.md` (screen contents) and `GUI_COMMAND_REFACTOR.md`
 (information architecture). This document is the master map of *how players
@@ -67,7 +67,7 @@ actions exist to make it a **one-click** rule for event-driven moments.
 ### 3.1 Message anatomy
 
 ```
-[IdleFarm] <what happened + consequence> [Primary] [Secondary]
+[Idle] <what happened + consequence> [Primary] [Secondary]
 ```
 
 - Copy is Thai-first (`UX_FLOWS.md` §17), one line, no lore prose.
@@ -159,7 +159,7 @@ headers. This is the reference implementation of the pattern.
 On login, after `StreakService.handleLogin`, send one block:
 
 ```
-[IdleFarm] กลับมาแล้ว! ระหว่างออฟไลน์:
+[Idle] กลับมาแล้ว! ระหว่างออฟไลน์:
   ผลผลิต 3 Node เต็ม buffer          [เก็บทั้งหมด] [ดู Node]
   Exploration สำเร็จ 1 รายการ          [รับรางวัล]
   Commission ใกล้ครบ 1 งาน            [เปิด Progress]
@@ -277,7 +277,7 @@ tab completion and help inherit them automatically.
    every `explore` action and `collect`; exploration chat links embed the
    node id.
 2. **P0 — plumbing**: small `ChatActions` helper (wraps `CommandLinks`,
-   adds the `[IdleFarm]` prefix, two-action limit, per-category cooldown
+   adds the `[Idle]` prefix, two-action limit, per-category cooldown
    registry persisted per player session).
 3. **P1 — join summary** (§4.2) ✅, buffer-full transition line (§4.3) ✅.
 4. **P1 — trade session actions** (§4.6) ✅: decline + view links.

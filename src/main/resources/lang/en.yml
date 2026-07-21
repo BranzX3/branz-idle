@@ -1,4 +1,4 @@
-# IdleFarm language file (English).
+# Idle language file (English).
 #
 # Select the active language with `language:` in config.yml. This file is the
 # fallback layer: any key missing from another language falls back to the value
@@ -13,7 +13,7 @@ ui:
 
 menu:
   home:
-    title: "IdleFarm | Home"
+    title: "Idle | Home"
 
     profile:
       # {balance} is pre-formatted (1.2k / 3.4M), {currency} comes from config.yml.
@@ -108,7 +108,7 @@ menu:
 
   # Paged list of production Nodes, sorted so anything needing action is first.
   nodes:
-    title: "IdleFarm | Nodes"
+    title: "Idle | Nodes"
     summary: "{count} Production Nodes"
     attention: "{count} need attention"
     all-normal: "All Nodes are running normally"
@@ -145,7 +145,7 @@ menu:
 
   # Single-Node workbench, opened from a Node card.
   node:
-    title: "IdleFarm | Node Control"
+    title: "Idle | Node Control"
     all-nodes: "Nodes"
     map:
       name: "Territory Map"
@@ -177,7 +177,7 @@ menu:
   # 9x5 chunk map centred on the player. Tiles are dye, not glass: they are the
   # content of the screen, not decoration.
   territory:
-    title: "IdleFarm | Territory"
+    title: "Idle | Territory"
     nodes:
       name: "All Nodes"
       hint: "Open the status-first Node list"
@@ -203,7 +203,7 @@ menu:
   # The only screen without a slot-4 summary card: the item grid uses all 45
   # slots, so capacity lives in the title and the Storage icon instead.
   warehouse:
-    title: "IdleFarm | Warehouse"
+    title: "Idle | Warehouse"
     bar-vault: "Vault"
     bar-silo: "Silo"
     vault-holds: "Discovery finds and event loot"
@@ -290,7 +290,7 @@ menu:
   # Index of the progression systems. Each card names one system, says how much
   # is in it, and what a click will do.
   progress:
-    title: "IdleFarm | Progress"
+    title: "Idle | Progress"
     tab:
       overview: "Overview"
       chronicle: "Chronicle"
@@ -349,7 +349,7 @@ menu:
       reroll: "Reroll with today's free reroll"
 
   commissions:
-    title: "IdleFarm | Daily Commissions"
+    title: "Idle | Daily Commissions"
     summary: "{count} Daily Commissions"
     what: "They reset each day; finished ones pay out"
     ready: "{count} ready to claim"
@@ -360,7 +360,7 @@ menu:
       reroll: "Click to reroll - loses this progress"
 
   projects:
-    title: "IdleFarm | Projects"
+    title: "Idle | Projects"
     summary: "Construction Projects"
     what: "Contribute items to raise buildings in the world"
     source: "Items come out of your Warehouse"
@@ -379,7 +379,7 @@ menu:
       click: "contribute up to 64"
 
   journal:
-    title: "IdleFarm | Journal"
+    title: "Idle | Journal"
     summary: "{count} resources discovered"
     what: "Everything your Nodes have found so far"
     hidden: "Undiscovered entries stay hidden"
@@ -400,7 +400,7 @@ menu:
     total: "{count} achievements across all tracks"
 
   expedition:
-    title: "IdleFarm | Weekly Expedition"
+    title: "Idle | Weekly Expedition"
     summary: "Global Expedition | Week {week}"
     yours: "Your contribution: {amount}"
     rank: "#{rank} {player}"
@@ -421,7 +421,7 @@ menu:
 
   # The crew roster and everything reached from it.
   workers:
-    title: "IdleFarm | Crew"
+    title: "Idle | Crew"
     back: "Crew"
     summary: "{count} Workers"
     hint: "Assigned Workers first, then your bag"
@@ -505,7 +505,7 @@ menu:
     max-rarity: "Legendary Workers cannot be fused."
 
   worker:
-    title: "IdleFarm | Worker"
+    title: "Idle | Worker"
     rename:
       name: "Rename"
       hint: "Free - type a new name in chat"
@@ -518,7 +518,7 @@ menu:
       hint: "Return this Worker from its Node"
 
   shop:
-    title: "IdleFarm | Upgrades"
+    title: "Idle | Upgrades"
     summary: "Boosters & Convenience"
     hint: "Every purchase asks for a second click"
     cost: "Cost: {cost}"
@@ -545,7 +545,7 @@ menu:
 
   # Trust roster lives here now; Trade and Leaderboard sit on the bottom bar.
   social:
-    title: "IdleFarm | Social"
+    title: "Idle | Social"
     summary: "Social & Territory Access"
     trusted-count: "{count} trusted player(s)"
     no-build: "Visits never grant build access"
@@ -585,7 +585,7 @@ menu:
       click: "remove this player"
 
   trade:
-    title: "IdleFarm | Trade"
+    title: "Idle | Trade"
     partner: "Partner"
     none:
       name: "No active trade"
@@ -608,19 +608,19 @@ menu:
       hint: "Everything goes back to its owner"
 
   profile:
-    title: "IdleFarm | Profile"
+    title: "Idle | Profile"
 
   claim:
-    title: "IdleFarm | Claim Land"
+    title: "Idle | Claim Land"
 
   convert:
-    title: "IdleFarm | Convert Node"
+    title: "Idle | Convert Node"
 
   nodebuild:
-    title: "IdleFarm | Node Build"
+    title: "Idle | Node Build"
 
   residential:
-    title: "IdleFarm | Home Plot"
+    title: "Idle | Home Plot"
 
   common:
     close:
@@ -628,7 +628,7 @@ menu:
       hint: "Return to the game"
     back-hub:
       name: "Back to Hub"
-      hint: "Return to the IdleFarm overview"
+      hint: "Return to the Idle overview"
     # {destination} is the screen being returned to.
     back:
       name: "Back to {destination}"

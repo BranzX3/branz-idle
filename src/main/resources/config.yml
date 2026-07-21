@@ -1,11 +1,11 @@
-# IdleFarm configuration
+# Idle configuration
 
 # Player-facing text is loaded from lang/<language>.yml in the plugin folder.
 # "en" ships with the plugin; add your own file to translate. Any key missing
 # from your file falls back to the bundled English value.
 language: en
 
-# Permanent hotbar access to the platform-appropriate IdleFarm UI.
+# Permanent hotbar access to the platform-appropriate Idle UI.
 menu-item:
   enabled: true
   # Bukkit hotbar index, 0-8. The default is the right-most slot.
@@ -21,7 +21,7 @@ storage:
 mysql:
   host: localhost
   port: 3306
-  database: idlefarm
+  database: idle
   username: root
   password: "password"
   useSSL: false

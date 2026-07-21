@@ -1,4 +1,4 @@
-# IdleFarm — Product Spec (v1.0 target / final product)
+# Idle — Product Spec (v1.0 target / final product)
 
 ## 1. Vision
 
@@ -20,7 +20,7 @@ updates on top.
 |---|---|---|
 | Earned from | Playtime (online, AFK included) | Production Nodes, ticking 24/7 incl. offline |
 | Spent on | Claiming nodes, tier upgrades, cap expansion, Residential plots | Building, crafting, trading — real items |
-| Stored as | Number per player (`idlefarm_players.balance`) | Per-node storage buffer → collected via GUI |
+| Stored as | Number per player (`idle_players.balance`) | Per-node storage buffer → collected via GUI |
 
 No conversion between the two.
 
@@ -153,7 +153,7 @@ that building type/tier — set once, applies everywhere.
 - `/idle admin schem setanim <state> <profile>` — bind animation profile
 - `/idle admin schem save` — persist definition; nodes pick it up on
   next NPC refresh/chunk load
-- Definitions persist as YAML files under `plugins/IdleFarm/schematics/`
+- Definitions persist as YAML files under `plugins/Idle/schematics/`
   (block data + anchors + profiles) — season content is a file drop.
 
 ### 4.5 Player-placed worker positioning (Stage B)
@@ -485,7 +485,7 @@ Unclaim is allowed but designed so territory churn has real cost:
   timestamp, and outcome — for dupe/complaint investigation.
 
 ```
-idlefarm_audit_log
+idle_audit_log
   id                BIGINT AUTO_INCREMENT PK
   actor_uuid        VARCHAR(36) NOT NULL
   action            VARCHAR(32) NOT NULL   -- CLAIM | UNCLAIM | HIRE | FUSE | EXPLORE_CLAIM | ADMIN_GIVE | ...
@@ -505,9 +505,9 @@ idlefarm_audit_log
 ## 10. Data model (MySQL)
 
 ```
-idlefarm_players          (existing) uuid PK, name, balance, total_online_minutes
+idle_players          (existing) uuid PK, name, balance, total_online_minutes
 
-idlefarm_nodes
+idle_nodes
   id                BIGINT AUTO_INCREMENT PK
   owner_uuid        VARCHAR(36) NOT NULL
   world             VARCHAR(64) NOT NULL
@@ -520,18 +520,18 @@ idlefarm_nodes
   UNIQUE (world, chunk_x, chunk_z)
   INDEX (owner_uuid)
 
-idlefarm_node_cap
+idle_node_cap
   owner_uuid        VARCHAR(36) PK
   base_cap          INT NOT NULL
   bonus_cap         INT NOT NULL DEFAULT 0 -- purchases / rank / season pass
 
-idlefarm_trust
+idle_trust
   owner_uuid        VARCHAR(36)
   trusted_uuid      VARCHAR(36)
   level             VARCHAR(16) NOT NULL   -- VISITOR | HELPER | MANAGER
   PRIMARY KEY (owner_uuid, trusted_uuid)
 
-idlefarm_workers
+idle_workers
   -- Row exists for every worker ever minted; identity uuid also lives in
   -- the worker item's PDC. Unassigned workers exist as items in the world
   -- (inventories/chests); assigned workers are consumed items bound here.
@@ -542,19 +542,19 @@ idlefarm_workers
   skin              VARCHAR(64)            -- cosmetic skin id (rolled at mint)
   level             INT NOT NULL DEFAULT 1
   exp               BIGINT NOT NULL DEFAULT 0
-  assigned_node_id  BIGINT NULL            -- FK idlefarm_nodes, NULL = item-form
+  assigned_node_id  BIGINT NULL            -- FK idle_nodes, NULL = item-form
   state             VARCHAR(16) NOT NULL   -- ITEM | WORKING | IDLE | STOP | EXPLORING
   name              VARCHAR(32)            -- generated/cosmetic
   INDEX (assigned_node_id)
 
-idlefarm_warehouse
+idle_warehouse
   owner_uuid        VARCHAR(36) PK
   capacity          INT NOT NULL           -- expandable with Money
   content_json      LONGTEXT               -- paged item store
 
-idlefarm_exploration_events
+idle_exploration_events
   id                BIGINT AUTO_INCREMENT PK
-  node_id           BIGINT NOT NULL        -- FK idlefarm_nodes
+  node_id           BIGINT NOT NULL        -- FK idle_nodes
   event_type        VARCHAR(32) NOT NULL   -- from bracket pool (YAML catalog)
   state             VARCHAR(16) NOT NULL   -- AVAILABLE | RUNNING | COMPLETED | EXPIRED | CLAIMED
   spawned_at        TIMESTAMP NOT NULL
@@ -565,7 +565,7 @@ idlefarm_exploration_events
   outcome_grade     VARCHAR(16) NULL       -- NORMAL | GREAT | JACKPOT (Luck-shifted)
   loot_json         TEXT                   -- rolled at completion, claimed to warehouse
 
--- idlefarm_nodes also gains:
+-- idle_nodes also gains:
 --   exploration_level INT NOT NULL DEFAULT 0
 --   exploration_exp   BIGINT NOT NULL DEFAULT 0
 ```

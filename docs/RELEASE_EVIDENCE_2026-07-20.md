@@ -11,7 +11,7 @@
   back the Warehouse withdrawal and leaves project progress unchanged after
   restart.
 - MySQL integration coverage is opt-in through
-  `IDLEFARM_TEST_MYSQL=true`. The suite verifies schema creation, restart
+  `IDLE_TEST_MYSQL=true`. The suite verifies schema creation, restart
   persistence, and rollback across Warehouse/game-state rows. It still needs
   to be executed against the release MySQL instance.
 

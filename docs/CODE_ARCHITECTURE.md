@@ -1,4 +1,4 @@
-# IdleFarm Code Architecture
+# Idle Code Architecture
 
 This document defines the intended runtime boundaries and invariants. The game
 design documents remain the authority for player-facing behavior.
@@ -30,7 +30,7 @@ facade.
 
 ## Composition root
 
-`IdleFarmPlugin.onEnable` is the composition root: services are constructed
+`IdlePlugin.onEnable` is the composition root: services are constructed
 in dependency order and receive collaborators through constructors. Exactly
 two late binds are allowed, both cycles by design:
 
@@ -75,7 +75,7 @@ Cross-row gameplay invariants:
 - Node convert commits its Coin cost with the type change; unclaim commits
   the node delete with its refund.
 - A fuse consumes both materials and mints the result in one transaction.
-- Each offered trade stack is journaled in `idlefarm_trade_escrow` before it
+- Each offered trade stack is journaled in `idle_trade_escrow` before it
   leaves the player's inventory. Settlement commits the receipt and changes
   every escrow recipient in one transaction. Unfinished `OPEN` rows become
   owner refunds on startup; `PENDING_DELIVERY` rows replay on login.

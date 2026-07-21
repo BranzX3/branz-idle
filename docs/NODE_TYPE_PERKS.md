@@ -289,7 +289,7 @@ exclusive perk.
 
 Suggested definitions:
 
-`plugins/IdleFarm/node-perks.yml`
+`plugins/Idle/node-perks.yml`
 
 ```yaml
 mining_ore_sense:
@@ -306,7 +306,7 @@ mining_ore_sense:
 Suggested persistence:
 
 ```text
-idlefarm_node_perks
+idle_node_perks
   node_id
   perk_id
   selected_at

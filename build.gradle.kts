@@ -64,8 +64,8 @@ tasks.test {
 
 tasks.named<ShadowJar>("shadowJar") {
     archiveClassifier.set("")
-    relocate("com.zaxxer.hikari", "dev.branzx.idlefarm.libs.hikari")
-    relocate("com.mysql", "dev.branzx.idlefarm.libs.mysql")
+    relocate("com.zaxxer.hikari", "dev.branzx.idle.libs.hikari")
+    relocate("com.mysql", "dev.branzx.idle.libs.mysql")
 }
 
 tasks.build {

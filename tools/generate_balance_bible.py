@@ -7,7 +7,7 @@ from openpyxl.utils import get_column_letter
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "docs" / "IdleFarm_Balance_Bible.xlsx"
+OUTPUT = ROOT / "docs" / "Idle_Balance_Bible.xlsx"
 
 GREEN = "2E7D32"
 DARK = "17351F"
@@ -55,7 +55,7 @@ wb.remove(wb.active)
 ws = wb.create_sheet("README")
 ws.sheet_view.showGridLines = False
 rows = [
-    ("IdleFarm Balance Bible", "Design authority for tunable progression and economy."),
+    ("Idle Balance Bible", "Design authority for tunable progression and economy."),
     ("Target", "Focused free player reaches Node Exploration Lv.100 in 28–32 days."),
     ("Level model", "Each Production Node owns an independent Exploration Level."),
     ("Lv.1–100", "Vanilla pools only."),

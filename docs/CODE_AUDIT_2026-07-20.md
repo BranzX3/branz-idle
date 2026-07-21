@@ -5,7 +5,7 @@
 - `GameDesignService` was split into typed services under `service.design`
   (focus, worker metadata, commissions, Chronicle, discoveries, node builds,
   projects, seasons, telemetry) behind an unchanged facade API.
-- `IdleFarmPlugin.onEnable` became a composition root; every removable
+- `IdlePlugin.onEnable` became a composition root; every removable
   `set*` late-injection method was replaced with constructor dependencies.
   The two remaining late binds are documented cycles.
 - Warehouse-consuming settlements (supply commission, project and Server

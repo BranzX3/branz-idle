@@ -1,4 +1,4 @@
-# IdleFarm Content Matrix
+# Idle Content Matrix
 
 ## 1. Content rhythm
 

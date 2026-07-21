@@ -53,12 +53,12 @@ Admin Hub groups work by intent:
 
 Scoped permissions:
 
-- `idlefarm.admin.operations`
-- `idlefarm.admin.content`
-- `idlefarm.admin.economy`
-- `idlefarm.admin.audit`
+- `idle.admin.operations`
+- `idle.admin.content`
+- `idle.admin.economy`
+- `idle.admin.audit`
 
-`idlefarm.admin` remains the compatibility parent and grants every scope.
+`idle.admin` remains the compatibility parent and grants every scope.
 
 ### Full-control Admin UI
 

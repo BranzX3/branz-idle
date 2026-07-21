@@ -1,6 +1,6 @@
-name: IdleFarm
+name: Idle
 version: '${version}'
-main: dev.branzx.idlefarm.IdleFarmPlugin
+main: dev.branzx.idle.IdlePlugin
 api-version: '26.2'
 depend: [Citizens]
 softdepend: [floodgate]
@@ -9,31 +9,31 @@ description: Idle/AFK currency & EXP farming plugin
 
 commands:
   idle:
-    description: IdleFarm main command
+    description: Idle main command
     usage: /idle [help|command]
-    aliases: [afk, idlefarm]
+    aliases: [afk, idle]
 
 permissions:
-  idlefarm.admin:
+  idle.admin:
     description: Allows use of /idle admin subcommands
     default: op
     children:
-      idlefarm.admin.operations: true
-      idlefarm.admin.content: true
-      idlefarm.admin.economy: true
-      idlefarm.admin.audit: true
-  idlefarm.admin.operations:
+      idle.admin.operations: true
+      idle.admin.content: true
+      idle.admin.economy: true
+      idle.admin.audit: true
+  idle.admin.operations:
     description: Node, event, NPC and maintenance operations
     default: op
-  idlefarm.admin.content:
+  idle.admin.content:
     description: Content validation, pools and schematic authoring
     default: op
-  idlefarm.admin.economy:
+  idle.admin.economy:
     description: Balance, Credits and node-cap adjustments
     default: op
-  idlefarm.admin.audit:
+  idle.admin.audit:
     description: Audit logs and system metrics
     default: op
-  idlefarm.skin:
+  idle.skin:
     description: Allows changing worker skins (/idle skin) - rank perk
     default: op

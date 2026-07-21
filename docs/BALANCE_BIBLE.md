@@ -1,4 +1,4 @@
-# IdleFarm Balance Bible
+# Idle Balance Bible
 
 ## 1. Balance goals
 

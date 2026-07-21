@@ -120,7 +120,7 @@ sinks while preserving Luck’s identity.
 
 ## 8. Vanilla use
 
-The server must accept that many produced resources leave IdleFarm and enter
+The server must accept that many produced resources leave Idle and enter
 normal Minecraft building/crafting. That is a valid sink and part of the
 vision.
 

@@ -1,4 +1,4 @@
-# IdleFarm — Per-Node Exploration Level Design
+# Idle — Per-Node Exploration Level Design
 
 Status: Revised proposal  
 Core rule: Every Production Node has its own Exploration Level  
@@ -867,7 +867,7 @@ requiring new content assets every day.
 
 Definitions should be data-driven:
 
-`plugins/IdleFarm/achievements.yml`
+`plugins/Idle/achievements.yml`
 
 Suggested definition:
 
@@ -889,7 +889,7 @@ mining_bronze:
 Suggested persistence:
 
 ```text
-idlefarm_achievement_progress
+idle_achievement_progress
   owner_uuid
   achievement_id
   scope_type        ACCOUNT | NODE | WORKER | SEASON
