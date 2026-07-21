@@ -147,6 +147,15 @@ public final class WarehouseService {
      * transaction, preventing restart-time loss or duplication.
      */
     public int collectNode(NodeRecord node) {
+        return collectNode(node, null);
+    }
+
+    /**
+     * As {@link #collectNode(NodeRecord)}, but also records the per-material
+     * amounts actually moved into {@code movedOut} (keys upper-cased) when it
+     * is non-null, so callers can render a trip report without a racy diff.
+     */
+    public int collectNode(NodeRecord node, Map<String, Integer> movedOut) {
         UUID owner = node.getOwnerUuid();
         Map<String, Integer> warehouse = mutableContents(owner);
         int moved = 0;
@@ -161,6 +170,7 @@ public final class WarehouseService {
                     if (amount <= 0) continue;
                     String key = entry.getKey().toUpperCase(java.util.Locale.ROOT);
                     warehouse.merge(key, amount, Integer::sum);
+                    if (movedOut != null) movedOut.merge(key, amount, Integer::sum);
                     moved += amount;
                     space -= amount;
                     if (amount == entry.getValue()) buffer.remove(entry.getKey());

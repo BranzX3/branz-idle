@@ -4,6 +4,7 @@ import dev.branzx.idlefarm.IdleFarmPlugin;
 import dev.branzx.idlefarm.node.NodeRecord;
 import dev.branzx.idlefarm.worker.WorkerRecord;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -134,6 +135,58 @@ public final class ProgressionScale {
             case "HUNTER" -> "ROTTEN_FLESH";
             default -> "COBBLESTONE";
         };
+    }
+
+    /**
+     * Startup sanity check for the bulk lane config. Unlike the discovery
+     * drop tables (which throw), bulk output has safe runtime fallbacks, so
+     * these are warnings: a misconfigured lane still runs, but the operator is
+     * told rather than silently getting cobblestone. Returns human-readable
+     * problems; empty means clean.
+     */
+    public List<String> validateBulkConfig() {
+        List<String> problems = new ArrayList<>();
+        for (dev.branzx.idlefarm.node.NodeType type : dev.branzx.idlefarm.node.NodeType.values()) {
+            if (!type.isProduction()) {
+                continue;
+            }
+            String lower = type.name().toLowerCase(Locale.ROOT);
+            double base = plugin.getConfig().getDouble("production.bulk.base-per-hour." + lower, -1);
+            if (base < 0) {
+                problems.add(type.name() + ": no production.bulk.base-per-hour entry "
+                        + "(lane disabled for this type).");
+                continue;
+            }
+            if (base == 0) {
+                // Intentionally disabled; nothing else to check for this type.
+                continue;
+            }
+            var section = plugin.getConfig().getConfigurationSection(
+                    "production.bulk.commons." + lower);
+            if (section == null || section.getKeys(false).isEmpty()) {
+                problems.add(type.name() + ": bulk lane active (base=" + base
+                        + ") but no production.bulk.commons list; using a single default common.");
+                continue;
+            }
+            boolean anyPositive = false;
+            for (String key : section.getKeys(false)) {
+                double weight = section.getDouble(key);
+                if (weight <= 0) {
+                    problems.add(type.name() + ": common '" + key + "' has non-positive weight "
+                            + weight + " (ignored).");
+                    continue;
+                }
+                anyPositive = true;
+                if (org.bukkit.Material.matchMaterial(key.toUpperCase(Locale.ROOT)) == null) {
+                    problems.add(type.name() + ": common '" + key
+                            + "' is not a valid item material (will fall back to a default).");
+                }
+            }
+            if (!anyPositive) {
+                problems.add(type.name() + ": no bulk common has a positive weight.");
+            }
+        }
+        return problems;
     }
 
     /** Vanilla dig-speed ratios (wood/stone/iron/diamond/netherite), wood = 1. */

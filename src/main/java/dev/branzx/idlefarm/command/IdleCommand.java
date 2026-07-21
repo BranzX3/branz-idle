@@ -523,12 +523,17 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         // Collect-all routes to the owner's Warehouse, not inventory.
-        int collected = collectToWarehouse(node);
+        java.util.Map<String, Integer> movedBreakdown = new java.util.LinkedHashMap<>();
+        int collected = warehouseService.collectNode(node, movedBreakdown);
         if (guiManager.gameDesignService() != null) {
             guiManager.gameDesignService().onBufferCollected(node, collected);
         }
         int remaining = node.storageTotal() + node.bulkStorageTotal();
         refreshNodeNpc(node);
+        for (String line : dev.branzx.idlefarm.service.TripReport.lines(
+                node.getType(), movedBreakdown)) {
+            sender.sendMessage(Component.text(line, NamedTextColor.AQUA));
+        }
         if (remaining > 0) {
             sender.sendMessage(Component.text("Collected " + collected + " to Warehouse; "
                     + remaining + " left (warehouse full). ", NamedTextColor.YELLOW)
@@ -538,11 +543,6 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
                     NamedTextColor.GREEN));
         }
         return true;
-    }
-
-    /** Moves node buffer into the owner's warehouse; returns amount stored. */
-    private int collectToWarehouse(NodeRecord node) {
-        return warehouseService.collectNode(node);
     }
 
     private boolean warehouse(CommandSender sender) {

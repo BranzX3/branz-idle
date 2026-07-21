@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -65,6 +66,22 @@ class ProgressionScaleTest {
 
         when(config.getBoolean("frontier.sink-gates.project", false)).thenReturn(true);
         assertEquals(200, new ProgressionScale(plugin).levelCap());
+    }
+
+    @Test
+    void bulkConfigValidatorFlagsMissingBaseRateButAcceptsDisabledLanes() {
+        IdleFarmPlugin plugin = mock(IdleFarmPlugin.class);
+        FileConfiguration config = mock(FileConfiguration.class);
+        when(plugin.getConfig()).thenReturn(config);
+        // Unstubbed getDouble returns 0.0 => every production type reads as an
+        // intentionally disabled lane, so a fully-zero config is clean.
+        assertTrue(new ProgressionScale(plugin).validateBulkConfig().isEmpty());
+
+        // A negative sentinel means the base-per-hour key is absent entirely.
+        when(config.getDouble("production.bulk.base-per-hour.mining", -1)).thenReturn(-1.0);
+        var problems = new ProgressionScale(plugin).validateBulkConfig();
+        assertEquals(1, problems.size());
+        assertTrue(problems.get(0).startsWith("MINING"));
     }
 
     private ProgressionScale scaleWithDesignDefaults() {

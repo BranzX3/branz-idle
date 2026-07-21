@@ -19,6 +19,7 @@ import dev.branzx.idlefarm.service.TradeService;
 import dev.branzx.idlefarm.service.PerkService;
 import dev.branzx.idlefarm.service.StreakService;
 import dev.branzx.idlefarm.service.ProductionEngine;
+import dev.branzx.idlefarm.service.ProgressionScale;
 import dev.branzx.idlefarm.service.SchematicService;
 import dev.branzx.idlefarm.service.TrustService;
 import dev.branzx.idlefarm.service.WarehouseService;
@@ -86,6 +87,11 @@ public final class IdleFarmPlugin extends JavaPlugin {
         this.warehouseService.loadAllSync();
         DropTableService dropTableService = new DropTableService(this);
         dropTableService.load();
+        // Bulk lane has safe fallbacks, so misconfig is a warning, not a boot
+        // failure like the discovery drop tables.
+        for (String problem : new ProgressionScale(this).validateBulkConfig()) {
+            getLogger().warning("Bulk-lane config: " + problem);
+        }
 
         // ---- gameplay services ----
         this.explorationService = new ExplorationService(this, database, nodeStore, workerStore);

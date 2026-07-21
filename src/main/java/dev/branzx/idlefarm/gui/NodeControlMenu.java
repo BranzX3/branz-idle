@@ -166,11 +166,16 @@ public final class NodeControlMenu extends Menu {
                     NamedTextColor.YELLOW));
             return;
         }
-        int moved = gui.warehouseService().collectNode(node);
+        java.util.Map<String, Integer> movedBreakdown = new java.util.LinkedHashMap<>();
+        int moved = gui.warehouseService().collectNode(node, movedBreakdown);
         if (gui.gameDesignService() != null) {
             gui.gameDesignService().onBufferCollected(node, moved);
         }
         gui.npcManager().refreshNode(node, viewer.getWorld());
+        for (String line : dev.branzx.idlefarm.service.TripReport.lines(
+                node.getType(), movedBreakdown)) {
+            viewer.sendMessage(Component.text(line, NamedTextColor.AQUA));
+        }
         viewer.sendMessage(Component.text("Collected " + moved + " items to Warehouse.",
                 moved > 0 ? NamedTextColor.GREEN : NamedTextColor.YELLOW));
         redraw();
