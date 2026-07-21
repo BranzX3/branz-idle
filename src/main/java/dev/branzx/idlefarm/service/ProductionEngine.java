@@ -20,13 +20,19 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * The idle core. Production is pure math over timestamps: every tick each
  * production node credits {@code floor(rate × elapsed)} items into its
- * buffer, advancing {@code last_tick_at} only by the time actually consumed
+ * buffer, advancing the lane anchor only by the time actually consumed
  * (fractional progress is never lost). The first tick after a restart
  * therefore also settles all downtime — true 24/7 accrual with no per-player
  * schedulers.
  *
- * Rate per spec: base_rate(type) × Σ [ base_power(rarity, level) × (1 + diligence/100) ].
- * Buffer full ⇒ node STORAGE_FULL and workers STOP (NPC visuals follow).
+ * Two lanes per Balance Bible §3, each with its own anchor and buffer:
+ * - Bulk lane: deterministic family commons at
+ *   {@code bulk_base(type) × Σ [ rarity_mult × (1 + level×0.02) × (1 + 2×diligence/100) ]}.
+ * - Discovery lane: weighted drop-table rolls at
+ *   {@code base_rate(type) × Σ [ base_power(rarity, level) × (1 + diligence/100) ]}.
+ *
+ * A full buffer stops only its own lane. Node STORAGE_FULL and worker STOP
+ * (NPC visuals follow) only when every enabled lane is stopped.
  */
 public final class ProductionEngine extends BukkitRunnable {
 
@@ -82,7 +88,7 @@ public final class ProductionEngine extends BukkitRunnable {
                 .toList();
 
         // No workers = no production (spec: workers are the engine). The
-        // anchor still advances so hiring later doesn't backfill idle time.
+        // anchors still advance so hiring later doesn't backfill idle time.
         if (crew.isEmpty()) {
             if (explorationService != null) {
                 explorationService.advancePassiveResearch(node, crew, now,
@@ -90,6 +96,7 @@ public final class ProductionEngine extends BukkitRunnable {
             }
             node.setState(NodeRecord.STATE_IDLE);
             node.setLastTickAt(now);
+            node.setBulkLastTickAt(now);
             // Persist the idle anchor as well as the state. Otherwise a
             // restart can restore an old timestamp and backfill unstaffed
             // time after a worker is eventually assigned.
@@ -101,34 +108,37 @@ public final class ProductionEngine extends BukkitRunnable {
                 : boosterService.multiplier(node.getOwnerUuid(), BoosterService.PRODUCTION);
         double buildMultiplier = gameDesignService == null ? 1.0
                 : gameDesignService.productionMultiplier(node);
-        double ratePerHour = baseRate(node) * crewPower(crew) * boost * buildMultiplier;
-        if (ratePerHour <= 0) {
-            if (explorationService != null) {
-                explorationService.advancePassiveResearch(node, crew, now,
-                        node.storageTotal() >= bufferCapacity(node));
-            }
-            node.setLastTickAt(now);
-            return;
-        }
 
+        // Research penalty and the stop state consider every enabled lane, so
+        // capture fullness before either lane credits new items.
+        double bulkRatePerHour = scale.bulkRatePerHour(node, crew) * boost * buildMultiplier;
+        boolean bulkEnabled = bulkRatePerHour > 0;
+        int bulkCapacity = bulkEnabled ? bulkBufferCapacity(node, bulkRatePerHour) : 0;
         int capacity = bufferCapacity(node);
-        int space = capacity - node.storageTotal();
-        boolean wasFull = space <= 0;
-        double elapsedHours = (now - node.getLastTickAt()) / 3_600_000.0;
-        int produced = (int) Math.floor(ratePerHour * elapsedHours);
-        int credited = Math.min(produced, Math.max(0, space));
+        double ratePerHour = baseRate(node) * crewPower(crew) * boost * buildMultiplier;
+        boolean wasFull = node.storageTotal() >= capacity
+                && (!bulkEnabled || node.bulkStorageTotal() >= bulkCapacity);
 
-        boolean dirty = false;
-        if (credited > 0) {
-            java.util.Map<String, Integer> producedItems = rollItems(node, credited);
-            if (gameDesignService != null) {
-                gameDesignService.onItemsProduced(node, producedItems);
-                gameDesignService.consumeFrontierDurability(node, credited);
+        boolean dirty = tickBulkLane(node, now, bulkRatePerHour, bulkCapacity);
+
+        if (ratePerHour <= 0) {
+            node.setLastTickAt(now);
+        } else {
+            int space = capacity - node.storageTotal();
+            double elapsedHours = (now - node.getLastTickAt()) / 3_600_000.0;
+            int produced = (int) Math.floor(ratePerHour * elapsedHours);
+            int credited = Math.min(produced, Math.max(0, space));
+            if (credited > 0) {
+                java.util.Map<String, Integer> producedItems = rollItems(node, credited);
+                if (gameDesignService != null) {
+                    gameDesignService.onItemsProduced(node, producedItems);
+                    gameDesignService.consumeFrontierDurability(node, credited);
+                }
+                // Advance only by the time actually converted into items.
+                node.setLastTickAt(node.getLastTickAt() + (long) (credited / ratePerHour * 3_600_000.0));
+                grantCrewExp(crew, credited);
+                dirty = true;
             }
-            // Advance only by the time actually converted into items.
-            node.setLastTickAt(node.getLastTickAt() + (long) (credited / ratePerHour * 3_600_000.0));
-            grantCrewExp(crew, credited);
-            dirty = true;
         }
 
         // Research scales with staffed time, not item count. This keeps slow
@@ -138,8 +148,9 @@ public final class ProductionEngine extends BukkitRunnable {
             dirty = true;
         }
 
-        // Auto-collect perk: buffer flushes straight to the Warehouse.
-        if (perkService != null && warehouseService != null && node.storageTotal() > 0
+        // Auto-collect perk: buffers flush straight to the Warehouse.
+        if (perkService != null && warehouseService != null
+                && node.storageTotal() + node.bulkStorageTotal() > 0
                 && perkService.has(node.getOwnerUuid(), PerkService.AUTO_COLLECT)) {
             int autoCollected = warehouseService.collectNode(node);
             if (autoCollected > 0 && gameDesignService != null) {
@@ -148,10 +159,12 @@ public final class ProductionEngine extends BukkitRunnable {
             dirty = true;
         }
 
-        boolean full = node.storageTotal() >= capacity;
-        if (full) {
-            // Buffer full: production halts and the anchor rides forward so
-            // no phantom backlog accrues while stopped.
+        boolean discoveryFull = node.storageTotal() >= capacity;
+        boolean full = discoveryFull
+                && (!bulkEnabled || node.bulkStorageTotal() >= bulkCapacity);
+        if (discoveryFull) {
+            // Buffer full: the lane halts and its anchor rides forward so no
+            // phantom backlog accrues while stopped.
             node.setLastTickAt(now);
         }
         boolean stateChanged = applyStates(node, crew, full);
@@ -162,6 +175,61 @@ public final class ProductionEngine extends BukkitRunnable {
         if (dirty) {
             nodeStore.updateProduction(node);
         }
+    }
+
+    /**
+     * Deterministic commons accrual (Balance Bible §3). No rolls, no worker
+     * EXP and no frontier durability: those stay coupled to discovery items
+     * so introducing the bulk lane leaves every discovery-side budget
+     * unchanged. Returns true when the node record changed.
+     */
+    private boolean tickBulkLane(NodeRecord node, long now, double ratePerHour, int capacity) {
+        if (ratePerHour <= 0) {
+            node.setBulkLastTickAt(now);
+            return false;
+        }
+        boolean dirty = false;
+        int space = capacity - node.bulkStorageTotal();
+        double elapsedHours = (now - node.getBulkLastTickAt()) / 3_600_000.0;
+        int produced = (int) Math.floor(ratePerHour * elapsedHours);
+        int credited = Math.min(produced, Math.max(0, space));
+        if (credited > 0) {
+            distributeBulk(node, credited);
+            node.setBulkLastTickAt(node.getBulkLastTickAt()
+                    + (long) (credited / ratePerHour * 3_600_000.0));
+            dirty = true;
+        }
+        if (node.bulkStorageTotal() >= capacity) {
+            node.setBulkLastTickAt(now);
+        }
+        return dirty;
+    }
+
+    /** Splits credited bulk output across the family commons by weight. */
+    private void distributeBulk(NodeRecord node, int credited) {
+        java.util.Map<String, Double> commons = scale.bulkCommons(node);
+        double totalWeight = commons.values().stream().mapToDouble(Double::doubleValue).sum();
+        String heaviest = commons.entrySet().stream()
+                .max(java.util.Map.Entry.comparingByValue())
+                .map(java.util.Map.Entry::getKey).orElseThrow();
+        int remaining = credited;
+        for (var entry : commons.entrySet()) {
+            int amount = (int) Math.floor(credited * entry.getValue() / totalWeight);
+            if (amount > 0) {
+                node.getBulkStorage().merge(entry.getKey(), amount, Integer::sum);
+                remaining -= amount;
+            }
+        }
+        if (remaining > 0) {
+            node.getBulkStorage().merge(heaviest, remaining, Integer::sum);
+        }
+    }
+
+    /** Bulk buffer with Logistics/build multipliers applied, like {@link #bufferCapacity}. */
+    public int bulkBufferCapacity(NodeRecord node, double bulkRatePerHour) {
+        double multiplier = gameDesignService == null ? 1.0 : gameDesignService.bufferMultiplier(node);
+        return (int) Math.min(Integer.MAX_VALUE,
+                Math.round(scale.bulkBufferCapacity(node, bulkRatePerHour) * multiplier));
     }
 
     /**

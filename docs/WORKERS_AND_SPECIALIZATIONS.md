@@ -28,14 +28,14 @@ Role badge:
 
 | Stat | Passive production | Research | Regular event |
 |---|---|---|---|
-| Diligence | Direct quantity multiplier | None | Loot quantity |
-| Luck | Rare roll shift after caps | None | Great/Jackpot odds |
+| Diligence | Bulk-lane rate multiplier, up to +200% (Efficiency-like) | None | Loot quantity |
+| Luck | Rare roll shift after caps (discovery lane only) | None | Great/Jackpot odds |
 | Stamina | Worker EXP | Research power | Node/Worker EXP |
 | Speed | None | None | Duration reduction |
 
 Display marginal impact:
 
-- `+8.4 items/hour`
+- `+126 items/hour`
 - `+12 research/day`
 - `-3m 20s duration`
 - `+2.1% Great, +0.7% Jackpot`

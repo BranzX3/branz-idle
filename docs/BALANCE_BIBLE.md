@@ -68,38 +68,101 @@ Rules:
 
 ## 3. Production
 
-Keep the initial type identity:
+Production runs in two independent lanes per node.
 
-| Node | Base items/hour |
-|---|---:|
-| Mining | 40 |
-| Farming | 48 |
-| Woodcutting | 44 |
-| Livestock | 36 |
-| Hunter | 30 |
+### Bulk lane: family commons
 
-Worker power remains:
+The bulk lane models a worker gathering the family's basic resources the way
+a real player would (stone, cobblestone, logs, crops, basic drops). It is
+deterministic — no rolls — and it is the lane that makes a Lv.100 territory
+feel like "I never mine stone by hand again."
+
+Rates are anchored to active vanilla gathering with mid-tier tools:
+
+| Node | Active player anchor/hour | Bulk base/hour |
+|---|---:|---:|
+| Mining | ~1,200 | 70 |
+| Farming | ~800 | 45 |
+| Woodcutting | ~600 | 35 |
+| Livestock | ~300 | 18 |
+| Hunter | ~250 | 15 |
+
+Per worker:
+
+`bulk/hour = family_base × rarity_mult × (1 + level × 0.02) × (1 + 2 × diligence/100)`
+
+The rarity multiplier mirrors vanilla tool dig speed
+(wood/stone/iron/diamond/netherite = 2/4/6/8/9, normalized to wood = 1) so a
+worker upgrade reads like a tool upgrade:
+
+| Rarity | Tool analogy | rarity_mult |
+|---|---|---:|
+| Common | Wooden | 1.0 |
+| Uncommon | Stone | 2.0 |
+| Rare | Iron | 3.0 |
+| Epic | Diamond | 4.0 |
+| Legendary | Netherite | 4.5 |
+
+Node bulk output is the sum of assigned workers. Tier still adds worker
+slots rather than a direct production multiplier.
+
+Reference points (Mining):
+
+| Crew stage | Multiplier | Bulk/hour | Versus active player |
+|---|---:|---:|---:|
+| Day-1: Common Lv.5, Dil.10 | 1.3× | ~95 | 8% |
+| Midgame: Rare Lv.30, Dil.40 | 8.6× | ~605 | 50% |
+| Max: Legendary Lv.100, Dil.100 | 40.5× | ~2,835 | 236% |
+
+Design intent: a midgame crew replaces about half of hand-gathering per
+worker; only a fully built worker out-gathers an active player. Idle
+abundance is earned, not default.
+
+Sinks that consume commons must be authored relative to expected daily
+production (the 20% commission rule in `RESOURCE_ECONOMY.md`), never as
+fixed counts tuned to a historical rate.
+
+### Discovery lane: advanced, rare, and MMORPG
+
+Everything that is not a family common — advanced resources, capped rares,
+and post-100 MMORPG materials — stays on the roll table. Discovery
+rolls/hour are tuned independently of the bulk lane and must be set so that
+expected advanced items/day is unchanged by the bulk-lane introduction. Rare
+caps in section 4 are unchanged and remain the hard guarantee.
+
+Stat identity across lanes:
+
+- Diligence multiplies the bulk lane only (Efficiency-like, up to +200%).
+- Luck affects discovery rolls only, after caps, as already specified.
+- Stamina and Speed are unchanged.
+
+Worker discovery power remains:
 
 `rarity_power × (1 + level × 0.02) × (1 + diligence/100)`
 
-Tier adds workers rather than a direct production multiplier.
-
 ### Buffer
 
-Recommended:
+Each node has two buffers:
 
-`Buffer capacity = 256 × Tier`
+- Discovery buffer: `256 × Tier` items, unchanged.
+- Bulk buffer: `hours × current node bulk rate`, where hours is 8 at Tier 1
+  and declines by one per Tier to 4 at Tier 5. Capacity is recomputed when
+  the crew changes, so fill time stays constant as rates grow.
 
-This replaces the current `64 × Tier`, which fills too quickly for a relaxed
-idle loop.
-
-Target fill time:
+Target fill time remains the governing constant:
 
 - Early common crew: 5–8 hours.
 - Midgame optimized crew: 3–6 hours.
 - Endgame crew: 2–4 hours unless Storage specialization is selected.
 
-Research continues at 25% while full, but item production stops.
+Logistics specialization percentages apply to both buffers. A full buffer
+stops only its own lane; research drops to 25% when both lanes are stopped.
+
+### Warehouse storage of commons
+
+Bulk-lane commons are stored as counts and materialized into item stacks
+only on withdrawal. Endgame territories hold six-figure common stocks;
+physical item stacks must never be the storage representation.
 
 ## 4. Rare-resource caps
 
@@ -215,6 +278,10 @@ Month-one maximum rewards:
 Achievement EXP must not be repeatedly farmable per node.
 
 ## 8. Post-100 supply
+
+The share below applies to discovery-lane rolls only. Bulk-lane vanilla
+commons continue at the full worker rate after Lv.100; MMORPG content never
+reduces them.
 
 MMORPG roll share:
 

@@ -280,6 +280,8 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             String buffer = node.getType().isProduction()
                     ? "  buffer " + node.storageTotal() + "/" + (plugin.getConfig()
                             .getInt("production.buffer-capacity-per-tier", 64) * node.getTier())
+                            + (node.bulkStorageTotal() > 0
+                                    ? ", bulk " + node.bulkStorageTotal() : "")
                     : "";
             sender.sendMessage(Component.text(
                     node.getType() + " T" + node.getTier() + " @ " + node.getChunk().x() + "," + node.getChunk().z()
@@ -516,7 +518,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(Component.text("You are not trusted to collect here.", NamedTextColor.RED));
             return true;
         }
-        if (node.getStorage().isEmpty()) {
+        if (node.getStorage().isEmpty() && node.getBulkStorage().isEmpty()) {
             sender.sendMessage(Component.text("Nothing to collect yet.", NamedTextColor.YELLOW));
             return true;
         }
@@ -525,7 +527,7 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         if (guiManager.gameDesignService() != null) {
             guiManager.gameDesignService().onBufferCollected(node, collected);
         }
-        int remaining = node.storageTotal();
+        int remaining = node.storageTotal() + node.bulkStorageTotal();
         refreshNodeNpc(node);
         if (remaining > 0) {
             sender.sendMessage(Component.text("Collected " + collected + " to Warehouse; "
