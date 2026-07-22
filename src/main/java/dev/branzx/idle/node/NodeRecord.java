@@ -16,8 +16,15 @@ public final class NodeRecord {
     private volatile NodeType type;
     private volatile int tier;
     private volatile String state;
-    /** Building origin Y captured at claim time (stable across terrain edits). */
-    private final int originY;
+    /**
+     * Building origin Y captured at claim time and never recomputed, so later
+     * terrain edits cannot move an existing building.
+     *
+     * <p>The one legitimate change is a Residential plot joining a Complex: it
+     * adopts the anchor's level, because a Complex whose chunks each found
+     * their own ground would step up and down a slope and tear apart.</p>
+     */
+    private volatile int originY;
     /** Anchor for lazy discovery-lane accrual (epoch millis). */
     private volatile long lastTickAt;
     /** Anchor for lazy bulk-lane accrual (epoch millis). */
@@ -26,6 +33,15 @@ public final class NodeRecord {
     private volatile long explorationExp;
     /** Epoch millis a tier upgrade completes; 0 = not upgrading. */
     private volatile long upgradeEndsAt;
+    /** Selected building skin id; null = the server default for this type. */
+    private volatile String skinId;
+    /** Building orientation in clockwise quarter-turns, 0-3. */
+    private volatile int rotation;
+    /**
+     * Id of the Production node anchoring the Complex this node belongs to;
+     * 0 when it stands alone. The anchor points at itself.
+     */
+    private volatile long complexAnchor;
     /** Buffered uncollected discovery-lane output: material name -> count. */
     private final Map<String, Integer> storage = new ConcurrentHashMap<>();
     /** Buffered uncollected bulk-lane commons: material name -> count. */
@@ -58,6 +74,11 @@ public final class NodeRecord {
 
     public int getOriginY() {
         return originY;
+    }
+
+    /** Only for a Residential plot adopting its Complex anchor's level. */
+    public void setOriginY(int originY) {
+        this.originY = originY;
     }
 
     public long getLastTickAt() {
@@ -94,6 +115,41 @@ public final class NodeRecord {
 
     public boolean isUpgrading() {
         return upgradeEndsAt > 0;
+    }
+
+    public String getSkinId() {
+        return skinId;
+    }
+
+    /** Blank ids normalize to null so "default" has exactly one representation. */
+    public void setSkinId(String skinId) {
+        this.skinId = skinId == null || skinId.isBlank() ? null : skinId;
+    }
+
+    public int getRotation() {
+        return rotation;
+    }
+
+    /** Wraps into 0-3; callers may pass any accumulated quarter-turn count. */
+    public void setRotation(int rotation) {
+        this.rotation = Math.floorMod(rotation, 4);
+    }
+
+    public long getComplexAnchor() {
+        return complexAnchor;
+    }
+
+    public void setComplexAnchor(long complexAnchor) {
+        this.complexAnchor = Math.max(0, complexAnchor);
+    }
+
+    public boolean isInComplex() {
+        return complexAnchor > 0;
+    }
+
+    /** True for the Production node that anchors its own Complex. */
+    public boolean isComplexAnchor() {
+        return complexAnchor > 0 && complexAnchor == id;
     }
 
     public Map<String, Integer> getStorage() {

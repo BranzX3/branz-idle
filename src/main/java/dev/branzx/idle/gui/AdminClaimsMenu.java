@@ -15,12 +15,18 @@ public final class AdminClaimsMenu extends Menu {
     private final GuiManager gui;
     private final OfflinePlayer target;
     private final int page;
+    private final Runnable onBack;
 
-    public AdminClaimsMenu(Player viewer, GuiManager gui, OfflinePlayer target, int page) {
+    public AdminClaimsMenu(Player viewer, GuiManager gui, OfflinePlayer target, int page, Runnable onBack) {
         super(viewer);
         this.gui = gui;
         this.target = target;
         this.page = Math.max(0, page);
+        this.onBack = onBack;
+    }
+
+    public AdminClaimsMenu(Player viewer, GuiManager gui, OfflinePlayer target, int page) {
+        this(viewer, gui, target, page, () -> new AdminPlayerMenu(viewer, gui, target).open());
     }
 
     @Override protected int rows() { return 6; }
@@ -55,18 +61,18 @@ public final class AdminClaimsMenu extends Menu {
                                 (node.getChunk().x() << 4) + 8.5,
                                 Math.max(world.getMinHeight() + 1, node.getOriginY() + 1),
                                 (node.getChunk().z() << 4) + 8.5));
-                        new AdminNodeMenu(viewer, gui).open();
+                        new AdminNodeMenu(viewer, gui, node, () -> new AdminClaimsMenu(viewer, gui, target, page, onBack).open()).open();
                     });
         }
         set(49, Icon.of(Material.ARROW).name("กลับ Player Control", NamedTextColor.GREEN).build(),
-                event -> new AdminPlayerMenu(viewer, gui, target).open());
+                event -> onBack.run());
         if (page > 0) {
             set(45, Icon.of(Material.ARROW).name("ก่อนหน้า", NamedTextColor.YELLOW).build(),
-                    event -> new AdminClaimsMenu(viewer, gui, target, page - 1).open());
+                    event -> new AdminClaimsMenu(viewer, gui, target, page - 1, onBack).open());
         }
         if (start + PAGE_SIZE < nodes.size()) {
             set(53, Icon.of(Material.ARROW).name("ถัดไป", NamedTextColor.YELLOW).build(),
-                    event -> new AdminClaimsMenu(viewer, gui, target, page + 1).open());
+                    event -> new AdminClaimsMenu(viewer, gui, target, page + 1, onBack).open());
         }
     }
 }

@@ -47,7 +47,9 @@ public final class ClaimTypeMenu extends Menu {
     }
 
     private void option(int slot, NodeType type, Material material, boolean enabled) {
-        double cost = gui.claimService().claimCost(type);
+        // The price of this player's next claim, which rises with how many
+        // they already hold.
+        double cost = gui.claimService().claimCost(viewer.getUniqueId(), type);
         if (!enabled) {
             set(slot, Icon.of(Material.GRAY_DYE)
                     .name(type.name() + " (locked)", NamedTextColor.DARK_GRAY)

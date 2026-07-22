@@ -44,8 +44,8 @@ public final class NodeStore {
             try (PreparedStatement select = connection.prepareStatement(
                     "SELECT id, owner_uuid, world, chunk_x, chunk_z, node_type, tier, state, origin_y, "
                             + "last_tick_at, storage_json, bulk_storage_json, bulk_last_tick_at, "
-                            + "exploration_level, exploration_exp, "
-                            + "upgrade_ends_at FROM idle_nodes");
+                            + "exploration_level, exploration_exp, skin_id, rotation, "
+                            + "complex_anchor, upgrade_ends_at FROM idle_nodes");
                  ResultSet rs = select.executeQuery()) {
                 while (rs.next()) {
                     NodeRecord record = new NodeRecord(
@@ -63,6 +63,9 @@ public final class NodeStore {
                     record.setExplorationLevel(Math.max(1, rs.getInt("exploration_level")));
                     record.setExplorationExp(rs.getLong("exploration_exp"));
                     record.setUpgradeEndsAt(rs.getLong("upgrade_ends_at"));
+                    record.setSkinId(rs.getString("skin_id"));
+                    record.setRotation(rs.getInt("rotation"));
+                    record.setComplexAnchor(rs.getLong("complex_anchor"));
                     record.loadBulkStorage(rs.getString("bulk_storage_json"));
                     long bulkAnchor = rs.getLong("bulk_last_tick_at");
                     // 0 = row predates the bulk lane; start from the discovery
@@ -167,6 +170,34 @@ public final class NodeStore {
                 update.executeUpdate();
             } catch (SQLException e) {
                 plugin.getLogger().severe("Failed to update node " + record.getId() + ": " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Persists appearance-only fields (skin, rotation). Kept off the
+     * production update so a rotation never rewrites buffer or tick anchors.
+     */
+    public void updateAppearance(NodeRecord record) {
+        String skinId = record.getSkinId();
+        int rotation = record.getRotation();
+        long complexAnchor = record.getComplexAnchor();
+        database.submitWrite(() -> {
+            try (Connection connection = database.getConnection();
+                 PreparedStatement update = connection.prepareStatement(
+                         "UPDATE idle_nodes SET skin_id = ?, rotation = ?, complex_anchor = ?, "
+                                 + "origin_y = ? WHERE id = ?")) {
+                update.setString(1, skinId);
+                update.setInt(2, rotation);
+                update.setLong(3, complexAnchor);
+                // Residential members adopt the anchor's ground level when
+                // they join, so origin_y travels with appearance.
+                update.setInt(4, record.getOriginY());
+                update.setLong(5, record.getId());
+                update.executeUpdate();
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to update appearance for node "
+                        + record.getId() + ": " + e.getMessage());
             }
         });
     }

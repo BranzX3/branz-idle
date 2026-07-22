@@ -42,6 +42,12 @@ public final class IdlePlugin extends JavaPlugin {
     private ClaimService claimService;
     private TrustService trustService;
     private SchematicService schematicService;
+    private dev.branzx.idle.service.PreviewService previewService;
+    private dev.branzx.idle.service.UpgradeSiteService upgradeSiteService;
+    private dev.branzx.idle.skin.SkinRegistry skinRegistry;
+    private dev.branzx.idle.skin.PlayerSkinStore playerSkinStore;
+    private dev.branzx.idle.skin.SkinSubmissionService skinSubmissionService;
+    private dev.branzx.idle.complex.ComplexService complexService;
     private WorkerNpcManager npcManager;
     private WorkerStore workerStore;
     private WorkerService workerService;
@@ -82,8 +88,18 @@ public final class IdlePlugin extends JavaPlugin {
         // ---- world and content services ----
         SchematicRegistry schematicRegistry = new SchematicRegistry(this);
         schematicRegistry.loadAll();
+        this.skinRegistry = new dev.branzx.idle.skin.SkinRegistry(this);
+        this.skinRegistry.loadAll();
+        // Skins point at schematics, so the schematic registry learns about
+        // them after both exist.
+        schematicRegistry.setSkinRegistry(skinRegistry);
+        this.playerSkinStore = new dev.branzx.idle.skin.PlayerSkinStore(this, database);
+        this.playerSkinStore.loadAllSync();
+        this.skinSubmissionService = new dev.branzx.idle.skin.SkinSubmissionService(this);
         this.schematicService = new SchematicService(this, database, schematicRegistry);
         this.schematicService.loadAllSync();
+        this.previewService = new dev.branzx.idle.service.PreviewService(this, schematicService);
+        this.previewService.start();
         this.npcManager = new WorkerNpcManager(this, nodeStore, schematicService, workerStore, anchorStore);
         this.trustService = new TrustService(nodeStore);
         this.warehouseService = new WarehouseService(this, database);
@@ -134,6 +150,13 @@ public final class IdlePlugin extends JavaPlugin {
                 explorationService, workerService, workerStore, anchorStore, globalExpeditionService,
                 gameDesignService, auditService);
 
+        this.complexService = new dev.branzx.idle.complex.ComplexService(this, nodeStore, dataStore,
+                schematicService, npcManager, auditService);
+        // Complex members resolve their blueprint slice through this layout.
+        schematicRegistry.setComplexLayout(complexService.layout());
+        // Unclaiming or converting a member must revert its Complex first.
+        this.claimService.setComplexService(complexService);
+
         // ---- delivery layer ----
         this.guiManager = new GuiManager(this, nodeStore, workerStore, dataStore, workerService,
                 warehouseService, claimService, trustService, explorationService, npcManager,
@@ -159,6 +182,7 @@ public final class IdlePlugin extends JavaPlugin {
         pluginManager.registerEvents(
                 new PlayerConnectionListener(this, dataStore, streakService, gameDesignService), this);
         pluginManager.registerEvents(new ProtectionListener(nodeStore, trustService), this);
+        pluginManager.registerEvents(previewService, this);
         pluginManager.registerEvents(npcManager, this);
         pluginManager.registerEvents(guiManager, this);
         pluginManager.registerEvents(guiManager.chatPrompt(), this);
@@ -184,6 +208,10 @@ public final class IdlePlugin extends JavaPlugin {
 
         // Complete due tier upgrades once per second (needs the chunk loaded).
         getServer().getScheduler().runTaskTimer(this, () -> claimService.tickUpgrades(), 40L, 20L);
+        this.upgradeSiteService =
+                new dev.branzx.idle.service.UpgradeSiteService(this, nodeStore, schematicService,
+                        claimService);
+        this.upgradeSiteService.start();
     }
 
     /**
@@ -241,6 +269,14 @@ public final class IdlePlugin extends JavaPlugin {
         if (globalExpeditionService != null) {
             globalExpeditionService.stop();
         }
+        if (upgradeSiteService != null) {
+            upgradeSiteService.shutdown();
+        }
+        if (previewService != null) {
+            // Restores real blocks for anyone mid-preview; a reload otherwise
+            // leaves ghost blocks stuck on their client until a chunk reload.
+            previewService.shutdown();
+        }
         if (npcManager != null) {
             npcManager.shutdown();
         }
@@ -261,6 +297,30 @@ public final class IdlePlugin extends JavaPlugin {
 
     public NodeStore getNodeStore() {
         return nodeStore;
+    }
+
+    public dev.branzx.idle.skin.SkinRegistry getSkinRegistry() {
+        return skinRegistry;
+    }
+
+    public dev.branzx.idle.skin.PlayerSkinStore getPlayerSkinStore() {
+        return playerSkinStore;
+    }
+
+    public dev.branzx.idle.skin.SkinSubmissionService getSkinSubmissionService() {
+        return skinSubmissionService;
+    }
+
+    public dev.branzx.idle.complex.ComplexService getComplexService() {
+        return complexService;
+    }
+
+    public SchematicService getSchematicService() {
+        return schematicService;
+    }
+
+    public dev.branzx.idle.service.PreviewService getPreviewService() {
+        return previewService;
     }
 
     public ClaimService getClaimService() {

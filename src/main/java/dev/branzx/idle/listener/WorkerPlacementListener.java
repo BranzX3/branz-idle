@@ -179,7 +179,7 @@ public final class WorkerPlacementListener implements Listener {
         if (node == null) {
             return;
         }
-        SchematicDefinition def = schematicService.getRegistry().forNodeType(node.getType(), node.getTier());
+        SchematicDefinition def = schematicService.getRegistry().definitionFor(node);
         int slot = slotOf(node, pending.workerUuid());
         Location presetWork = schematicService.resolve(node, player.getWorld(),
                 def.workAnchorOrFallback(Math.max(0, slot)));

@@ -13,11 +13,17 @@ public final class AdminPlayerMenu extends Menu {
 
     private final GuiManager gui;
     private final OfflinePlayer target;
+    private final Runnable onBack;
 
-    public AdminPlayerMenu(Player viewer, GuiManager gui, OfflinePlayer target) {
+    public AdminPlayerMenu(Player viewer, GuiManager gui, OfflinePlayer target, Runnable onBack) {
         super(viewer);
         this.gui = gui;
         this.target = target;
+        this.onBack = onBack;
+    }
+
+    public AdminPlayerMenu(Player viewer, GuiManager gui, OfflinePlayer target) {
+        this(viewer, gui, target, () -> new AdminPlayerListMenu(viewer, gui, 0).open());
     }
 
     @Override
@@ -50,7 +56,7 @@ public final class AdminPlayerMenu extends Menu {
         if (can("idle.admin.operations")) {
             set(10, Icon.of(Material.GRASS_BLOCK).name("Claims & Nodes", NamedTextColor.GREEN)
                     .lore("ดู Node ทั้งหมดของผู้เล่น", NamedTextColor.GRAY).build(),
-                    event -> new AdminClaimsMenu(viewer, gui, target, 0).open());
+                    event -> new AdminClaimsMenu(viewer, gui, target, 0, () -> new AdminPlayerMenu(viewer, gui, target, onBack).open()).open());
         }
 
         if (can("idle.admin.economy")) {
@@ -74,10 +80,10 @@ public final class AdminPlayerMenu extends Menu {
             set(30, Icon.of(Material.WRITABLE_BOOK).name("Audit ของผู้เล่น", NamedTextColor.AQUA)
                     .lore("ดูรายการล่าสุด", NamedTextColor.GRAY).build(),
                     event -> AdminLogMenu.open(viewer, gui, target.getUniqueId(),
-                            () -> new AdminPlayerMenu(viewer, gui, target).open()));
+                            () -> new AdminPlayerMenu(viewer, gui, target, onBack).open()));
         }
         set(40, Icon.of(Material.ARROW).name("กลับรายชื่อผู้เล่น", NamedTextColor.GREEN).build(),
-                event -> new AdminPlayerListMenu(viewer, gui, 0).open());
+                event -> onBack.run());
     }
 
     private void adjustCoins() {

@@ -333,9 +333,7 @@ public final class NodeControlMenu extends Menu {
     }
 
     private ItemStack unclaimIcon(NodeRecord node) {
-        double refund = gui.claimService().claimCost(node.getType())
-                * gui.plugin().getConfig()
-                .getDouble("claims.unclaim-refund-ratio", 0.5);
+        double refund = gui.claimService().unclaimRefund(node.getOwnerUuid(), node.getType());
         return Icon.of(Material.TNT)
                 .name(Lang.get("menu.node.unclaim.name"), NamedTextColor.RED)
                 .loreComponents(List.of(

@@ -122,6 +122,36 @@ Clicking an old link must never corrupt state or double-pay:
 - Reward-claiming commands stay idempotent server-side (claim-once
   semantics already enforced by the services).
 
+### 3.4b Token-bound confirmations (Tier B exception)
+
+A spending verb may be attached to `CommandLinks.run` when, and only when, the
+link carries a **single-use session token** issued moments earlier.
+
+The only current instance is placement preview: `/idle claim confirm <token>`.
+
+This does not weaken the Tier B and Tier C rules, because both of the reasons
+those rules exist are already answered:
+
+- *"A chat line has no before/after preview."* The preview **is** the cost
+  preview, and a stronger one than a GUI screen: the player is standing in
+  front of a ghost of the building, with cost, ground level, and obstruction
+  count on screen.
+- *"Stale lines can be clicked days later."* The token is single-use and its
+  session expires (default 60s). A stale click matches no live session, so it
+  charges nothing and replies with the current state plus the correct next
+  action, exactly as §3.4 requires.
+
+Requirements for any future token-bound confirm:
+
+1. The token is generated per session, never derived from the player or target.
+2. Confirming consumes the session; a second click cannot re-fire it.
+3. The session expires on its own, and on quit or world change.
+4. The handler **re-runs full validation** at confirm time. The token proves
+   the player saw the offer; it never proves the offer is still valid.
+5. Cancelling is always offered alongside, and costs nothing.
+
+Verbs that are irreversible or spend Credits stay Tier C regardless of tokens.
+
 ### 3.5 Notification budget
 
 Chat is a scarce surface; `UX_FLOWS.md` §10 already bans achievement spam.

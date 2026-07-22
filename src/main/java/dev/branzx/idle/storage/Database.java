@@ -177,6 +177,9 @@ public final class Database {
                 storage_json MEDIUMTEXT,
                 bulk_storage_json MEDIUMTEXT,
                 bulk_last_tick_at BIGINT NOT NULL DEFAULT 0,
+                skin_id VARCHAR(64),
+                rotation INT NOT NULL DEFAULT 0,
+                complex_anchor BIGINT NOT NULL DEFAULT 0,
                 UNIQUE KEY uk_chunk (world, chunk_x, chunk_z),
                 KEY idx_owner (owner_uuid)
             )
@@ -186,6 +189,14 @@ public final class Database {
                 owner_uuid VARCHAR(36) NOT NULL PRIMARY KEY,
                 base_cap INT NOT NULL,
                 bonus_cap INT NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idle_player_skins (
+                uuid VARCHAR(36) NOT NULL,
+                skin_id VARCHAR(64) NOT NULL,
+                granted_at BIGINT NOT NULL DEFAULT 0,
+                PRIMARY KEY (uuid, skin_id)
             )
             """,
             """
@@ -444,6 +455,9 @@ public final class Database {
                 storage_json TEXT,
                 bulk_storage_json TEXT,
                 bulk_last_tick_at INTEGER NOT NULL DEFAULT 0,
+                skin_id TEXT,
+                rotation INTEGER NOT NULL DEFAULT 0,
+                complex_anchor INTEGER NOT NULL DEFAULT 0,
                 UNIQUE (world, chunk_x, chunk_z)
             )
             """,
@@ -453,6 +467,14 @@ public final class Database {
                 owner_uuid TEXT NOT NULL PRIMARY KEY,
                 base_cap INTEGER NOT NULL,
                 bonus_cap INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS idle_player_skins (
+                uuid TEXT NOT NULL,
+                skin_id TEXT NOT NULL,
+                granted_at INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (uuid, skin_id)
             )
             """,
             """
@@ -707,6 +729,14 @@ public final class Database {
         addColumnIfMissing("idle_nodes", "bulk_storage_json",
                 sqlite ? "TEXT" : "MEDIUMTEXT");
         addColumnIfMissing("idle_nodes", "bulk_last_tick_at",
+                sqlite ? "INTEGER NOT NULL DEFAULT 0" : "BIGINT NOT NULL DEFAULT 0");
+        // Appearance columns; NULL skin_id means the server default blueprint.
+        addColumnIfMissing("idle_nodes", "skin_id",
+                sqlite ? "TEXT" : "VARCHAR(64)");
+        addColumnIfMissing("idle_nodes", "rotation",
+                sqlite ? "INTEGER NOT NULL DEFAULT 0" : "INT NOT NULL DEFAULT 0");
+        // Complex membership: the anchoring production node's id, 0 = alone.
+        addColumnIfMissing("idle_nodes", "complex_anchor",
                 sqlite ? "INTEGER NOT NULL DEFAULT 0" : "BIGINT NOT NULL DEFAULT 0");
     }
 

@@ -231,6 +231,39 @@ Never produce:
 Coins reward time and bounded participation. Resources never have an unlimited
 Coin sell price.
 
+### Territory pricing
+
+Claim prices escalate with how much land a player already holds:
+`cost = base × factor^(claims already held of that category)`.
+
+| Category | Base | Factor | Cap |
+|---|---:|---:|---:|
+| Production | 1,000 | 1.6 | `base-node-cap` 6 |
+| Residential | 500 | 1.15 | `residential-cap` 48 |
+
+Escalation replaces a hard limit as the thing that bounds a sprawling
+territory. A flat price makes the widest possible territory the obvious play
+for anyone with Coins and erases the choice between going wide and going
+deep; a rising price lets a player keep expanding while making each step a
+decision.
+
+The two categories are deliberately far apart:
+
+- **Production is the economy.** Rare-resource caps (§4), buffer throughput
+  (§3) and worker NPC counts all scale with the number of production nodes,
+  so the cap stays small and the price climbs steeply.
+- **Residential is land, not power.** It produces nothing. It is building
+  space and Complex floor space, so a high cap costs world space and Coins
+  and never touches balance. A single 3×3 Complex spends 8 plots, which is
+  why the factor is gentle.
+
+Refunds price the claim being handed back rather than the next one up, so
+claim-churn can never turn a profit.
+
+**Complexes are the late-game Coin sink** and return no power whatsoever
+(`NODE_MERGE_AND_COMPLEX.md` §3). A sink that returns nothing is the scarcest
+thing in an idle economy; keep it that way rather than attaching a yield.
+
 ### Expected free income: month one
 
 | Source | Monthly Coins |

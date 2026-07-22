@@ -56,7 +56,7 @@ public final class AdminPlayerListMenu extends Menu {
                                     NamedTextColor.GRAY),
                             Ui.click("open Player Control")))
                     .build(), event ->
-                            new AdminPlayerMenu(viewer, gui, target).open());
+                            new AdminPlayerMenu(viewer, gui, target, () -> new AdminPlayerListMenu(viewer, gui, page).open()).open());
         }
 
         set(48, Icon.of(Material.NAME_TAG)

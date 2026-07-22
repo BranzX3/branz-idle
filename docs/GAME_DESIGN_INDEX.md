@@ -25,6 +25,8 @@ the discrepancy must be resolved explicitly before coding.
 | `WORKERS_AND_SPECIALIZATIONS.md` | Worker roles, team strategy, node builds |
 | `NODE_TYPE_PERKS.md` | Unique Mining/Farming/Wood/Livestock/Hunter perk choices |
 | `RESOURCE_ECONOMY.md` | Resource sinks, projects, orders, trading |
+| `BUILDING_PLACEMENT_AND_SKINS.md` | Building placement, preview, rotation, skins |
+| `NODE_MERGE_AND_COMPLEX.md` | Multi-chunk Complexes built from Residential plots |
 | `UX_FLOWS.md` | Complete Player and Admin journeys |
 | `UI_FLOW_AND_CHAT_ACTIONS.md` | Surface routing and clickable chat action spec |
 | `LIVE_OPS_AND_SEASONS.md` | Rotations, post-100 releases, telemetry |

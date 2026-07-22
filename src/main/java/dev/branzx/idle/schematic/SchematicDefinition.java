@@ -73,6 +73,56 @@ public final class SchematicDefinition {
         return spawnAnchorOrFallback(slotIndex);
     }
 
+    /** Origin-relative extent of a definition; empty definitions give a zero box. */
+    public record Bounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        public int width() {
+            return maxX - minX + 1;
+        }
+
+        public int depth() {
+            return maxZ - minZ + 1;
+        }
+
+        public int height() {
+            return maxY - minY + 1;
+        }
+    }
+
+    /**
+     * Computes the bounding box from the block list. Recomputed per call
+     * rather than cached: the block list is mutable and exposed, so a cache
+     * would go stale the moment an admin edits a definition in place.
+     */
+    public Bounds bounds() {
+        int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
+        boolean any = false;
+        for (String entry : blocks) {
+            int pipe = entry.indexOf('|');
+            if (pipe < 0) {
+                continue;
+            }
+            String[] rel = entry.substring(0, pipe).split(",");
+            if (rel.length < 3) {
+                continue;
+            }
+            int x, y, z;
+            try {
+                x = Integer.parseInt(rel[0].trim());
+                y = Integer.parseInt(rel[1].trim());
+                z = Integer.parseInt(rel[2].trim());
+            } catch (NumberFormatException e) {
+                continue;
+            }
+            any = true;
+            minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+            minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+            minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+        }
+        return any ? new Bounds(minX, minY, minZ, maxX, maxY, maxZ)
+                : new Bounds(0, 0, 0, 0, 0, 0);
+    }
+
     /** Set a per-slot anchor in a list, growing with nulls as needed. */
     public static void setSlot(List<RelPos> anchors, int slotIndex, RelPos pos) {
         while (anchors.size() <= slotIndex) {

@@ -102,6 +102,8 @@ public final class AdminCommands {
             case "explevel" -> explevel(sender, args);
             case "give" -> give(sender, args);
             case "setcap" -> setcap(sender, args);
+            case "skingrant" -> skinGrant(sender, args);
+            case "skinreview" -> skinReview(sender, args);
             case "audit" -> audit(sender, args);
             case "credits" -> credits(sender, args);
             case "validate" -> validateContent(sender);
@@ -491,6 +493,284 @@ public final class AdminCommands {
         return true;
     }
 
+    /**
+     * Grants or revokes a building skin. This is how a contest result is
+     * settled: the winning skin ships as a default unlock for everyone, while
+     * the winner's exclusive variant is granted here.
+     */
+    private boolean skinGrant(CommandSender sender, String[] args) {
+        if (args.length < 5) {
+            sender.sendMessage(Component.text(
+                    "Usage: /idle admin skingrant <player> <grant|revoke> <skinId> <reason>",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        var skins = plugin.getSkinRegistry();
+        var unlocks = plugin.getPlayerSkinStore();
+        if (skins == null || unlocks == null) {
+            sender.sendMessage(Component.text("Skins are not available.", NamedTextColor.RED));
+            return true;
+        }
+        boolean revoke = args[3].equalsIgnoreCase("revoke");
+        if (!revoke && !args[3].equalsIgnoreCase("grant")) {
+            sender.sendMessage(Component.text("Expected 'grant' or 'revoke'.", NamedTextColor.RED));
+            return true;
+        }
+        if (args.length < 6) {
+            sender.sendMessage(Component.text("A reason is required.", NamedTextColor.RED));
+            return true;
+        }
+        String skinId = args[4];
+        // Granting an id with no skin file would look like it worked and then
+        // silently show nothing in the player's menu.
+        if (skins.get(skinId) == null) {
+            sender.sendMessage(Component.text("No skin '" + skinId + "' is loaded.",
+                    NamedTextColor.RED));
+            return true;
+        }
+        var target = plugin.getServer().getOfflinePlayer(args[2]);
+        if (revoke) {
+            unlocks.revoke(target.getUniqueId(), skinId);
+        } else {
+            unlocks.grant(target.getUniqueId(), skinId);
+        }
+        UUID actor = sender instanceof Player p ? p.getUniqueId() : new UUID(0, 0);
+        String auditId = UUID.randomUUID().toString();
+        String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 5, args.length));
+        auditService.logAdmin(actor, auditId, reason,
+                revoke ? "ADMIN_SKIN_REVOKE" : "ADMIN_SKIN_GRANT",
+                args[2] + " skin=" + skinId);
+        sender.sendMessage(Component.text((revoke ? "Revoked " : "Granted ") + skinId
+                + " for " + args[2], NamedTextColor.GREEN));
+        sender.sendMessage(Component.text("Audit " + auditId, NamedTextColor.GRAY));
+        return true;
+    }
+
+    /**
+     * The contest review queue. Automatic validation already rejected
+     * block-level abuse; this is where a human judges shape, placement and
+     * content, which no rule set can do.
+     */
+    private boolean skinReview(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("In-game only.", NamedTextColor.RED));
+            return true;
+        }
+        var submissions = plugin.getSkinSubmissionService();
+        if (submissions == null) {
+            sender.sendMessage(Component.text("Skins are not available.", NamedTextColor.RED));
+            return true;
+        }
+        String action = args.length >= 3 ? args[2].toLowerCase(Locale.ROOT) : "list";
+
+        if (action.equals("list")) {
+            var pending = submissions.pendingIds();
+            if (pending.isEmpty()) {
+                sender.sendMessage(Component.text("No submissions are waiting for review.",
+                        NamedTextColor.GRAY));
+                return true;
+            }
+            sender.sendMessage(Component.text("[Idle] " + pending.size()
+                    + " submission(s) awaiting review:", NamedTextColor.GOLD));
+            for (String id : pending) {
+                var entry = submissions.loadPending(id);
+                var line = Component.text()
+                        .append(Component.text("  " + id, NamedTextColor.WHITE));
+                if (entry != null && entry.authorName() != null) {
+                    line.append(Component.text(" by " + entry.authorName(), NamedTextColor.AQUA));
+                }
+                if (entry != null) {
+                    line.append(Component.text(" ("
+                            + (entry.isComplex() ? entry.shape().id() + ", " : "")
+                            + entry.blockCount() + " blocks)", NamedTextColor.DARK_GRAY));
+                }
+                line.append(Component.space())
+                        .append(CommandLinks.run("[Show]", "/idle admin skinreview show " + id));
+                sender.sendMessage(line.build());
+            }
+            return true;
+        }
+
+        if (args.length < 4) {
+            sender.sendMessage(Component.text("Usage: /idle admin skinreview "
+                    + "<list|show|spawn|work|approve|reject> <id> ...", NamedTextColor.YELLOW));
+            return true;
+        }
+        String id = args[3].toLowerCase(Locale.ROOT);
+        var pending = submissions.loadPending(id);
+        if (pending == null) {
+            sender.sendMessage(Component.text("No pending submission '" + id + "'.",
+                    NamedTextColor.RED));
+            return true;
+        }
+
+        switch (action) {
+            case "show" -> {
+                var preview = plugin.getPreviewService();
+                if (preview == null) {
+                    sender.sendMessage(Component.text("Preview is unavailable.", NamedTextColor.RED));
+                    return true;
+                }
+                // Drawn as ghost blocks where the reviewer stands: judging a
+                // build must never require pasting it into the world.
+                ChunkKey here = new ChunkKey(player.getWorld().getName(),
+                        player.getLocation().getBlockX() >> 4,
+                        player.getLocation().getBlockZ() >> 4);
+                var session = preview.openReview(player, reviewParts(pending, here), here,
+                        player.getLocation().getBlockY());
+                var bounds = pending.primary() == null
+                        ? new dev.branzx.idle.schematic.SchematicDefinition.Bounds(0, 0, 0, 0, 0, 0)
+                        : pending.primary().bounds();
+                sender.sendMessage(Component.text("[Idle] Reviewing '" + id + "' by "
+                        + pending.authorName(), NamedTextColor.GOLD));
+                sender.sendMessage(Component.text("  "
+                        + (pending.isComplex()
+                                ? pending.shape().id() + " Complex, " + pending.pieces().size()
+                                        + " pieces, "
+                                : bounds.width() + "×" + bounds.depth() + "×" + bounds.height() + ", ")
+                        + pending.blockCount()
+                        + " blocks, " + pending.spawnAnchors().size()
+                        + " spawn / " + pending.workAnchors().size()
+                        + " work anchors", NamedTextColor.GRAY));
+                if (pending.spawnAnchors().isEmpty()) {
+                    sender.sendMessage(Component.text(
+                            "  No spawn anchors — workers would fall back to a line in front, "
+                                    + "which can place an NPC inside a wall.", NamedTextColor.RED));
+                }
+                sender.sendMessage(Component.text()
+                        .append(Component.text("  ", NamedTextColor.GRAY))
+                        .append(CommandLinks.run("[Rotate]",
+                                "/idle claim rotate " + session.token()))
+                        .append(Component.space())
+                        .append(CommandLinks.suggest("[Approve]",
+                                "/idle admin skinreview approve " + id + " "))
+                        .append(Component.space())
+                        .append(CommandLinks.suggest("[Reject]",
+                                "/idle admin skinreview reject " + id + " "))
+                        .build());
+            }
+            case "spawn", "work" -> {
+                if (args.length < 5) {
+                    sender.sendMessage(Component.text("Usage: /idle admin skinreview "
+                            + action + " <id> <slot>", NamedTextColor.YELLOW));
+                    return true;
+                }
+                var preview = plugin.getPreviewService();
+                var session = preview == null ? null : preview.get(player);
+                // Anchors are relative to the build's origin, so the ghost has
+                // to be on screen for "where I am standing" to mean anything.
+                if (session == null
+                        || session.kind() != dev.branzx.idle.service.PreviewService.Kind.REVIEW) {
+                    sender.sendMessage(Component.text("Run ", NamedTextColor.RED)
+                            .append(CommandLinks.run("[Show]",
+                                    "/idle admin skinreview show " + id))
+                            .append(Component.text(" first, then stand where the worker should be.",
+                                    NamedTextColor.RED)));
+                    return true;
+                }
+                int slot = Integer.parseInt(args[4]);
+                if (slot < 1 || slot > 5) {
+                    sender.sendMessage(Component.text("Slot must be 1-5.", NamedTextColor.RED));
+                    return true;
+                }
+                var origin = session.origin(player.getWorld());
+                var pos = new dev.branzx.idle.schematic.RelPos(
+                        player.getLocation().getBlockX() - origin.getBlockX(),
+                        player.getLocation().getBlockY() - origin.getBlockY(),
+                        player.getLocation().getBlockZ() - origin.getBlockZ());
+                SchematicDefinition.setSlot(action.equals("work")
+                                ? pending.workAnchors()
+                                : pending.spawnAnchors(),
+                        slot - 1, pos);
+                if (!submissions.saveAnchors(pending)) {
+                    sender.sendMessage(Component.text("Could not save the anchor.",
+                            NamedTextColor.RED));
+                    return true;
+                }
+                sender.sendMessage(Component.text("  " + action + " slot " + slot + " = "
+                        + pos.x() + "," + pos.y() + "," + pos.z(), NamedTextColor.GREEN));
+            }
+            case "approve" -> {
+                if (args.length < 5) {
+                    sender.sendMessage(Component.text(
+                            "Usage: /idle admin skinreview approve <id> <reason>",
+                            NamedTextColor.YELLOW));
+                    return true;
+                }
+                String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
+                if (!submissions.approve(pending)) {
+                    sender.sendMessage(Component.text("Approval failed; check the server log.",
+                            NamedTextColor.RED));
+                    return true;
+                }
+                String auditId = auditAdmin(player.getUniqueId(), "SKIN_APPROVE", reason,
+                        "id=" + id + " author=" + pending.author());
+                sender.sendMessage(Component.text("Approved '" + id
+                        + "'. It is now available to every player. | audit " + auditId,
+                        NamedTextColor.GREEN));
+                notifyAuthor(pending, Component.text("[Idle] Your build '" + id
+                        + "' was approved! It is now a skin everyone can use, credited to you.",
+                        NamedTextColor.GREEN));
+            }
+            case "reject" -> {
+                if (args.length < 5) {
+                    sender.sendMessage(Component.text(
+                            "Usage: /idle admin skinreview reject <id> <reason>",
+                            NamedTextColor.YELLOW));
+                    return true;
+                }
+                String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
+                submissions.reject(id);
+                String auditId = auditAdmin(player.getUniqueId(), "SKIN_REJECT", reason,
+                        "id=" + id + " author=" + pending.author());
+                sender.sendMessage(Component.text("Rejected '" + id + "'. | audit " + auditId,
+                        NamedTextColor.YELLOW));
+                // The author is told why, so a resubmission can actually fix it.
+                notifyAuthor(pending, Component.text("[Idle] Your build '" + id
+                        + "' was not accepted: " + reason, NamedTextColor.YELLOW));
+            }
+            default -> sender.sendMessage(Component.text("Unknown review action '" + action + "'.",
+                    NamedTextColor.RED));
+        }
+        return true;
+    }
+
+    /**
+     * Lays a submission's pieces out around the reviewer's chunk, in the same
+     * relative arrangement they would take on a real Complex.
+     */
+    private java.util.List<dev.branzx.idle.service.PreviewService.Part> reviewParts(
+            dev.branzx.idle.skin.SkinSubmissionService.Pending pending, ChunkKey here) {
+        java.util.List<dev.branzx.idle.service.PreviewService.Part> parts = new java.util.ArrayList<>();
+        for (var entry : pending.pieces().entrySet()) {
+            String[] cell = entry.getKey().split(",");
+            int col = 0;
+            int row = 0;
+            if (cell.length == 2) {
+                try {
+                    col = Integer.parseInt(cell[0].trim());
+                    row = Integer.parseInt(cell[1].trim());
+                } catch (NumberFormatException ignored) {
+                    // Malformed cell id; draw it on the reviewer's own chunk.
+                }
+            }
+            parts.add(new dev.branzx.idle.service.PreviewService.Part(
+                    new ChunkKey(here.world(), here.x() + col, here.z() + row), entry.getValue()));
+        }
+        return parts;
+    }
+
+    private void notifyAuthor(dev.branzx.idle.skin.SkinSubmissionService.Pending pending,
+                              Component message) {
+        if (pending.author() == null) {
+            return;
+        }
+        var author = plugin.getServer().getPlayer(pending.author());
+        if (author != null && author.isOnline()) {
+            author.sendMessage(message);
+        }
+    }
+
     // ---- audit browser ----
 
     private boolean audit(CommandSender sender, String[] args) {
@@ -534,6 +814,11 @@ public final class AdminCommands {
         String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length));
         plugin.reloadConfig();
         schematicService.getRegistry().loadAll();
+        // Approving a contest entry drops a skin file; reload must pick it up
+        // without a restart, same as schematics.
+        if (plugin.getSkinRegistry() != null) {
+            plugin.getSkinRegistry().loadAll();
+        }
         if (dropTableService != null) {
             dropTableService.load();
             List<String> errors = dropTableService.validate();
@@ -548,8 +833,8 @@ public final class AdminCommands {
             }
         }
         String auditId = auditAdmin(actor(sender), "ADMIN_RELOAD", reason,
-                "config,published pools,schematics");
-        sender.sendMessage(Component.text("Idle config, pools + schematics reloaded.",
+                "config,published pools,schematics,skins");
+        sender.sendMessage(Component.text("Idle config, pools, schematics + skins reloaded.",
                 NamedTextColor.GREEN).append(Component.text(" | audit " + auditId, NamedTextColor.GRAY)));
         return true;
     }

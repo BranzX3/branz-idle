@@ -174,7 +174,7 @@ public final class WorkerNpcManager implements Listener {
         }
         despawnNode(node.getId());
         SchematicDefinition definition = schematicService.getRegistry()
-                .forNodeType(node.getType(), node.getTier());
+                .definitionFor(node);
         List<WorkerRecord> assigned = workerStore == null ? List.of() : workerStore.getAssigned(node.getId());
         List<SpawnedNpc> npcs = new ArrayList<>();
         int slot = 0;
@@ -289,7 +289,7 @@ public final class WorkerNpcManager implements Listener {
 
     private List<String> currentBehaviors(NodeRecord node, String state) {
         SchematicDefinition definition = schematicService.getRegistry()
-                .forNodeType(node.getType(), node.getTier());
+                .definitionFor(node);
         String profileName = definition.getProfiles().getOrDefault(state,
                 "default_" + state.toLowerCase(Locale.ROOT));
         List<String> behaviors = plugin.getConfig().getStringList("npc.animation-profiles." + profileName);
@@ -299,7 +299,7 @@ public final class WorkerNpcManager implements Listener {
     private void applyBehaviors(NodeRecord node, SpawnedNpc spawned) {
         String state = effectiveState(node.getId(), spawned.worker());
         SchematicDefinition definition = schematicService.getRegistry()
-                .forNodeType(node.getType(), node.getTier());
+                .definitionFor(node);
         List<String> behaviors = currentBehaviors(node, state);
 
         NPC npc = spawned.npc();

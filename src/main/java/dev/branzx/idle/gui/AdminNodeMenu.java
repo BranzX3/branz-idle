@@ -13,10 +13,18 @@ import java.util.List;
 public final class AdminNodeMenu extends Menu {
 
     private final GuiManager gui;
+    private final NodeRecord targetNode;
+    private final Runnable onBack;
 
-    public AdminNodeMenu(Player viewer, GuiManager gui) {
+    public AdminNodeMenu(Player viewer, GuiManager gui, NodeRecord targetNode, Runnable onBack) {
         super(viewer);
         this.gui = gui;
+        this.targetNode = targetNode;
+        this.onBack = onBack;
+    }
+
+    public AdminNodeMenu(Player viewer, GuiManager gui) {
+        this(viewer, gui, null, () -> gui.openAdminHub(viewer));
     }
 
     @Override protected int rows() { return 5; }
@@ -31,16 +39,16 @@ public final class AdminNodeMenu extends Menu {
                 && !viewer.hasPermission("idle.admin.operations")) {
             set(22, Icon.of(Material.BARRIER).name("ไม่มีสิทธิ์ Node Operations",
                     NamedTextColor.RED).build());
-            set(40, Icon.of(Material.ARROW).name("กลับ Admin Hub", NamedTextColor.GREEN).build(),
-                    event -> gui.openAdminHub(viewer));
+            set(40, Icon.of(Material.ARROW).name("ย้อนกลับ", NamedTextColor.GREEN).build(),
+                    event -> onBack.run());
             return;
         }
-        NodeRecord node = currentNode();
+        NodeRecord node = targetNode != null ? targetNode : currentNode();
         if (node == null) {
             set(22, Icon.of(Material.BARRIER).name("Chunk นี้ยังไม่ถูก claim", NamedTextColor.RED)
                     .lore("ยืนใน Node แล้วเปิดหน้านี้อีกครั้ง", NamedTextColor.GRAY).build());
-            set(40, Icon.of(Material.ARROW).name("กลับ Admin Hub", NamedTextColor.GREEN).build(),
-                    event -> gui.openAdminHub(viewer));
+            set(40, Icon.of(Material.ARROW).name("ย้อนกลับ", NamedTextColor.GREEN).build(),
+                    event -> onBack.run());
             return;
         }
 
@@ -98,8 +106,27 @@ public final class AdminNodeMenu extends Menu {
         set(31, Icon.of(Material.TNT).name("Force Unclaim", NamedTextColor.DARK_RED)
                 .lore("ต้องระบุ reason และยืนยัน", NamedTextColor.RED).build(),
                 click -> forceUnclaim(node));
-        set(40, Icon.of(Material.ARROW).name("กลับ Admin Hub", NamedTextColor.GREEN).build(),
-                event -> gui.openAdminHub(viewer));
+
+        if (!isStandingInNode(node)) {
+            set(28, Icon.of(Material.ENDER_PEARL).name("Teleport to Node", NamedTextColor.LIGHT_PURPLE)
+                    .lore("Teleport ไปยัง Chunk ของ Node นี้", NamedTextColor.GRAY).build(),
+                    click -> {
+                        var world = gui.plugin().getServer().getWorld(node.getChunk().world());
+                        if (world == null) {
+                            viewer.sendMessage(Component.text("World ยังไม่ได้ load",
+                                    NamedTextColor.RED));
+                            return;
+                        }
+                        viewer.teleport(new org.bukkit.Location(world,
+                                (node.getChunk().x() << 4) + 8.5,
+                                Math.max(world.getMinHeight() + 1, node.getOriginY() + 1),
+                                (node.getChunk().z() << 4) + 8.5));
+                        open();
+                    });
+        }
+
+        set(40, Icon.of(Material.ARROW).name("ย้อนกลับ", NamedTextColor.GREEN).build(),
+                event -> onBack.run());
     }
 
     private void openEventTypes(NodeRecord node) {
@@ -154,7 +181,7 @@ public final class AdminNodeMenu extends Menu {
                     gui.runAdmin(viewer, "forceunclaim", node.getChunk().world(),
                             Integer.toString(node.getChunk().x()),
                             Integer.toString(node.getChunk().z()), reason);
-                    gui.openAdminHub(viewer);
+                    onBack.run();
                 }, this::open);
     }
 
@@ -162,5 +189,11 @@ public final class AdminNodeMenu extends Menu {
         return gui.nodeStore().getByChunk(new ChunkKey(viewer.getWorld().getName(),
                 viewer.getLocation().getBlockX() >> 4,
                 viewer.getLocation().getBlockZ() >> 4));
+    }
+
+    private boolean isStandingInNode(NodeRecord node) {
+        return viewer.getWorld().getName().equals(node.getChunk().world())
+                && (viewer.getLocation().getBlockX() >> 4) == node.getChunk().x()
+                && (viewer.getLocation().getBlockZ() >> 4) == node.getChunk().z();
     }
 }

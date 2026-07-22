@@ -93,6 +93,11 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "balance" -> balance(sender);
             case "top" -> top(sender);
             case "claim" -> claim(sender, args);
+            case "rotate" -> rotate(sender, args);
+            case "building" -> buildingSkin(sender, args);
+            case "submit" -> submitSkin(sender, args);
+            case "merge" -> merge(sender, args);
+            case "unmerge" -> unmerge(sender);
             case "unclaim" -> unclaim(sender);
             case "nodes" -> nodes(sender);
             case "trust" -> trust(sender, args);
@@ -226,9 +231,19 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length < 2) {
             sender.sendMessage(Component.text(
-                    "Usage: /idle claim <residential|mining|farming|woodcutting|livestock|hunter>",
+                    "Usage: /idle claim <residential|mining|farming|woodcutting|livestock|hunter>"
+                            + " | /idle claim cancel",
                     NamedTextColor.YELLOW));
             return true;
+        }
+        if (args[1].equalsIgnoreCase("confirm")) {
+            return claimConfirm(player, args.length >= 3 ? args[2] : "");
+        }
+        if (args[1].equalsIgnoreCase("cancel")) {
+            return claimCancel(player);
+        }
+        if (args[1].equalsIgnoreCase("rotate")) {
+            return previewRotate(player, args.length >= 3 ? args[2] : "");
         }
         NodeType type = NodeType.fromString(args[1]);
         if (type == null) {
@@ -244,9 +259,671 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         ChunkKey chunk = new ChunkKey(player.getWorld().getName(),
                 player.getLocation().getBlockX() >> 4,
                 player.getLocation().getBlockZ() >> 4);
-        ClaimService.Result result = claimService.claim(player.getUniqueId(), player.getWorld(), chunk, type);
-        sender.sendMessage(Component.text(result.message(),
+
+        var preview = plugin.getPreviewService();
+        // Residential plots place no building, so there is nothing to preview.
+        boolean previewable = type.isProduction() && preview != null
+                && plugin.getConfig().getBoolean("nodes.preview.enabled", true);
+        if (!previewable) {
+            ClaimService.Result result =
+                    claimService.claim(player.getUniqueId(), player.getWorld(), chunk, type);
+            sender.sendMessage(Component.text(result.message(),
+                    result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+            return true;
+        }
+
+        // Check the rules before drawing anything: showing a building the
+        // player cannot afford or place is worse than a plain refusal.
+        ClaimService.Quote quote =
+                claimService.quote(player.getUniqueId(), player.getWorld(), chunk, type);
+        if (!quote.allowed()) {
+            sender.sendMessage(Component.text(quote.message(), NamedTextColor.RED));
+            return true;
+        }
+        var definition = plugin.getSchematicService().getRegistry().forNodeType(type, 1);
+        int originY = plugin.getSchematicService().groundY(player.getWorld(), chunk, definition);
+        var session = preview.open(player, chunk, type, definition, originY);
+        sendPreviewPrompt(player, session, quote);
+        return true;
+    }
+
+    /**
+     * The preview prompt. The confirm link carries the session token, so a
+     * line re-clicked after the session ended is inert rather than a second
+     * claim — the chat-action staleness rule for a spending verb.
+     */
+    private void sendPreviewPrompt(Player player, dev.branzx.idle.service.PreviewService.Session session,
+                                   ClaimService.Quote quote) {
+        player.sendMessage(Component.text("[Idle] Placement preview — "
+                + session.type() + " at chunk " + session.chunk().x() + ","
+                + session.chunk().z() + ".", NamedTextColor.GOLD));
+        player.sendMessage(Component.text("  Cost: "
+                + (quote.tutorialFree() ? "FREE (tutorial)" : String.valueOf(quote.cost()))
+                + " • Ground Y: " + session.originY(), NamedTextColor.GRAY));
+        if (session.obstructions() > 0) {
+            player.sendMessage(Component.text("  " + session.obstructions()
+                    + " solid block(s) shown in red overlap the building. They will NOT be "
+                    + "cleared — move, or clear them first.", NamedTextColor.RED));
+        }
+        player.sendMessage(Component.text("  Trees and plants are cleared automatically and "
+                + "restored if you unclaim.", NamedTextColor.DARK_GRAY));
+        player.sendMessage(Component.text()
+                .append(Component.text("  ", NamedTextColor.GRAY))
+                .append(CommandLinks.run("[Rotate]", "/idle claim rotate " + session.token()))
+                .append(Component.space())
+                .append(CommandLinks.run("[Confirm]", "/idle claim confirm " + session.token()))
+                .append(Component.space())
+                .append(CommandLinks.run("[Cancel]", "/idle claim cancel"))
+                .build());
+    }
+
+    private static String facing(int rotation) {
+        return switch (dev.branzx.idle.schematic.Rotation.normalize(rotation)) {
+            case 1 -> "South";
+            case 2 -> "West";
+            case 3 -> "North";
+            default -> "East";
+        };
+    }
+
+    /**
+     * Turns the pending building without ending the session, so the player can
+     * cycle orientations before deciding. Serves both a fresh claim and a
+     * re-orientation of a placed building.
+     */
+    /**
+     * Quarter-turns per press. A Complex whose land only supports two
+     * orientations skips over the ones it cannot take, so the button never
+     * offers an illegal turn.
+     */
+    private int rotationStep(NodeRecord node) {
+        var complex = plugin.getComplexService();
+        if (complex == null || !node.isInComplex()) {
+            return 1;
+        }
+        int allowed = complex.allowedRotations(node).size();
+        return allowed <= 0 ? 1 : 4 / allowed;
+    }
+
+    private boolean previewRotate(Player player, String token) {
+        var preview = plugin.getPreviewService();
+        var current = preview == null ? null : preview.get(player);
+        int step = 1;
+        java.util.function.IntFunction<java.util.List<
+                dev.branzx.idle.service.PreviewService.Part>> partsFor = null;
+        if (current != null && current.nodeId() > 0) {
+            NodeRecord node = nodeStore.getById(current.nodeId());
+            var complex = plugin.getComplexService();
+            if (node != null) {
+                step = rotationStep(node);
+                if (complex != null && node.isInComplex()) {
+                    NodeRecord anchor = node;
+                    // The pieces relocate as the Complex turns, so they are
+                    // recomputed for whatever orientation this press lands on.
+                    partsFor = rotation -> complex.planRotation(anchor, rotation);
+                }
+            }
+        }
+        var session = preview == null ? null : preview.rotate(player, token, step, partsFor);
+        if (session == null) {
+            player.sendMessage(Component.text("That placement preview is no longer active. ",
+                    NamedTextColor.YELLOW)
+                    .append(CommandLinks.suggest("[Claim again]", "/idle claim ")));
+            return true;
+        }
+        player.sendMessage(Component.text("  Facing: " + facing(session.rotation())
+                + (session.obstructions() > 0
+                        ? " • " + session.obstructions() + " block(s) in the way" : " • clear"),
+                session.obstructions() > 0 ? NamedTextColor.RED : NamedTextColor.GRAY));
+        player.sendMessage(Component.text()
+                .append(Component.text("  ", NamedTextColor.GRAY))
+                .append(CommandLinks.run("[Rotate]",
+                        (session.isExistingNode() ? "/idle rotate rotate " : "/idle claim rotate ")
+                                + session.token()))
+                .append(Component.space())
+                .append(CommandLinks.run("[Confirm]",
+                        (session.isExistingNode() ? "/idle rotate confirm " : "/idle claim confirm ")
+                                + session.token()))
+                .append(Component.space())
+                .append(CommandLinks.run("[Cancel]",
+                        session.isExistingNode() ? "/idle rotate cancel" : "/idle claim cancel"))
+                .build());
+        return true;
+    }
+
+    /**
+     * Skin selection for the node the player is standing on.
+     *
+     * <p>Applying is a Tier B action but carries no cost and is fully
+     * reversible, so it runs from chat directly; the confirmation the player
+     * needs is seeing the building change, which they do immediately.</p>
+     */
+    private boolean buildingSkin(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can change building skins.",
+                    NamedTextColor.RED));
+            return true;
+        }
+        var registry = plugin.getSkinRegistry();
+        var unlocks = plugin.getPlayerSkinStore();
+        if (registry == null || unlocks == null) {
+            sender.sendMessage(Component.text("Skins are not available.", NamedTextColor.RED));
+            return true;
+        }
+        NodeRecord node = nodeStore.getByChunk(new ChunkKey(player.getWorld().getName(),
+                player.getLocation().getBlockX() >> 4,
+                player.getLocation().getBlockZ() >> 4));
+        if (node == null || !node.getOwnerUuid().equals(player.getUniqueId())) {
+            sender.sendMessage(Component.text("Stand on a node you own to change its skin.",
+                    NamedTextColor.RED));
+            return true;
+        }
+        if (!node.getType().isProduction()) {
+            sender.sendMessage(Component.text("Only production nodes have a building.",
+                    NamedTextColor.RED));
+            return true;
+        }
+
+        if (args.length >= 2) {
+            String requested = args[1];
+            if (requested.equalsIgnoreCase("default") || requested.equalsIgnoreCase("none")) {
+                var result = claimService.applySkin(player.getUniqueId(), player.getWorld(),
+                        node, null);
+                sender.sendMessage(Component.text(result.message(),
+                        result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+                return true;
+            }
+            var skin = registry.get(requested);
+            if (skin == null || !skin.appliesTo(node.getType())) {
+                sender.sendMessage(Component.text("No skin '" + requested
+                        + "' available for this node type. ", NamedTextColor.RED)
+                        .append(CommandLinks.run("[List skins]", "/idle building")));
+                return true;
+            }
+            // Re-checked here rather than trusting the listing: the listing may
+            // be an old chat line, and unlocks can be revoked.
+            if (!unlocks.canUse(player.getUniqueId(), skin)) {
+                sender.sendMessage(Component.text("You have not unlocked "
+                        + skin.getDisplay() + ".", NamedTextColor.RED));
+                return true;
+            }
+            var result = claimService.applySkin(player.getUniqueId(), player.getWorld(),
+                    node, skin.getId());
+            sender.sendMessage(Component.text(result.message(),
+                    result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+            return true;
+        }
+
+        var available = registry.forType(node.getType());
+        if (available.isEmpty()) {
+            sender.sendMessage(Component.text("No skins exist for " + node.getType()
+                    + " nodes yet.", NamedTextColor.YELLOW));
+            return true;
+        }
+        sender.sendMessage(Component.text("[Idle] Skins for node #" + node.getId()
+                + " (" + node.getType() + "):", NamedTextColor.GOLD));
+        String current = node.getSkinId();
+        sender.sendMessage(Component.text()
+                .append(Component.text("  " + (current == null ? "▶ " : "  ") + "Default",
+                        current == null ? NamedTextColor.GREEN : NamedTextColor.GRAY))
+                .append(Component.space())
+                .append(CommandLinks.run("[Use]", "/idle building default"))
+                .build());
+        for (var skin : available) {
+            boolean owned = unlocks.canUse(player.getUniqueId(), skin);
+            boolean worn = skin.getId().equalsIgnoreCase(current);
+            var line = Component.text()
+                    .append(Component.text("  " + (worn ? "▶ " : "  ") + skin.getDisplay(),
+                            worn ? NamedTextColor.GREEN
+                                    : owned ? NamedTextColor.WHITE : NamedTextColor.DARK_GRAY));
+            // Author credit is the contest prize, so it is always shown.
+            if (skin.getAuthorName() != null) {
+                line.append(Component.text(" by " + skin.getAuthorName(), NamedTextColor.AQUA));
+            }
+            if (!owned) {
+                line.append(Component.text(" (locked)", NamedTextColor.RED));
+            } else if (!worn) {
+                line.append(Component.space())
+                        .append(CommandLinks.run("[Use]", "/idle building " + skin.getId()));
+            }
+            sender.sendMessage(line.build());
+        }
+        return true;
+    }
+
+    /**
+     * Contest submission: capture a building the player made on their own
+     * node, with the anchors they authored, into the pending review queue.
+     */
+    private boolean submitSkin(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can submit builds.", NamedTextColor.RED));
+            return true;
+        }
+        var submissions = plugin.getSkinSubmissionService();
+        if (submissions == null
+                || !plugin.getConfig().getBoolean("skins.submissions-open", true)) {
+            sender.sendMessage(Component.text("Build submissions are closed right now.",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        String action = args.length >= 2 ? args[1].toLowerCase(Locale.ROOT) : "";
+        var draft = submissions.draft(player);
+
+        if (action.equals("cancel")) {
+            submissions.cancel(player);
+            sender.sendMessage(Component.text("Submission draft discarded.", NamedTextColor.YELLOW));
+            return true;
+        }
+
+        if (action.isEmpty() || action.equals("start")) {
+            NodeRecord node = nodeStore.getByChunk(new ChunkKey(player.getWorld().getName(),
+                    player.getLocation().getBlockX() >> 4,
+                    player.getLocation().getBlockZ() >> 4));
+            if (node == null || !node.getOwnerUuid().equals(player.getUniqueId())) {
+                sender.sendMessage(Component.text(
+                        "Stand on a node you own, on the block level your build sits on.",
+                        NamedTextColor.RED));
+                return true;
+            }
+            // A merged Complex submits as one design across all its chunks;
+            // membership already proves the player owns every one of them.
+            var complex = plugin.getComplexService();
+            java.util.List<ChunkKey> chunks = java.util.List.of(node.getChunk());
+            dev.branzx.idle.complex.ComplexShape shape = null;
+            if (complex != null && node.isInComplex()) {
+                var members = complex.members(node);
+                if (!members.isEmpty()) {
+                    chunks = members.stream().map(NodeRecord::getChunk).toList();
+                    shape = complex.shapeOf(node);
+                    node = complex.anchorOf(node) == null ? node : complex.anchorOf(node);
+                }
+            }
+            var started = submissions.begin(player, node, chunks, shape);
+            var limits = shape == null ? submissions.limits() : submissions.pieceLimits();
+            sender.sendMessage(Component.text("[Idle] Build submission started.",
+                    NamedTextColor.GOLD));
+            sender.sendMessage(Component.text("  Base Y " + started.baseY()
+                    + " (where you stand). " + (shape == null
+                            ? "Only this chunk is captured."
+                            : "Capturing all " + chunks.size() + " chunks of your "
+                                    + shape.id() + " Complex."), NamedTextColor.GRAY));
+            sender.sendMessage(Component.text("  Limit per chunk: " + limits.maxWidth() + "×"
+                    + limits.maxDepth() + ", height " + limits.maxHeight() + ", "
+                    + limits.maxBlocks() + " blocks.", NamedTextColor.GRAY));
+            sender.sendMessage(Component.text("  Stand where each worker should stand, then "
+                    + "/idle submit spawn <slot> and /idle submit work <slot>.",
+                    NamedTextColor.GRAY));
+            sender.sendMessage(Component.text()
+                    .append(Component.text("  ", NamedTextColor.GRAY))
+                    .append(CommandLinks.suggest("[Finish]", "/idle submit done "))
+                    .append(Component.space())
+                    .append(CommandLinks.run("[Cancel]", "/idle submit cancel"))
+                    .build());
+            return true;
+        }
+
+        if (draft == null) {
+            sender.sendMessage(Component.text("Start a submission first. ", NamedTextColor.YELLOW)
+                    .append(CommandLinks.run("[Start]", "/idle submit start")));
+            return true;
+        }
+
+        if (action.equals("spawn") || action.equals("work")) {
+            if (args.length < 3) {
+                sender.sendMessage(Component.text("Usage: /idle submit " + action + " <slot>",
+                        NamedTextColor.YELLOW));
+                return true;
+            }
+            int slot = Integer.parseInt(args[2]);
+            if (slot < 1 || slot > 5) {
+                sender.sendMessage(Component.text("Slot must be 1-5 (a node has one slot per tier).",
+                        NamedTextColor.RED));
+                return true;
+            }
+            var pos = submissions.setAnchor(player, draft, slot, action.equals("work"));
+            sender.sendMessage(Component.text("  " + action + " slot " + slot + " set to "
+                    + pos.x() + "," + pos.y() + "," + pos.z() + " (relative to your build).",
+                    NamedTextColor.GREEN));
+            return true;
+        }
+
+        if (action.equals("done")) {
+            if (args.length < 3) {
+                sender.sendMessage(Component.text("Usage: /idle submit done <name>",
+                        NamedTextColor.YELLOW));
+                return true;
+            }
+            String name = String.join("_",
+                    java.util.Arrays.copyOfRange(args, 2, args.length));
+            var result = submissions.submit(player, draft, name);
+            sender.sendMessage(Component.text(result.message(),
+                    result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+            // Every failed rule is listed at once; fixing one at a time across
+            // several captures would be miserable for a large build.
+            for (var violation : result.violations()) {
+                sender.sendMessage(Component.text("  • " + violation.rule() + " — "
+                        + violation.detail(), NamedTextColor.RED));
+            }
+            if (result.success()) {
+                sender.sendMessage(Component.text(
+                        "  An admin will review it. Your name ships with the skin.",
+                        NamedTextColor.GRAY));
+            }
+            return true;
+        }
+
+        sender.sendMessage(Component.text(
+                "Usage: /idle submit [start|spawn <slot>|work <slot>|done <name>|cancel]",
+                NamedTextColor.YELLOW));
+        return true;
+    }
+
+    /**
+     * Merges the Production node the player stands on with the Residential
+     * plots around it, so one building can span several chunks.
+     */
+    private boolean merge(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can merge nodes.", NamedTextColor.RED));
+            return true;
+        }
+        var complex = plugin.getComplexService();
+        if (complex == null) {
+            sender.sendMessage(Component.text("Complexes are not available.", NamedTextColor.RED));
+            return true;
+        }
+        NodeRecord node = nodeStore.getByChunk(new ChunkKey(player.getWorld().getName(),
+                player.getLocation().getBlockX() >> 4,
+                player.getLocation().getBlockZ() >> 4));
+        if (node == null || !node.getOwnerUuid().equals(player.getUniqueId())) {
+            sender.sendMessage(Component.text("Stand on a production node you own.",
+                    NamedTextColor.RED));
+            return true;
+        }
+        if (node.isInComplex()) {
+            var shape = complex.shapeOf(node);
+            sender.sendMessage(Component.text("This node is already part of a "
+                    + (shape == null ? "" : shape.id() + " ") + "Complex. ", NamedTextColor.YELLOW)
+                    .append(CommandLinks.run("[Unmerge]", "/idle unmerge")));
+            return true;
+        }
+
+        if (args.length >= 2 && args[1].equalsIgnoreCase("confirm")) {
+            return mergeConfirm(player, args.length >= 3 ? args[2] : "");
+        }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("cancel")) {
+            var preview = plugin.getPreviewService();
+            if (preview != null) {
+                preview.end(player);
+            }
+            sender.sendMessage(Component.text("Merge cancelled; nothing was charged.",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+
+        if (args.length >= 2) {
+            var shape = dev.branzx.idle.complex.ComplexShape.parse(args[1]);
+            if (shape == null) {
+                sender.sendMessage(Component.text("Unknown shape '" + args[1]
+                        + "'. Try /idle merge to see what your land supports.",
+                        NamedTextColor.RED));
+                return true;
+            }
+            var placement = complex.placementFor(node, shape);
+            if (placement == null) {
+                sender.sendMessage(Component.text("You do not own the Residential plots a "
+                        + shape.id() + " Complex needs (" + shape.residentialNeeded()
+                        + " adjacent).", NamedTextColor.RED));
+                return true;
+            }
+            var preview = plugin.getPreviewService();
+            if (preview == null
+                    || !plugin.getConfig().getBoolean("nodes.preview.enabled", true)) {
+                var result = complex.merge(player.getUniqueId(), player.getWorld(), node, shape);
+                sender.sendMessage(Component.text(result.message(),
+                        result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+                return true;
+            }
+            var session = preview.openMerge(player, node,
+                    complex.planPreview(node, placement));
+            sender.sendMessage(Component.text("[Idle] Merge preview — " + shape.id()
+                    + " Complex, " + shape.blockWidth() + "×" + shape.blockDepth() + " blocks.",
+                    NamedTextColor.GOLD));
+            sender.sendMessage(Component.text("  Cost " + complex.mergeCost(shape)
+                    + " • uses " + shape.residentialNeeded() + " Residential plot(s)",
+                    NamedTextColor.GRAY));
+            if (session.obstructions() > 0) {
+                sender.sendMessage(Component.text("  " + session.obstructions()
+                        + " solid block(s) shown in red will NOT be cleared.",
+                        NamedTextColor.RED));
+            }
+            sender.sendMessage(Component.text(
+                    "  Production is unchanged. Your plots return untouched if you unmerge.",
+                    NamedTextColor.DARK_GRAY));
+            sender.sendMessage(Component.text()
+                    .append(Component.text("  ", NamedTextColor.GRAY))
+                    .append(CommandLinks.run("[Confirm]", "/idle merge confirm " + session.token()))
+                    .append(Component.space())
+                    .append(CommandLinks.run("[Cancel]", "/idle merge cancel"))
+                    .build());
+            return true;
+        }
+
+        var options = complex.options(node);
+        if (options.isEmpty()) {
+            sender.sendMessage(Component.text(
+                    "No Complex fits here yet. Claim Residential plots next to this node — "
+                            + "they become the building's floor space.", NamedTextColor.YELLOW));
+            return true;
+        }
+        sender.sendMessage(Component.text("[Idle] Complex shapes your land supports:",
+                NamedTextColor.GOLD));
+        // Distinct shapes only: several offsets of the same shape are the same
+        // offer to the player, who picks a size and not a corner.
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (var option : options) {
+            if (!seen.add(option.shape().id())) {
+                continue;
+            }
+            var shape = option.shape();
+            sender.sendMessage(Component.text()
+                    .append(Component.text("  " + shape.id() + " — "
+                            + shape.blockWidth() + "×" + shape.blockDepth() + " blocks, "
+                            + shape.residentialNeeded() + " residential, "
+                            + complex.mergeCost(shape) + " Coins ", NamedTextColor.WHITE))
+                    .append(CommandLinks.run("[Merge]", "/idle merge " + shape.id()))
+                    .build());
+        }
+        sender.sendMessage(Component.text(
+                "  Production is unchanged — a Complex is a bigger building, not a bigger yield.",
+                NamedTextColor.DARK_GRAY));
+        return true;
+    }
+
+    /**
+     * Commits a previewed merge. The shape is derived from the chunks the
+     * preview covered, and every rule is checked again by the service — the
+     * token only proves the player saw the offer.
+     */
+    private boolean mergeConfirm(Player player, String token) {
+        var preview = plugin.getPreviewService();
+        var complex = plugin.getComplexService();
+        var session = preview == null ? null : preview.consume(player, token);
+        if (session == null
+                || session.kind() != dev.branzx.idle.service.PreviewService.Kind.MERGE
+                || complex == null) {
+            player.sendMessage(Component.text("That merge preview is no longer active. ",
+                    NamedTextColor.YELLOW)
+                    .append(CommandLinks.run("[Merge]", "/idle merge")));
+            return true;
+        }
+        NodeRecord node = nodeStore.getById(session.nodeId());
+        if (node == null) {
+            player.sendMessage(Component.text("That node no longer exists.", NamedTextColor.RED));
+            return true;
+        }
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+        for (var part : session.parts()) {
+            minX = Math.min(minX, part.chunk().x());
+            maxX = Math.max(maxX, part.chunk().x());
+            minZ = Math.min(minZ, part.chunk().z());
+            maxZ = Math.max(maxZ, part.chunk().z());
+        }
+        var shape = new dev.branzx.idle.complex.ComplexShape(maxX - minX + 1, maxZ - minZ + 1);
+        var result = complex.merge(player.getUniqueId(), player.getWorld(), node, shape);
+        player.sendMessage(Component.text(result.message(),
                 result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    private boolean unmerge(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can unmerge nodes.", NamedTextColor.RED));
+            return true;
+        }
+        var complex = plugin.getComplexService();
+        if (complex == null) {
+            sender.sendMessage(Component.text("Complexes are not available.", NamedTextColor.RED));
+            return true;
+        }
+        NodeRecord node = nodeStore.getByChunk(new ChunkKey(player.getWorld().getName(),
+                player.getLocation().getBlockX() >> 4,
+                player.getLocation().getBlockZ() >> 4));
+        if (node == null || !node.getOwnerUuid().equals(player.getUniqueId())) {
+            sender.sendMessage(Component.text("Stand on a node you own.", NamedTextColor.RED));
+            return true;
+        }
+        var result = complex.unmerge(player.getUniqueId(), player.getWorld(), node);
+        player.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    /** Re-orients an already-placed building, through the same preview. */
+    private boolean rotate(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can rotate buildings.", NamedTextColor.RED));
+            return true;
+        }
+        var preview = plugin.getPreviewService();
+        if (args.length >= 2 && args[1].equalsIgnoreCase("rotate")) {
+            return previewRotate(player, args.length >= 3 ? args[2] : "");
+        }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("cancel")) {
+            if (preview != null) {
+                preview.end(player);
+            }
+            player.sendMessage(Component.text("Rotation cancelled; nothing was charged.",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("confirm")) {
+            var session = preview == null ? null : preview.consume(player, args.length >= 3 ? args[2] : "");
+            if (session == null
+                    || session.kind() != dev.branzx.idle.service.PreviewService.Kind.ROTATE) {
+                player.sendMessage(Component.text("That rotation preview is no longer active.",
+                        NamedTextColor.YELLOW));
+                return true;
+            }
+            NodeRecord node = nodeStore.getById(session.nodeId());
+            if (node == null) {
+                player.sendMessage(Component.text("That node no longer exists.", NamedTextColor.RED));
+                return true;
+            }
+            ClaimService.Result result = claimService.rotate(player.getUniqueId(),
+                    player.getWorld(), node, session.rotation());
+            player.sendMessage(Component.text(result.message(),
+                    result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+            return true;
+        }
+
+        NodeRecord node = nodeStore.getByChunk(new ChunkKey(player.getWorld().getName(),
+                player.getLocation().getBlockX() >> 4,
+                player.getLocation().getBlockZ() >> 4));
+        if (node == null || !node.getOwnerUuid().equals(player.getUniqueId())) {
+            player.sendMessage(Component.text("Stand on a node you own to rotate its building.",
+                    NamedTextColor.RED));
+            return true;
+        }
+        if (!node.getType().isProduction()) {
+            player.sendMessage(Component.text("Only production nodes have a building.",
+                    NamedTextColor.RED));
+            return true;
+        }
+        if (node.isUpgrading()) {
+            player.sendMessage(Component.text(
+                    "Wait for this node's upgrade to finish before rotating.", NamedTextColor.RED));
+            return true;
+        }
+        if (preview == null || !plugin.getConfig().getBoolean("nodes.preview.enabled", true)) {
+            player.sendMessage(Component.text("Placement preview is disabled on this server.",
+                    NamedTextColor.RED));
+            return true;
+        }
+        var complex = plugin.getComplexService();
+        // A Complex turns as one unit and a long one may only face two ways,
+        // so the step skips the orientations its land cannot support.
+        if (complex != null && node.isInComplex()) {
+            var anchor = complex.anchorOf(node);
+            if (anchor != null) {
+                node = anchor;
+            }
+        }
+        int step = rotationStep(node);
+        int target = node.getRotation() + step;
+        // Opens already turned one step, so the first thing shown is a change.
+        var session = (complex != null && node.isInComplex())
+                ? preview.openRotate(player, node, complex.planRotation(node, target), target)
+                : preview.openRotate(player, node,
+                        plugin.getSchematicService().getRegistry().definitionFor(node), target);
+        player.sendMessage(Component.text("[Idle] Rotation preview for node #" + node.getId()
+                + " — cost " + claimService.rotateCost() + ".", NamedTextColor.GOLD));
+        player.sendMessage(Component.text("  Facing: " + facing(session.rotation()),
+                NamedTextColor.GRAY));
+        player.sendMessage(Component.text()
+                .append(Component.text("  ", NamedTextColor.GRAY))
+                .append(CommandLinks.run("[Rotate]", "/idle rotate rotate " + session.token()))
+                .append(Component.space())
+                .append(CommandLinks.run("[Confirm]", "/idle rotate confirm " + session.token()))
+                .append(Component.space())
+                .append(CommandLinks.run("[Cancel]", "/idle rotate cancel"))
+                .build());
+        return true;
+    }
+
+    private boolean claimConfirm(Player player, String token) {
+        var preview = plugin.getPreviewService();
+        var session = preview == null ? null : preview.consume(player, token);
+        // A rotate or review token must not be spendable here, or a stale
+        // link from another flow could trigger a claim.
+        if (session == null
+                || session.kind() != dev.branzx.idle.service.PreviewService.Kind.CLAIM) {
+            player.sendMessage(Component.text("That placement preview is no longer active. ",
+                    NamedTextColor.YELLOW)
+                    .append(CommandLinks.suggest("[Claim again]", "/idle claim ")));
+            return true;
+        }
+        // The preview only reserved a ground level; every rule is checked
+        // again here because the world may have moved on while it was open.
+        ClaimService.Result result = claimService.claim(player.getUniqueId(), player.getWorld(),
+                session.chunk(), session.type(), session.originY());
+        player.sendMessage(Component.text(result.message(),
+                result.success() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        return true;
+    }
+
+    private boolean claimCancel(Player player) {
+        var preview = plugin.getPreviewService();
+        if (preview == null || preview.get(player) == null) {
+            player.sendMessage(Component.text("You have no placement preview open.",
+                    NamedTextColor.YELLOW));
+            return true;
+        }
+        preview.end(player);
+        player.sendMessage(Component.text("Placement cancelled; nothing was charged.",
+                NamedTextColor.YELLOW));
         return true;
     }
 

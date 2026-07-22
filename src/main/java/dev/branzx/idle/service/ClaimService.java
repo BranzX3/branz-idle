@@ -61,6 +61,23 @@ public final class ClaimService {
         this.auditService = auditService;
     }
 
+    private dev.branzx.idle.complex.ComplexService complexService;
+
+    /** Late-bound: the complex service is built alongside this one. */
+    public void setComplexService(dev.branzx.idle.complex.ComplexService complexService) {
+        this.complexService = complexService;
+    }
+
+    /**
+     * Breaks the Complex a node belongs to before the node stops qualifying.
+     * Rendering a Complex with a hole in it is worse than reverting it.
+     */
+    private void releaseComplex(NodeRecord record, World world) {
+        if (complexService != null && record.isInComplex()) {
+            complexService.onMemberLost(record, world);
+        }
+    }
+
     private void audit(UUID actor, String action, String detail) {
         if (auditService != null) {
             auditService.log(actor, action, detail);
@@ -75,11 +92,61 @@ public final class ClaimService {
         return allowed.contains(world.getName());
     }
 
-    public double claimCost(NodeType type) {
+    /**
+     * Starting price of a claim, before the escalation in
+     * {@link #costAtIndex(NodeType, int)}.
+     */
+    public double baseClaimCost(NodeType type) {
         if (type == NodeType.RESIDENTIAL) {
             return plugin.getConfig().getDouble("claims.residential-cost", 500.0);
         }
         return plugin.getConfig().getDouble("claims.production-cost", 1000.0);
+    }
+
+    private double costFactor(NodeType type) {
+        double factor = type == NodeType.RESIDENTIAL
+                ? plugin.getConfig().getDouble("claims.residential-cost-factor", 1.15)
+                : plugin.getConfig().getDouble("claims.production-cost-factor", 1.6);
+        // A factor below 1 would make land get cheaper the more you own,
+        // which inverts the whole point of the escalation.
+        return Math.max(1.0, factor);
+    }
+
+    /**
+     * Price of the next claim when the player already owns {@code existing}
+     * of that category.
+     *
+     * <p>Escalating rather than flat: a fixed price makes the widest possible
+     * territory the obvious play for anyone with Coins, and removes the
+     * decision between going wide and going deep. Rising prices let the
+     * market do the limiting instead of a hard cap.</p>
+     */
+    public double costAtIndex(NodeType type, int existing) {
+        return baseClaimCost(type) * Math.pow(costFactor(type), Math.max(0, existing));
+    }
+
+    /** Price of this player's next claim of that category. */
+    public double claimCost(UUID owner, NodeType type) {
+        return costAtIndex(type, ownedOfCategory(owner, type));
+    }
+
+    /** How many claims of a type's category the player already holds. */
+    public int ownedOfCategory(UUID owner, NodeType type) {
+        return type == NodeType.RESIDENTIAL
+                ? (int) countResidential(owner)
+                : (int) countProductionNodes(owner);
+    }
+
+    /**
+     * Refund for giving one back: a fraction of what that claim cost, which
+     * is the price at the index it occupies rather than the price of the next
+     * one. Refunding against the next, higher, price would pay players to
+     * churn claims.
+     */
+    public double unclaimRefund(UUID owner, NodeType type) {
+        int existing = Math.max(0, ownedOfCategory(owner, type) - 1);
+        return costAtIndex(type, existing)
+                * plugin.getConfig().getDouble("claims.unclaim-refund-ratio", 0.5);
     }
 
     public int nodeCap(UUID owner) {
@@ -109,13 +176,28 @@ public final class ClaimService {
     }
 
     /**
-     * Full claim validation + persistence. Must be called on the main thread:
-     * validation and in-memory mutation are synchronous and authoritative,
-     * while durability goes through the async DB write queue.
+     * The outcome of claim validation, plus the price. Preview and the actual
+     * claim both go through here so a preview can never show terms the commit
+     * would not honour.
      */
-    public Result claim(UUID owner, World world, ChunkKey chunk, NodeType type) {
+    public record Quote(boolean allowed, String message, double cost, boolean tutorialFree) {
+        static Quote denied(String message) {
+            return new Quote(false, message, 0, false);
+        }
+    }
+
+    /**
+     * Runs every claim rule without mutating anything. Safe to call
+     * repeatedly; the result is only valid for this instant, so the commit
+     * path re-runs it rather than trusting an earlier answer.
+     */
+    public Quote quote(UUID owner, World world, ChunkKey chunk, NodeType type) {
         if (nodeStore.getByChunk(chunk) != null) {
-            return Result.fail("This chunk is already claimed.");
+            return Quote.denied("This chunk is already claimed.");
+        }
+        // A previous unclaim's terrain restore may still be running here.
+        if (schematicService.isBusy(chunk)) {
+            return Quote.denied("This chunk is still being restored; try again in a moment.");
         }
 
         boolean ownerHasResidential = hasResidential(owner);
@@ -124,29 +206,29 @@ public final class ClaimService {
             long residential = countResidential(owner);
             int cap = residentialCap(owner);
             if (residential >= cap) {
-                return Result.fail("Residential plot cap reached (" + residential + "/" + cap + ").");
+                return Quote.denied("Residential plot cap reached (" + residential + "/" + cap + ").");
             }
             // Extra residential plots must still connect to the territory;
             // the very first plot may be claimed anywhere.
             if (ownerHasResidential && !isAdjacentToOwn(owner, chunk)) {
-                return Result.fail("Additional plots must touch your existing territory.");
+                return Quote.denied("Additional plots must touch your existing territory.");
             }
         } else {
             if (!ownerHasResidential) {
-                return Result.fail("Claim a Residential node first (/idle claim residential).");
+                return Quote.denied("Claim a Residential node first (/idle claim residential).");
             }
             if (gameDesignService != null && gameDesignService.firstProductionIsFree(owner)
                     && type != NodeType.MINING && type != NodeType.FARMING
                     && type != NodeType.WOODCUTTING) {
-                return Result.fail("Your free Starter Node can be Mining, Farming, or Woodcutting.");
+                return Quote.denied("Your free Starter Node can be Mining, Farming, or Woodcutting.");
             }
             if (!isAdjacentToOwn(owner, chunk)) {
-                return Result.fail("Production nodes must touch your existing territory.");
+                return Quote.denied("Production nodes must touch your existing territory.");
             }
             long production = countProductionNodes(owner);
             int cap = nodeCap(owner);
             if (production >= cap) {
-                return Result.fail("Node cap reached (" + production + "/" + cap + ").");
+                return Quote.denied("Node cap reached (" + production + "/" + cap + ").");
             }
         }
 
@@ -154,23 +236,72 @@ public final class ClaimService {
                 && (type == NodeType.RESIDENTIAL
                 ? gameDesignService.firstResidentialIsFree(owner)
                 : gameDesignService.firstProductionIsFree(owner));
-        double cost = tutorialFree ? 0 : claimCost(type);
+        double cost = tutorialFree ? 0 : claimCost(owner, type);
+        PlayerData data = playerDataStore.getOnline(owner);
+        if (data == null) {
+            return Quote.denied("Your data is still loading, try again in a moment.");
+        }
+        if (data.getBalance() < cost) {
+            return Quote.denied("Not enough money (need " + cost + ").");
+        }
+        return new Quote(true, "", cost, tutorialFree);
+    }
+
+    /**
+     * Full claim validation + persistence. Must be called on the main thread:
+     * validation and in-memory mutation are synchronous and authoritative,
+     * while durability goes through the async DB write queue.
+     */
+    public Result claim(UUID owner, World world, ChunkKey chunk, NodeType type) {
+        return claim(owner, world, chunk, type, -1);
+    }
+
+    /**
+     * Claims a chunk, optionally reusing a ground level already computed for a
+     * placement preview so the building lands exactly where the player saw it.
+     * Pass a negative {@code presetOriginY} to compute it fresh.
+     */
+    public Result claim(UUID owner, World world, ChunkKey chunk, NodeType type, int presetOriginY) {
+        // Re-validated at commit time even when a preview already passed:
+        // the chunk, the balance, and the caps can all change while a preview
+        // is open, so an earlier answer is never trusted.
+        Quote quote = quote(owner, world, chunk, type);
+        if (!quote.allowed()) {
+            return Result.fail(quote.message());
+        }
+        double cost = quote.cost();
+        boolean tutorialFree = quote.tutorialFree();
         PlayerData data = playerDataStore.getOnline(owner);
         if (data == null) {
             return Result.fail("Your data is still loading, try again in a moment.");
         }
-        if (data.getBalance() < cost) {
-            return Result.fail("Not enough money (need " + cost + ").");
-        }
 
-        int originY = type.isProduction() ? SchematicService.groundY(world, chunk) : 0;
+        int originY;
+        if (!type.isProduction()) {
+            originY = 0;
+        } else if (presetOriginY >= 0) {
+            originY = presetOriginY;
+        } else {
+            originY = schematicService.groundY(world, chunk,
+                    schematicService.getRegistry().forNodeType(type, 1));
+        }
         NodeRecord record = nodeStore.insert(owner, chunk, type, originY, data, cost);
         if (record == null) {
             return Result.fail("Claim could not be committed; no Coins were charged.");
         }
+        String siteNote = "";
         if (type.isProduction()) {
-            schematicService.buildHousing(record, world);
-            npcManager.spawnForNode(record, world);
+            // Workers spawn once the building actually exists; a large
+            // blueprint finishes over the next few ticks.
+            SchematicService.SiteReport site = schematicService.buildHousing(record, world,
+                    () -> npcManager.spawnForNode(record, world));
+            // Vegetation was cleared into the snapshot and returns on unclaim,
+            // so it is not worth a warning. Solid blocks were left alone and
+            // the owner needs to know the building overlaps them.
+            if (!site.isClear()) {
+                siteNote = " Note: " + site.obstructions().size()
+                        + " solid block(s) overlap the building and were left in place.";
+            }
         }
         boolean firstProduction = gameDesignService != null && gameDesignService.onNodeClaimed(record);
         if (firstProduction && workerService != null) {
@@ -179,13 +310,18 @@ public final class ClaimService {
         audit(owner, "CLAIM", type + " @ " + chunk.world() + " " + chunk.x() + "," + chunk.z()
                 + " cost=" + cost + " tutorialFree=" + tutorialFree);
         return Result.ok(type + " node claimed at chunk " + chunk.x() + "," + chunk.z()
-                + (tutorialFree ? " (tutorial claim: FREE)." : " (-" + cost + ")."));
+                + (tutorialFree ? " (tutorial claim: FREE)." : " (-" + cost + ").") + siteNote);
     }
 
     public Result unclaim(UUID owner, World world, ChunkKey chunk) {
         NodeRecord record = nodeStore.getByChunk(chunk);
         if (record == null || !record.getOwnerUuid().equals(owner)) {
             return Result.fail("You do not own this chunk.");
+        }
+        // The building here is still being written; tearing it down mid-write
+        // would leave whatever the in-flight job places afterwards.
+        if (schematicService.isBusy(chunk)) {
+            return Result.fail("This node's building is still going up; try again in a moment.");
         }
 
         List<NodeRecord> owned = nodeStore.getByOwner(owner);
@@ -212,8 +348,11 @@ public final class ClaimService {
             return Result.fail("Wait for this node's Global Expedition commitment to finish.");
         }
 
-        double refund = claimCost(record.getType())
-                * plugin.getConfig().getDouble("claims.unclaim-refund-ratio", 0.5);
+        // Reverts the Complex first, so the plots restore from their own
+        // snapshots before this one is deleted.
+        releaseComplex(record, world);
+
+        double refund = unclaimRefund(owner, record.getType());
 
         if (record.getType().isProduction()) {
             if (explorationService != null) {
@@ -297,6 +436,131 @@ public final class ClaimService {
                 }
             }
         }
+    }
+
+    // ---- appearance ----
+
+    /**
+     * Rewrites a placed building after its appearance changed (rotation, and
+     * later skin). Restores the terrain the old building covered, re-pastes,
+     * and resettles the workers.
+     *
+     * <p>Custom worker anchor overrides are dropped because they were picked
+     * against the old layout — the same rule tier upgrades follow (spec
+     * §4.5). Keeping them would leave NPCs standing in the new walls.</p>
+     */
+    private void reapplyBuilding(NodeRecord node, World world) {
+        if (anchorStore != null) {
+            anchorStore.clearNode(node.getId());
+        }
+        // A Complex rewrites every one of its chunks, not just the anchor's.
+        if (complexService != null && node.isInComplex()) {
+            complexService.rotateComplex(node, node.getRotation(), world);
+            return;
+        }
+        // Strictly sequential: a large restore and a large build both run
+        // across ticks, and overlapping them would have the restore put old
+        // terrain back on top of the new building.
+        schematicService.restoreTerrain(node, world,
+                () -> schematicService.buildHousing(node, world,
+                        () -> npcManager.refreshNode(node, world)));
+    }
+
+    /**
+     * Changes which skin a node wears. Purely cosmetic: nothing about
+     * production, workers, or caps changes, which is what keeps skins sellable
+     * without touching the power ceiling.
+     */
+    public Result applySkin(UUID owner, World world, NodeRecord node, String skinId) {
+        if (!node.getType().isProduction()) {
+            return Result.fail("Only production nodes have a building to reskin.");
+        }
+        if (!node.getOwnerUuid().equals(owner)) {
+            return Result.fail("You do not own this node.");
+        }
+        if (node.isUpgrading()) {
+            return Result.fail("Wait for this node's upgrade to finish before reskinning.");
+        }
+        if (schematicService.isBusy(node.getChunk())) {
+            return Result.fail("This building is still going up; try again in a moment.");
+        }
+        String previous = node.getSkinId();
+        String target = skinId == null || skinId.isBlank() ? null : skinId;
+        if (java.util.Objects.equals(previous, target)) {
+            return Result.fail("This node already wears that skin.");
+        }
+        node.setSkinId(target);
+        nodeStore.updateAppearance(node);
+        reapplyBuilding(node, world);
+        audit(owner, "SKIN", "node#" + node.getId() + " " + previous + " -> " + target);
+        return Result.ok(target == null
+                ? "Building reset to the default appearance."
+                : "Building reskinned to " + target + ".");
+    }
+
+    public double rotateCost() {
+        return plugin.getConfig().getDouble("nodes.rotate-cost", 100.0);
+    }
+
+    /**
+     * Turns a placed building to a new orientation. The caller supplies the
+     * absolute quarter-turn count the player confirmed in a preview.
+     */
+    public Result rotate(UUID owner, World world, NodeRecord node, int rotation) {
+        // A Complex turns as one unit, so a member redirects to its anchor.
+        if (complexService != null && node.isInComplex()) {
+            NodeRecord anchor = complexService.anchorOf(node);
+            if (anchor != null) {
+                node = anchor;
+            }
+        }
+        if (!node.getType().isProduction()) {
+            return Result.fail("Only production nodes have a building to rotate.");
+        }
+        if (!node.getOwnerUuid().equals(owner)) {
+            return Result.fail("You do not own this node.");
+        }
+        // The upgrade is about to replace this building anyway, and rotating
+        // mid-build would desync the rising animation from the record.
+        if (node.isUpgrading()) {
+            return Result.fail("Wait for this node's upgrade to finish before rotating.");
+        }
+        if (schematicService.isBusy(node.getChunk())) {
+            return Result.fail("This building is still going up; try again in a moment.");
+        }
+        int target = dev.branzx.idle.schematic.Rotation.normalize(rotation);
+        if (target == node.getRotation()) {
+            return Result.fail("The building already faces that way.");
+        }
+        // A long Complex cannot turn sideways: the rotated footprint would
+        // need chunks arranged the other way, which the player does not own.
+        if (complexService != null && node.isInComplex()
+                && !complexService.allowedRotations(node).contains(target)) {
+            var shape = complexService.shapeOf(node);
+            return Result.fail("A " + (shape == null ? "" : shape.id() + " ")
+                    + "Complex can only face two ways — your land runs the other direction. "
+                    + "Turn it around instead.");
+        }
+        double cost = rotateCost();
+        PlayerData data = playerDataStore.getOnline(owner);
+        if (data == null) {
+            return Result.fail("Your data is still loading, try again in a moment.");
+        }
+        if (data.getBalance() < cost) {
+            return Result.fail("Not enough money (need " + cost + ").");
+        }
+
+        int previous = node.getRotation();
+        node.setRotation(target);
+        if (cost > 0 && !nodeStore.updateProductionWithCost(node, data, cost)) {
+            node.setRotation(previous);
+            return Result.fail("Rotation could not be committed; no Coins were charged.");
+        }
+        nodeStore.updateAppearance(node);
+        reapplyBuilding(node, world);
+        audit(owner, "ROTATE", "node#" + node.getId() + " " + previous + " -> " + target
+                + " cost=" + cost);
+        return Result.ok("Building rotated (-" + cost + "). Worker positions updated.");
     }
 
     // ---- timed tier upgrades ----
@@ -390,6 +654,9 @@ public final class ClaimService {
         if (record.storageTotal() + record.bulkStorageTotal() > 0) {
             return Result.fail("Collect this node's buffer before converting.");
         }
+        if (schematicService.isBusy(chunk)) {
+            return Result.fail("This building is still going up; try again in a moment.");
+        }
         if (globalExpeditionService != null && globalExpeditionService.hasCommitments(record.getId())) {
             return Result.fail("Wait for this node's Global Expedition commitment to finish.");
         }
@@ -398,6 +665,9 @@ public final class ClaimService {
         if (data == null || data.getBalance() < cost) {
             return Result.fail("Not enough money (need " + cost + ").");
         }
+
+        // A Complex skin is authored for a node type, so changing type ends it.
+        releaseComplex(record, world);
 
         if (explorationService != null) {
             explorationService.cancel(record);
@@ -418,8 +688,10 @@ public final class ClaimService {
             record.setExplorationExp(oldExp);
             return Result.fail("Conversion could not be committed; no Coins were charged.");
         }
-        schematicService.rebuild(record, world);
-        npcManager.refreshNode(record, world);
+        // Restore-then-build, not a bare re-paste: the new type's building may
+        // be smaller than the old one, and pasting over it would leave the
+        // previous walls standing around the new hut.
+        reapplyBuilding(record, world);
         audit(owner, "CONVERT", "node#" + record.getId() + " -> " + newType + " cost=" + cost);
         return Result.ok("Node converted to " + newType + " (-" + cost
                 + "). Worker contracts returned — reassign them.");
