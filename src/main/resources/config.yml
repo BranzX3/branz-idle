@@ -777,6 +777,11 @@ economy:
     min-season-objective-completions-7d: 2
     max-claim-failures-7d: 10
     max-catch-up-claims-7d: 250
+    # Push a chat line to online admins holding idle.admin.metrics when a
+    # threshold above is first breached, and once more when it recovers.
+    # Without this the dashboard only answers admins who go and look.
+    broadcast: true
+    sweep-minutes: 15
 
 season:
   id: preseason

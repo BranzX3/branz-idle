@@ -158,6 +158,20 @@ public final class GameStateStore {
                         && expectedValue.equals(entry.getValue()));
     }
 
+    /**
+     * Every scope id this owner holds rows for, sorted. Used by surfaces that
+     * enumerate history whose keys are not known ahead of time, such as the
+     * seasons a player took part in.
+     */
+    public java.util.List<String> scopeIds(UUID owner, String scope) {
+        return values.keySet().stream()
+                .filter(key -> key.owner().equals(owner) && scope.equals(key.scope()))
+                .map(Key::scopeId)
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
     public String findByScopeId(String scope, String scopeId, String name) {
         return values.entrySet().stream()
                 .filter(entry -> scope.equals(entry.getKey().scope())

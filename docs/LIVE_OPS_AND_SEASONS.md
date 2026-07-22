@@ -61,6 +61,16 @@ They do not award permanent production power.
 Permanent Chronicle records which seasons were participated in, but incomplete
 season pages do not block permanent completion.
 
+Implementation: seasonal points, objectives and entitlements are scoped by
+season id, so changing `season.id` starts an empty page rather than editing
+the old one. The first login after that change archives the previous season —
+points earned, objectives completed, reward tiers claimed — into the permanent
+record, increments the `seasons_participated` Chronicle counter, and tells the
+player in one chat line. A season the player never touched is not archived: a
+blank page is not a record. The count comes from the season's own durable
+rows, not from the current catalog, because the objective list has usually
+been replaced by then.
+
 ## 6. Catch-up
 
 - Weekly Chapters remain claimable until season end.

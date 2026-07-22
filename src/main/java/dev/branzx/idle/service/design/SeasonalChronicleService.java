@@ -38,6 +38,29 @@ public final class SeasonalChronicleService {
                              boolean unlocked, boolean claimed) {
     }
 
+    /**
+     * One finished season as the permanent Chronicle remembers it. Seasonal
+     * points and entitlements stay scoped to their own season; this is the
+     * lifetime record that a new season cannot overwrite.
+     */
+    public record Participation(String seasonId, int points, int objectives, int rewardTiers) {
+    }
+
+    /**
+     * Optional hook fired when a finished season is archived on login.
+     * Injected so the service stays headless-testable; the plugin wires it to
+     * a chat line with a Chronicle link.
+     */
+    @FunctionalInterface
+    public interface ArchiveNotifier {
+        void archived(UUID owner, Participation participation);
+    }
+
+    private static final String ARCHIVE_SCOPE = "SEASON_ARCHIVE";
+    private static final String LAST_SEEN = "season_last_seen";
+
+    private ArchiveNotifier archiveNotifier = (owner, participation) -> { };
+
     private final IdlePlugin plugin;
     private final GameStateStore state;
     private final SeasonService seasons;
@@ -110,6 +133,80 @@ public final class SeasonalChronicleService {
         tiers.sort(Comparator.comparingInt(TierDefinition::points));
         plugin.getLogger().info("Seasonal Chronicle: " + definitions.size()
                 + " objectives and " + tiers.size() + " reward tiers.");
+    }
+
+    public void setArchiveNotifier(ArchiveNotifier notifier) {
+        if (notifier != null) this.archiveNotifier = notifier;
+    }
+
+    /**
+     * Closes the season the player last played in, if the operator has since
+     * started a new one. Seasonal points, objectives and entitlements are
+     * scoped by season id, so a rollover would otherwise leave the previous
+     * season invisible: the rows survive but nothing reads them again. This
+     * writes the permanent record the Chronicle shows instead.
+     *
+     * <p>Runs on login rather than on a season-change event because the season
+     * is a config value: it can change while the player is offline, or while
+     * the server is down.</p>
+     */
+    public void archiveFinishedSeason(UUID owner) {
+        String current = seasons.id();
+        String previous = state.get(owner, "ACCOUNT", "-", LAST_SEEN);
+        if (previous == null || previous.isBlank()) {
+            state.put(owner, "ACCOUNT", "-", LAST_SEEN, current);
+            return;
+        }
+        if (previous.equals(current)) return;
+        Participation participation = snapshot(owner, previous);
+        state.put(owner, "ACCOUNT", "-", LAST_SEEN, current);
+        if (participation.points() == 0 && participation.objectives() == 0
+                && participation.rewardTiers() == 0) {
+            // Nothing happened that season; a blank page is not a record.
+            return;
+        }
+        if (!state.claimOnce(owner, ARCHIVE_SCOPE, previous, "archived")) return;
+        state.put(owner, ARCHIVE_SCOPE, previous, "points",
+                String.valueOf(participation.points()));
+        state.put(owner, ARCHIVE_SCOPE, previous, "objectives",
+                String.valueOf(participation.objectives()));
+        state.put(owner, ARCHIVE_SCOPE, previous, "reward_tiers",
+                String.valueOf(participation.rewardTiers()));
+        chronicle.count(owner, "seasons_participated", 1);
+        telemetry.record(owner, "SEASON_ARCHIVED",
+                "{\"season\":\"" + DesignText.safe(previous) + "\",\"points\":"
+                        + participation.points() + ",\"objectives\":" + participation.objectives()
+                        + ",\"tiers\":" + participation.rewardTiers() + "}");
+        archiveNotifier.archived(owner, participation);
+    }
+
+    /** Seasons this player finished, oldest archive key first. */
+    public List<Participation> participation(UUID owner) {
+        return state.scopeIds(owner, ARCHIVE_SCOPE).stream()
+                .map(seasonId -> new Participation(seasonId,
+                        state.getInt(owner, ARCHIVE_SCOPE, seasonId, "points", 0),
+                        state.getInt(owner, ARCHIVE_SCOPE, seasonId, "objectives", 0),
+                        state.getInt(owner, ARCHIVE_SCOPE, seasonId, "reward_tiers", 0)))
+                .toList();
+    }
+
+    /**
+     * Counts a finished season from its own durable rows rather than from the
+     * current catalog: the objective and reward-track definitions may already
+     * have been replaced for the new season.
+     */
+    private Participation snapshot(UUID owner, String seasonId) {
+        String prefix = seasonId + ":";
+        int objectives = (int) state.scopeIds(owner, "SEASON_OBJECTIVE").stream()
+                .filter(scope -> scope.startsWith(prefix))
+                .filter(scope -> "1".equals(state.get(owner, "SEASON_OBJECTIVE", scope, "completed")))
+                .count();
+        int tiers = (int) state.scopeIds(owner, "SEASON_REWARD").stream()
+                .filter(scope -> scope.startsWith(prefix))
+                .filter(scope -> "1".equals(state.get(owner, "SEASON_REWARD", scope, "claimed")))
+                .count();
+        return new Participation(seasonId,
+                state.getInt(owner, "SEASON", seasonId, "chronicle_points", 0), objectives, tiers);
     }
 
     public void advance(UUID owner, String action, int amount) {

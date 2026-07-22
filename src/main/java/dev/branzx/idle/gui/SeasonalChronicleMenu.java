@@ -42,6 +42,8 @@ public final class SeasonalChronicleMenu extends Menu {
                         Ui.line("Older objectives remain recoverable", NamedTextColor.GRAY)))
                 .build());
 
+        pastSeasons(design);
+
         int slot = 9;
         for (SeasonalChronicleService.Objective objective :
                 design.seasonalObjectives(viewer.getUniqueId())) {
@@ -94,6 +96,27 @@ public final class SeasonalChronicleMenu extends Menu {
         }
         navBar(Lang.get("menu.progress.tab.chronicle"),
                 () -> new ChronicleMenu(viewer, gui, 0).open());
+    }
+
+    /**
+     * The permanent record of finished seasons. A new season replaces the
+     * objectives and empties the point wallet, so without this the player's
+     * previous twelve weeks would simply stop being visible anywhere.
+     */
+    private void pastSeasons(GameDesignService design) {
+        List<SeasonalChronicleService.Participation> history =
+                design.seasonParticipation(viewer.getUniqueId());
+        if (history.isEmpty()) return;
+        List<Component> lore = new java.util.ArrayList<>();
+        lore.add(Ui.line("Kept in the permanent Chronicle", NamedTextColor.GRAY));
+        for (SeasonalChronicleService.Participation season : history) {
+            lore.add(Ui.line(season.seasonId() + " • " + season.points() + " pts • "
+                    + season.objectives() + " objectives • " + season.rewardTiers() + " rewards",
+                    NamedTextColor.AQUA));
+        }
+        set(8, Icon.of(Material.WRITTEN_BOOK)
+                .name("Seasons played: " + history.size(), NamedTextColor.LIGHT_PURPLE)
+                .loreComponents(List.copyOf(lore)).build());
     }
 
     @Override

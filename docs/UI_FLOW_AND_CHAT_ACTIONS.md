@@ -265,13 +265,15 @@ No chat action ever spends Coins or Credits (Tier C). Receipts after a
 purchase are informational; `[ประวัติการซื้อ]` may link `/idle credits`
 (read-only, Tier S).
 
-### 4.11 Admin — 🔶
+### 4.11 Admin — ✅
 
 - Admin help: ✅ links exist (`AdminCommands.java:130-160`).
 - Alerts: ✅ validation failure after reload → content scope, `[Validate]`;
   duplicate worker-token attempt in trade → audit scope, `[View Audit]`
-  with the player pre-filtered (`AdminAlerts.broadcast`). Economy outlier
-  alerts wait on actual outlier detection in `TelemetryService`.
+  with the player pre-filtered (`AdminAlerts.broadcast`). ✅ Economy
+  thresholds are swept on a timer by `EconomyWatchService` and pushed to the
+  metrics scope with `[Open Metrics]`: once when a breach is first raised and
+  once when it recovers, never once per sweep.
 - Mutations keep the GUI/typed path: reason capture and double-confirm do
   not fit chat. `forceunclaim` and friends are never chat-linked (Tier C).
 
@@ -314,8 +316,8 @@ tab completion and help inherit them automatically.
 5. **P2 — progress moments** (§4.7) ✅: commission/project/expedition/chapter
    via injectable notifiers so the design services stay headless-testable.
 6. **P2 — social + worker safety lines** (§4.8, §4.9) ✅.
-7. **P3 — admin alerts** (§4.11) ✅ (reload validation + duplication;
-   outlier alerts blocked on detection).
+7. **P3 — admin alerts** (§4.11) ✅ (reload validation, duplication, and the
+   periodic economy threshold sweep).
 8. **P3 — error-copy sweep** (§5) ✅ for the high-traffic command errors
    (no-target-node, warehouse-full collect, manage-trust, unknown type,
    fuse-contract); GUI-internal errors already sit next to their fix.

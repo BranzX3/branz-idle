@@ -9,6 +9,7 @@ import dev.branzx.idle.service.design.CommissionService;
 import dev.branzx.idle.service.design.DiscoveryService;
 import dev.branzx.idle.service.design.FeatureControlService;
 import dev.branzx.idle.service.design.FocusService;
+import dev.branzx.idle.service.design.EconomyWatchService;
 import dev.branzx.idle.service.design.FrontierService;
 import dev.branzx.idle.service.design.NodeBuildService;
 import dev.branzx.idle.service.design.ProjectService;
@@ -69,6 +70,7 @@ public final class GameDesignService {
     private final ExplorationService exploration;
 
     private final TelemetryService telemetryService;
+    private EconomyWatchService economyWatch;
     private final FeatureControlService controls;
     private final SeasonService seasons;
     private final ChronicleService chronicle;
@@ -130,6 +132,53 @@ public final class GameDesignService {
                                 + stage + "!") + " ", NamedTextColor.GREEN))
                         .append(CommandLinks.run("[View]", "/idle projects"))
                         .build()));
+        seasonalChronicle.setArchiveNotifier((owner, participation) -> {
+            Player player = Bukkit.getPlayer(owner);
+            if (player == null) return;
+            player.sendMessage(Component.text()
+                    .append(Component.text("[Chronicle] ", NamedTextColor.GOLD))
+                    .append(Component.text("Season " + participation.seasonId()
+                            + " closed: " + participation.points() + " Seasonal Points, "
+                            + participation.objectives() + " objectives. ", NamedTextColor.GREEN))
+                    .append(CommandLinks.run("[Open Chronicle]", "/idle chronicle"))
+                    .build());
+        });
+    }
+
+    /**
+     * Starts the periodic economy threshold sweep. The dashboard query is
+     * blocking, so the timer runs off the main thread; the alert lines are
+     * sent from that thread too, which Adventure allows.
+     */
+    private void startEconomyWatch() {
+        if (!plugin.getConfig().getBoolean("economy.alerts.broadcast", true)) return;
+        this.economyWatch = new EconomyWatchService(
+                () -> telemetryService.economyDashboardSync().alerts(),
+                new EconomyWatchService.AlertSink() {
+                    @Override
+                    public void raised(TelemetryService.AdminAlert alert) {
+                        AdminAlerts.broadcast("idle.admin.metrics", Component.text()
+                                .append(Component.text("[Economy] ",
+                                        alert.severity() == TelemetryService.Severity.CRITICAL
+                                                ? NamedTextColor.RED : NamedTextColor.GOLD))
+                                .append(Component.text(alert.message() + " ", NamedTextColor.YELLOW))
+                                .append(CommandLinks.run("[Open Metrics]", "/idle admin metrics"))
+                                .build());
+                    }
+
+                    @Override
+                    public void cleared(TelemetryService.AdminAlert alert) {
+                        AdminAlerts.broadcast("idle.admin.metrics", Component.text()
+                                .append(Component.text("[Economy] ", NamedTextColor.GRAY))
+                                .append(Component.text(alert.code()
+                                        + " is back inside its threshold. ", NamedTextColor.GRAY))
+                                .append(CommandLinks.run("[Open Metrics]", "/idle admin metrics"))
+                                .build());
+                    }
+                });
+        long minutes = Math.max(1, plugin.getConfig().getLong("economy.alerts.sweep-minutes", 15));
+        long ticks = minutes * 60L * 20L;
+        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, economyWatch::sweep, 600L, ticks);
     }
 
     public ProgressionRewards progressionRewards() {
@@ -146,6 +195,7 @@ public final class GameDesignService {
         }
         discovery.loadSync();
         projects.startWorldRendering();
+        startEconomyWatch();
     }
 
     // ---- Focus and onboarding -------------------------------------------------
@@ -172,6 +222,7 @@ public final class GameDesignService {
 
     public void onLogin(UUID owner) {
         commissions.onLogin(owner);
+        seasonalChronicle.archiveFinishedSeason(owner);
     }
 
     /** Called after an authoritative claim. Returns true for the first production node. */
@@ -419,6 +470,11 @@ public final class GameDesignService {
 
     public Result claimSeasonalReward(UUID owner, String id) {
         return seasonalChronicle.claimReward(owner, id);
+    }
+
+    /** Finished seasons this player took part in, for the permanent Chronicle. */
+    public List<SeasonalChronicleService.Participation> seasonParticipation(UUID owner) {
+        return seasonalChronicle.participation(owner);
     }
 
     public void onNodeLevel(NodeRecord node) {

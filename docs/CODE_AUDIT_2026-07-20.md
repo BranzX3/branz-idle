@@ -74,7 +74,12 @@ database disagreeing:
 
 These are product/content work, not regressions fixed by this refactor:
 
-- Seasonal Chronicle, analytics alerts and experiment controls are partial.
+- ~~Seasonal Chronicle, analytics alerts and experiment controls are
+  partial.~~ Seasonal Chronicle now closes a season: a rollover archives the
+  player's points, objectives and reward tiers into a permanent record that
+  the next season cannot overwrite, and the Chronicle counts seasons played.
+  Analytics alerts are pushed on a timer instead of waiting for an admin to
+  open the dashboard. Experiment controls are still partial.
 - Frontier profession/crafting/equipment/repair sinks are intentionally gated
   off.
 - Public-beta evidence still needs 10 new-player playtests and five simulated
