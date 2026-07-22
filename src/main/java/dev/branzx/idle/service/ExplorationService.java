@@ -560,6 +560,7 @@ public final class ExplorationService {
         Map<String, Integer> loot = parseLoot(event.loot);
         int total = loot.values().stream().mapToInt(Integer::intValue).sum();
         int free = warehouse.freeSpace(node.getOwnerUuid());
+        WarehouseService.Snapshot before = warehouse.snapshot(node.getOwnerUuid());
         WarehouseService.Snapshot warehouseSnapshot =
                 warehouse.prepareDepositAll(node.getOwnerUuid(), loot);
         if (warehouseSnapshot == null) {
@@ -568,8 +569,11 @@ public final class ExplorationService {
         }
         // The Warehouse bundle and source event are one durable settlement.
         // A restart can therefore see either an unclaimed event or the stored
-        // loot, but never both and never neither.
-        database.submitTransaction("exploration loot claim", connection -> {
+        // loot, but never both and never neither. The commit is awaited because
+        // the reward is only granted once the durable rows accept it; a rejected
+        // settlement rolls the deposit back out of the cache and leaves the
+        // event claimable.
+        boolean committed = database.executeTransaction("exploration loot claim", connection -> {
             WarehouseService.write(connection, warehouseSnapshot);
             try (PreparedStatement delete = connection.prepareStatement(
                     "DELETE FROM idle_exploration_events WHERE id = ?")) {
@@ -577,6 +581,11 @@ public final class ExplorationService {
                 delete.executeUpdate();
             }
         });
+        if (!committed) {
+            warehouse.restore(before);
+            return new WarehouseClaimResult(false, 0,
+                    "Loot is safe — the claim could not be saved. Try again.");
+        }
         if (gameDesignService != null) {
             for (Map.Entry<String, Integer> entry : loot.entrySet()) {
                 gameDesignService.discover(node.getOwnerUuid(), node.getType(),

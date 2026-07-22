@@ -52,6 +52,24 @@
 - Gameplay state persistence was extracted into `GameStateStore`.
 - Progression rewards were moved into one config-backed catalog.
 
+## Third pass: asynchronous settlement rollback
+
+Two hot paths committed their durable rows asynchronously but mutated the
+runtime caches first, so a rejected transaction left the cache and the
+database disagreeing:
+
+- `WarehouseService.collectNode` emptied the node buffer into the Warehouse
+  cache and only logged the failure. The next Warehouse write serialises the
+  whole map, so the collected items would have been persisted a second time
+  while the node's buffer row still held them. The failure path now rolls the
+  connection back and moves each amount back into the buffer it came from
+  (re-added per material rather than replacing the maps, because production
+  keeps ticking on the main thread).
+- `ExplorationService.claimToWarehouse` deposited the loot and dropped the
+  event from memory before knowing whether the commit succeeded. The claim
+  now awaits its transaction, like the node claim already did, and restores
+  the Warehouse snapshot and leaves the event claimable when it is rejected.
+
 ## Remaining design-package gaps
 
 These are product/content work, not regressions fixed by this refactor:
@@ -73,8 +91,11 @@ These are product/content work, not regressions fixed by this refactor:
    every stack now has a durable journal row, receipt/ownership transfer is
    transactional, and interrupted offers are queued for owner refund on
    restart/login.
-4. Add further restart/fault-injection tests for claim, commission and
-   project settlement (fuse and unclaim now covered).
+4. ~~Add further restart/fault-injection tests for claim, commission and
+   project settlement (fuse and unclaim now covered).~~ Done: the Server
+   Project, expedition preparation, node collection and Exploration loot
+   claim paths are covered too. The last two were asynchronous
+   fire-and-forget writes and needed a fix, not just a test — see below.
 5. ~~Replace late service setters with a composition root and constructor
    dependencies.~~ Done (second pass); two documented cycles remain.
 6. Add MySQL integration tests in CI.

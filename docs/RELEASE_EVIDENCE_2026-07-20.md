@@ -10,6 +10,17 @@
 - Personal project fault injection: a forced progress write failure rolls
   back the Warehouse withdrawal and leaves project progress unchanged after
   restart.
+- Server Project fault injection: a forced progress write failure rolls back
+  the Warehouse withdrawal and leaves the daily contribution cap unspent
+  before and after a database restart.
+- Expedition preparation fault injection: a forced state write failure rolls
+  back the preparation-kit materials and stores no route.
+- Node collection fault injection: a forced node-row update failure leaves the
+  buffer holding the items and the Warehouse without them, and a later
+  unrelated Warehouse write cannot resurrect the rolled-back loot.
+- Exploration loot fault injection: a forced event-delete failure deposits
+  nothing, reports the failure to the player, and leaves the expedition
+  claimable; the retry after recovery persists the loot exactly once.
 - MySQL integration coverage is opt-in through
   `IDLE_TEST_MYSQL=true`. The suite verifies schema creation, restart
   persistence, and rollback across Warehouse/game-state rows. It still needs
