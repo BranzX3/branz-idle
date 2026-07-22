@@ -112,6 +112,11 @@ public final class SkinDefinition {
         return shape != null;
     }
 
+    /** True only when this skin was authored for the supplied Complex shape. */
+    public boolean matchesShape(String shapeId) {
+        return shape != null && shapeId != null && shape.equalsIgnoreCase(shapeId);
+    }
+
     /**
      * Schematic id for one cell of a Complex skin.
      *

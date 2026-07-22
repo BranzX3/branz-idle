@@ -58,6 +58,8 @@ class ComplexShapeTest {
         assertNull(ComplexShape.parse("3"));
         assertNull(ComplexShape.parse("axb"));
         assertNull(ComplexShape.parse("0x3"), "a shape must cover a chunk");
+        assertNull(ComplexShape.parse("4x4"), "unsupported shapes must not reach the planner");
+        assertNull(ComplexShape.parse("10000x10000"), "unbounded input would exhaust the server");
     }
 
     @Test

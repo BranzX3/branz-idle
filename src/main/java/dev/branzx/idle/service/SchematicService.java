@@ -34,8 +34,12 @@ public final class SchematicService {
     private final SchematicRegistry registry;
     // nodeId -> serialized pre-build blocks ("x,y,z|blockdata" lines)
     private final Map<Long, List<String>> snapshots = new ConcurrentHashMap<>();
-    /** Chunks with a multi-tick build or restore still in flight. */
-    private final java.util.Set<ChunkKey> busyChunks = ConcurrentHashMap.newKeySet();
+    /**
+     * In-flight world jobs per chunk. A count, rather than a set, keeps a
+     * callback-started second stage from clearing the busy flag while an outer
+     * upgrade/rebuild still owns it.
+     */
+    private final Map<ChunkKey, Integer> busyChunks = new ConcurrentHashMap<>();
 
     public SchematicService(IdlePlugin plugin, Database database, SchematicRegistry registry) {
         this.plugin = plugin;
@@ -257,12 +261,16 @@ public final class SchematicService {
         work.addAll(structural);
         work.addAll(attachable);
 
-        applyBudgeted(node.getChunk(), world, work, snapshot, () -> {
-            persistSnapshot(node.getId(), snapshot.lines());
-            if (onDone != null) {
-                onDone.run();
-            }
-        });
+        captureSnapshot(world, work, snapshot);
+        // The durable restore data must exist before the first world block is
+        // changed. If the server stops halfway through a budgeted paste, an
+        // unclaim after restart can still restore every original block.
+        if (!persistSnapshotSync(node.getId(), snapshot.lines())) {
+            plugin.getLogger().severe("Aborting build for node " + node.getId()
+                    + " because its terrain snapshot could not be persisted.");
+            return report;
+        }
+        applyBudgeted(node.getChunk(), world, work, null, onDone);
         return report;
     }
 
@@ -319,19 +327,41 @@ public final class SchematicService {
         }
     }
 
-    private void persistSnapshot(long nodeId, List<String> snapshot) {
-        snapshots.put(nodeId, snapshot);
-        database.submitWrite(() -> {
-            try (Connection connection = database.getConnection();
-                 PreparedStatement upsert = connection.prepareStatement(
-                         "REPLACE INTO idle_snapshots (node_id, blocks_json) VALUES (?, ?)")) {
+    private void captureSnapshot(World world, List<PasteBlock> work, Snapshot snapshot) {
+        for (PasteBlock block : work) {
+            snapshot.record(world.getBlockAt(block.x(), block.y(), block.z()));
+        }
+    }
+
+    private boolean persistSnapshotSync(long nodeId, List<String> snapshot) {
+        List<String> durable = List.copyOf(snapshot);
+        boolean committed = database.executeTransaction("snapshot node " + nodeId, connection -> {
+            try (PreparedStatement upsert = connection.prepareStatement(
+                    "REPLACE INTO idle_snapshots (node_id, blocks_json) VALUES (?, ?)")) {
                 upsert.setLong(1, nodeId);
-                upsert.setString(2, String.join("\n", snapshot));
+                upsert.setString(2, String.join("\n", durable));
                 upsert.executeUpdate();
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to persist snapshot for node " + nodeId + ": " + e.getMessage());
             }
         });
+        if (committed) {
+            snapshots.put(nodeId, durable);
+        }
+        return committed;
+    }
+
+    private boolean deleteSnapshotSync(long nodeId) {
+        boolean committed = database.executeTransaction("delete snapshot for node " + nodeId,
+                connection -> {
+            try (PreparedStatement delete = connection.prepareStatement(
+                    "DELETE FROM idle_snapshots WHERE node_id = ?")) {
+                delete.setLong(1, nodeId);
+                delete.executeUpdate();
+            }
+        });
+        if (committed) {
+            snapshots.remove(nodeId);
+        }
+        return committed;
     }
 
     /** Re-paste a damaged building; the original terrain snapshot is untouched. */
@@ -347,6 +377,7 @@ public final class SchematicService {
      * interval. Used on tier-upgrade completion.
      */
     public void animateUpgrade(NodeRecord node, World world, Runnable onDone) {
+        markBusy(node.getChunk());
         // Restore old terrain (removes the previous building), then build. The
         // restore may span ticks, so the rising build waits for it rather than
         // racing it back over the new walls.
@@ -354,30 +385,31 @@ public final class SchematicService {
             SchematicDefinition definition = registry.definitionFor(node);
             Location origin = origin(node, world);
             Snapshot snapshot = new Snapshot();
+            List<PasteBlock> clear = clearWork(definition, origin, node.getRotation());
+            List<PasteBlock> all = new ArrayList<>(clear);
+            all.addAll(resolveBlocks(definition, origin, node.getRotation()));
+            captureSnapshot(world, all, snapshot);
+            if (!persistSnapshotSync(node.getId(), snapshot.lines())) {
+                plugin.getLogger().severe("Aborting upgrade build for node " + node.getId()
+                        + " because its terrain snapshot could not be persisted.");
+                unmarkBusy(node.getChunk());
+                return;
+            }
             // Restoring put the original vegetation back, and the new tier may
             // have a larger footprint, so the site is cleared again before the
             // rising build starts.
             applyBudgeted(node.getChunk(), world,
-                    clearWork(definition, origin, node.getRotation()), snapshot,
-                    () -> riseNewBuilding(node, world, definition, origin, snapshot, onDone));
+                    clear, null,
+                    () -> riseNewBuilding(node, world, definition, origin, onDone));
         });
     }
 
     /** The bottom-up construction pass, once the site is clear. */
     private void riseNewBuilding(NodeRecord node, World world, SchematicDefinition definition,
-                                 Location origin, Snapshot snapshot, Runnable onDone) {
+                                 Location origin, Runnable onDone) {
         List<PasteBlock> structural = new ArrayList<>();
         List<PasteBlock> attachable = new ArrayList<>();
         collect(resolveBlocks(definition, origin, node.getRotation()), structural, attachable);
-
-        // Snapshot the terrain we're about to overwrite (for a future unclaim).
-        for (PasteBlock pb : structural) {
-            snapshot.record(world.getBlockAt(pb.x(), pb.y(), pb.z()));
-        }
-        for (PasteBlock pb : attachable) {
-            snapshot.record(world.getBlockAt(pb.x(), pb.y(), pb.z()));
-        }
-        persistSnapshot(node.getId(), snapshot.lines());
 
         // Group structural by absolute Y for a rising build; attachables last.
         java.util.TreeMap<Integer, List<PasteBlock>> byLayer = new java.util.TreeMap<>();
@@ -393,6 +425,7 @@ public final class SchematicService {
                 if (!layers.hasNext()) {
                     applyPass(world, attachable, null); // doors/torches once solids exist
                     cancel();
+                    unmarkBusy(node.getChunk());
                     if (onDone != null) {
                         onDone.run();
                     }
@@ -529,9 +562,7 @@ public final class SchematicService {
             }
             return;
         }
-        if (key != null) {
-            busyChunks.add(key);
-        }
+        markBusy(key);
         new org.bukkit.scheduler.BukkitRunnable() {
             private int index;
 
@@ -543,9 +574,7 @@ public final class SchematicService {
                 }
                 if (index >= ordered.size()) {
                     cancel();
-                    if (key != null) {
-                        busyChunks.remove(key);
-                    }
+                    unmarkBusy(key);
                     if (onDone != null) {
                         onDone.run();
                     }
@@ -562,7 +591,19 @@ public final class SchematicService {
      * old terrain on top of the new building.</p>
      */
     public boolean isBusy(ChunkKey chunk) {
-        return busyChunks.contains(chunk);
+        return busyChunks.getOrDefault(chunk, 0) > 0;
+    }
+
+    private void markBusy(ChunkKey chunk) {
+        if (chunk != null) {
+            busyChunks.merge(chunk, 1, Integer::sum);
+        }
+    }
+
+    private void unmarkBusy(ChunkKey chunk) {
+        if (chunk != null) {
+            busyChunks.computeIfPresent(chunk, (ignored, count) -> count <= 1 ? null : count - 1);
+        }
     }
 
     /** Restores the pre-claim terrain and drops the stored snapshot. */
@@ -577,7 +618,7 @@ public final class SchematicService {
      * finishes over several ticks.
      */
     public void restoreTerrain(NodeRecord node, World world, Runnable onDone) {
-        List<String> snapshot = snapshots.remove(node.getId());
+        List<String> snapshot = snapshots.get(node.getId());
         if (snapshot != null) {
             List<PasteBlock> structural = new ArrayList<>();
             List<PasteBlock> attachable = new ArrayList<>();
@@ -607,20 +648,21 @@ public final class SchematicService {
             }
             List<PasteBlock> work = new ArrayList<>(structural);
             work.addAll(attachable);
-            applyBudgeted(node.getChunk(), world, work, null, onDone);
+            applyBudgeted(node.getChunk(), world, work, null, () -> {
+                // Keep the snapshot durable for the whole restore. A crash or
+                // reload mid-job can therefore retry instead of stranding a
+                // half-restored chunk with no recovery data.
+                if (!deleteSnapshotSync(node.getId())) {
+                    plugin.getLogger().severe("Terrain restored for node " + node.getId()
+                            + " but its snapshot row could not be deleted.");
+                }
+                if (onDone != null) {
+                    onDone.run();
+                }
+            });
         } else if (onDone != null) {
             onDone.run();
         }
-        database.submitWrite(() -> {
-            try (Connection connection = database.getConnection();
-                 PreparedStatement delete = connection.prepareStatement(
-                         "DELETE FROM idle_snapshots WHERE node_id = ?")) {
-                delete.setLong(1, node.getId());
-                delete.executeUpdate();
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to delete snapshot for node " + node.getId() + ": " + e.getMessage());
-            }
-        });
     }
 
     /**

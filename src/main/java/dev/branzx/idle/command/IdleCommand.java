@@ -454,7 +454,9 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        var available = registry.forType(node.getType());
+        var available = registry.forType(node.getType()).stream()
+                .filter(skin -> claimService.skinFits(node, skin.getId()))
+                .toList();
         if (available.isEmpty()) {
             sender.sendMessage(Component.text("No skins exist for " + node.getType()
                     + " nodes yet.", NamedTextColor.YELLOW));

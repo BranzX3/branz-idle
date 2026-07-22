@@ -202,6 +202,48 @@ public final class NodeStore {
         });
     }
 
+    /**
+     * Commits appearance changes for one or more nodes and their Coin cost as
+     * one durable unit. Rotation of a Complex and initial membership must not
+     * charge first and leave the appearance writes queued separately.
+     */
+    public boolean updateAppearancesWithCost(List<NodeRecord> records, PlayerData player,
+                                             double cost) {
+        record Appearance(long id, String skinId, int rotation, long complexAnchor, int originY) {
+        }
+        List<Appearance> appearances = records.stream()
+                .map(record -> new Appearance(record.getId(), record.getSkinId(),
+                        record.getRotation(), record.getComplexAnchor(), record.getOriginY()))
+                .toList();
+        double balanceAfter = player.getBalance() - cost;
+        boolean committed = database.executeTransaction("paid appearance update", connection -> {
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idle_nodes SET skin_id = ?, rotation = ?, complex_anchor = ?, "
+                            + "origin_y = ? WHERE id = ?")) {
+                for (Appearance appearance : appearances) {
+                    update.setString(1, appearance.skinId());
+                    update.setInt(2, appearance.rotation());
+                    update.setLong(3, appearance.complexAnchor());
+                    update.setInt(4, appearance.originY());
+                    update.setLong(5, appearance.id());
+                    update.addBatch();
+                }
+                int[] changed = update.executeBatch();
+                for (int count : changed) {
+                    if (count == 0) throw new SQLException("Node row is missing");
+                }
+            }
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idle_players SET balance = ? WHERE uuid = ?")) {
+                update.setDouble(1, balanceAfter);
+                update.setString(2, player.getUuid().toString());
+                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
+            }
+        });
+        if (committed) player.addBalance(-cost);
+        return committed;
+    }
+
     /** Commits a production-state mutation and its Coin cost together. */
     public boolean updateProductionWithCost(NodeRecord record, PlayerData player, double cost) {
         String storageJson = record.serializeStorage();

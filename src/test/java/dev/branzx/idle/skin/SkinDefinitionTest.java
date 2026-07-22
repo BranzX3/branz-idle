@@ -132,6 +132,17 @@ class SkinDefinitionTest {
     }
 
     @Test
+    void complexSkinOnlyMatchesItsAuthoredShape() {
+        SkinDefinition lodge = skin("lodge");
+        lodge.setShape("2x1");
+
+        assertTrue(lodge.matchesShape("2X1"));
+        assertFalse(lodge.matchesShape("3x1"));
+        assertFalse(lodge.matchesShape(null));
+        assertFalse(skin("cottage").matchesShape("2x1"));
+    }
+
+    @Test
     void displayFallsBackToTheIdSoAListingIsNeverBlank() {
         assertEquals("cottage", skin("cottage").getDisplay());
 

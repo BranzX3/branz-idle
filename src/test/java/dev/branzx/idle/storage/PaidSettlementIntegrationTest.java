@@ -125,6 +125,72 @@ class PaidSettlementIntegrationTest {
     }
 
     @Test
+    void complexAppearanceAndItsCostCommitTogether() throws Exception {
+        IdlePlugin plugin = mock(IdlePlugin.class);
+        FileConfiguration config = mock(FileConfiguration.class);
+        when(plugin.getConfig()).thenReturn(config);
+        when(plugin.getDataFolder()).thenReturn(temp.toFile());
+        when(plugin.getLogger()).thenReturn(Logger.getLogger("PaidSettlementIntegrationTest"));
+        when(config.getString("storage.type", "sqlite")).thenReturn("sqlite");
+
+        Database database = new Database(plugin);
+        database.init();
+        try {
+            UUID owner = UUID.randomUUID();
+            PlayerDataStore players = new PlayerDataStore(plugin, database);
+            PlayerData player = players.loadOrCreateSync(owner, "Builder");
+            player.addBalance(10_000);
+            players.saveSync(player);
+
+            NodeStore nodes = new NodeStore(plugin, database);
+            NodeRecord anchor = nodes.insert(owner, new ChunkKey("world", 4, 4),
+                    NodeType.MINING, 70, player, 0);
+            NodeRecord support = nodes.insert(owner, new ChunkKey("world", 5, 4),
+                    NodeType.RESIDENTIAL, 0, player, 0);
+            assertNotNull(anchor);
+            assertNotNull(support);
+
+            anchor.setComplexAnchor(anchor.getId());
+            anchor.setRotation(2);
+            support.setComplexAnchor(anchor.getId());
+            support.setRotation(2);
+            support.setOriginY(70);
+            assertTrue(nodes.updateAppearancesWithCost(
+                    java.util.List.of(anchor, support), player, 5_000));
+            assertEquals(5_000.0, player.getBalance());
+
+            try (var connection = database.getConnection();
+                 PreparedStatement select = connection.prepareStatement(
+                         "SELECT rotation, complex_anchor, origin_y FROM idle_nodes "
+                                 + "WHERE id IN (?, ?) ORDER BY id")) {
+                select.setLong(1, anchor.getId());
+                select.setLong(2, support.getId());
+                try (var rs = select.executeQuery()) {
+                    assertTrue(rs.next());
+                    assertEquals(2, rs.getInt("rotation"));
+                    assertEquals(anchor.getId(), rs.getLong("complex_anchor"));
+                    assertEquals(70, rs.getInt("origin_y"));
+                    assertTrue(rs.next());
+                    assertEquals(2, rs.getInt("rotation"));
+                    assertEquals(anchor.getId(), rs.getLong("complex_anchor"));
+                    assertEquals(70, rs.getInt("origin_y"));
+                }
+            }
+            try (var connection = database.getConnection();
+                 PreparedStatement select = connection.prepareStatement(
+                         "SELECT balance FROM idle_players WHERE uuid = ?")) {
+                select.setString(1, owner.toString());
+                try (var rs = select.executeQuery()) {
+                    assertTrue(rs.next());
+                    assertEquals(5_000.0, rs.getDouble(1));
+                }
+            }
+        } finally {
+            database.shutdown();
+        }
+    }
+
+    @Test
     void fuseSettlementConsumesMaterialsAndMintsTheResultTogether() throws Exception {
         IdlePlugin plugin = mock(IdlePlugin.class);
         FileConfiguration config = mock(FileConfiguration.class);

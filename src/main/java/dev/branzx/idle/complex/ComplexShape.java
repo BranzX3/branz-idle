@@ -99,8 +99,13 @@ public record ComplexShape(int width, int depth) {
             return null;
         }
         try {
-            return new ComplexShape(Integer.parseInt(parts[0].trim()),
+            ComplexShape parsed = new ComplexShape(Integer.parseInt(parts[0].trim()),
                     Integer.parseInt(parts[1].trim()));
+            // Commands feed parsed shapes into a planner whose work grows
+            // rapidly with the rectangle's area. Never let arbitrary user
+            // dimensions reach it; only the explicitly supported catalogue
+            // is a valid gameplay shape.
+            return ALLOWED.contains(parsed) ? parsed : null;
         } catch (IllegalArgumentException e) {
             return null;
         }

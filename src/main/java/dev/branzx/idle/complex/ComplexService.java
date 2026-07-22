@@ -164,6 +164,11 @@ public final class ComplexService {
         if (busyAnywhere(placement.chunks())) {
             return Result.fail("One of those plots is still being rebuilt; try again shortly.");
         }
+        var wornSkin = schematicService.getRegistry().skinDefinition(anchor.getSkinId());
+        if (wornSkin != null && wornSkin.isComplexSkin() && !wornSkin.matchesShape(shape.id())) {
+            return Result.fail("That skin was authored for a " + wornSkin.getShape()
+                    + " Complex, not " + shape.id() + ". Choose a matching skin first.");
+        }
 
         double cost = mergeCost(shape);
         PlayerData data = playerDataStore.getOnline(owner);
@@ -183,21 +188,25 @@ public final class ComplexService {
             supports.add(support);
         }
 
-        // The charge and the anchor's own row settle in one transaction, the
-        // same way a paid tier upgrade does; membership is rolled back if the
-        // commit fails so no Coins are taken for a Complex that never formed.
+        // Stage all membership in memory, then persist every member and the
+        // charge in one transaction. A crash can never leave a paid anchor
+        // waiting for queued support-row writes.
         anchor.setComplexAnchor(anchor.getId());
-        if (cost > 0 && !nodeStore.updateProductionWithCost(anchor, data, cost)) {
-            anchor.setComplexAnchor(0);
-            return Result.fail("Merge could not be committed; no Coins were charged.");
-        }
-        nodeStore.updateAppearance(anchor);
+        List<Integer> previousOrigins = supports.stream().map(NodeRecord::getOriginY).toList();
         for (NodeRecord support : supports) {
             support.setComplexAnchor(anchor.getId());
-            // Every chunk shares the anchor's ground level, or the building
-            // steps up and down the slope and tears apart.
             support.setOriginY(anchor.getOriginY());
-            nodeStore.updateAppearance(support);
+        }
+        List<NodeRecord> changed = new ArrayList<>();
+        changed.add(anchor);
+        changed.addAll(supports);
+        if (!nodeStore.updateAppearancesWithCost(changed, data, cost)) {
+            anchor.setComplexAnchor(0);
+            for (int i = 0; i < supports.size(); i++) {
+                supports.get(i).setComplexAnchor(0);
+                supports.get(i).setOriginY(previousOrigins.get(i));
+            }
+            return Result.fail("Merge could not be committed; no Coins were charged.");
         }
 
         rebuildAll(anchor, world);
@@ -253,10 +262,20 @@ public final class ComplexService {
      * with a hole in it.
      */
     public void onMemberLost(NodeRecord lost, World world) {
+        onMemberLost(lost, anchorOf(lost), world);
+    }
+
+    /**
+     * Variant that retains the anchor resolved before the lost node was
+     * removed from {@link NodeStore}. This is required when the anchor itself
+     * is unclaimed: after the durable delete, an id lookup can no longer find
+     * it, but the remaining members still need releasing.
+     */
+    public void onMemberLost(NodeRecord lost, NodeRecord knownAnchor, World world) {
         if (!lost.isInComplex()) {
             return;
         }
-        NodeRecord anchor = anchorOf(lost);
+        NodeRecord anchor = knownAnchor != null ? knownAnchor : anchorOf(lost);
         if (anchor == null) {
             lost.setComplexAnchor(0);
             return;
@@ -343,6 +362,11 @@ public final class ComplexService {
         rebuildAll(anchor, world);
     }
 
+    /** Rebuilds a Complex whose appearance fields are already persisted. */
+    public void rebuildComplex(NodeRecord anchor, World world) {
+        rebuildAll(anchor, world);
+    }
+
     /**
      * The parts a Complex would draw at a proposed rotation, for previewing a
      * turn before it is paid for. Resolved through the same cell mapping and
@@ -381,6 +405,14 @@ public final class ComplexService {
     public List<Integer> allowedRotations(NodeRecord node) {
         ComplexShape shape = shapeOf(node);
         return shape == null ? List.of(0, 1, 2, 3) : shape.allowedRotations();
+    }
+
+    /** True when any chunk belonging to this node's building is being written. */
+    public boolean isBusy(NodeRecord node) {
+        if (node == null || !node.isInComplex()) {
+            return node != null && schematicService.isBusy(node.getChunk());
+        }
+        return busyAnywhere(members(node).stream().map(NodeRecord::getChunk).toList());
     }
 
     /** The placement a shape would take here, or null if the land will not take it. */
@@ -426,6 +458,12 @@ public final class ComplexService {
                 // this chunk renders whichever piece the rotation brings here.
                 return new ComplexShape(maxX - minX + 1, maxZ - minZ + 1)
                         .authoredCell(col, row, rotation);
+            }
+
+            @Override
+            public String shapeIdOf(NodeRecord node) {
+                ComplexShape shape = ComplexService.this.shapeOf(node);
+                return shape == null ? null : shape.id();
             }
         };
     }

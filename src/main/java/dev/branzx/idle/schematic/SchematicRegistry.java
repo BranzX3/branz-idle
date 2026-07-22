@@ -140,6 +140,14 @@ public final class SchematicRegistry {
         if (cell == null) {
             return null;
         }
+        dev.branzx.idle.skin.SkinDefinition skin = skinDefinition(anchor.getSkinId());
+        String actualShape = layout.shapeIdOf(node);
+        if (skin != null && skin.isComplexSkin() && !skin.matchesShape(actualShape)) {
+            // Never stretch a layout authored for another rectangle across
+            // this Complex. Treat corrupt/legacy assignments as empty until
+            // the owner chooses a compatible skin.
+            return EMPTY;
+        }
         return pieceForCell(anchor, cell[0], cell[1], anchor.getId() == node.getId());
     }
 
@@ -180,6 +188,9 @@ public final class SchematicRegistry {
 
         /** {@code {col, row}} of this node inside its Complex, or null. */
         int[] cellOf(NodeRecord node);
+
+        /** Shape currently occupied by this Complex, e.g. {@code 3x2}. */
+        String shapeIdOf(NodeRecord node);
     }
 
     /** Late-bound: the complex service is built after this registry. */
@@ -222,6 +233,10 @@ public final class SchematicRegistry {
      */
     public void setSkinRegistry(dev.branzx.idle.skin.SkinRegistry skinRegistry) {
         this.skinRegistry = skinRegistry;
+    }
+
+    public dev.branzx.idle.skin.SkinDefinition skinDefinition(String skinId) {
+        return skinRegistry == null || skinId == null ? null : skinRegistry.get(skinId);
     }
 
     public void put(SchematicDefinition definition) {

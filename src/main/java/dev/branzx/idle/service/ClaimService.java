@@ -72,9 +72,14 @@ public final class ClaimService {
      * Breaks the Complex a node belongs to before the node stops qualifying.
      * Rendering a Complex with a hole in it is worse than reverting it.
      */
-    private void releaseComplex(NodeRecord record, World world) {
+    private NodeRecord complexAnchorBeforeLoss(NodeRecord record) {
+        return complexService != null && record.isInComplex()
+                ? complexService.anchorOf(record) : null;
+    }
+
+    private void releaseComplex(NodeRecord record, NodeRecord anchor, World world) {
         if (complexService != null && record.isInComplex()) {
-            complexService.onMemberLost(record, world);
+            complexService.onMemberLost(record, anchor, world);
         }
     }
 
@@ -320,7 +325,8 @@ public final class ClaimService {
         }
         // The building here is still being written; tearing it down mid-write
         // would leave whatever the in-flight job places afterwards.
-        if (schematicService.isBusy(chunk)) {
+        if (schematicService.isBusy(chunk)
+                || (complexService != null && record.isInComplex() && complexService.isBusy(record))) {
             return Result.fail("This node's building is still going up; try again in a moment.");
         }
 
@@ -348,9 +354,9 @@ public final class ClaimService {
             return Result.fail("Wait for this node's Global Expedition commitment to finish.");
         }
 
-        // Reverts the Complex first, so the plots restore from their own
-        // snapshots before this one is deleted.
-        releaseComplex(record, world);
+        NodeRecord formerComplexAnchor = complexAnchorBeforeLoss(record);
+        boolean restoreResidentialSlice = record.isInComplex()
+                && record.getType() == NodeType.RESIDENTIAL;
 
         double refund = unclaimRefund(owner, record.getType());
 
@@ -374,10 +380,14 @@ public final class ClaimService {
         } else {
             nodeStore.delete(record);
         }
+        // Only mutate Complex membership and the world after the durable
+        // unclaim succeeds. Otherwise a failed refund transaction would leave
+        // an intact node whose Complex had already been dismantled.
+        releaseComplex(record, formerComplexAnchor, world);
         if (record.getType() == NodeType.RESIDENTIAL && gameDesignService != null) {
             gameDesignService.onResidentialRemoved(owner);
         }
-        if (record.getType().isProduction()) {
+        if (record.getType().isProduction() || restoreResidentialSlice) {
             schematicService.restoreTerrain(record, world);
         }
         audit(owner, "UNCLAIM", record.getType() + " @ " + chunk.world() + " " + chunk.x() + ","
@@ -392,14 +402,24 @@ public final class ClaimService {
         if (reason == null || reason.isBlank() || auditId == null || auditId.isBlank()) {
             return Result.fail("A moderation reason and audit id are required.");
         }
+        if (schematicService.isBusy(chunk)
+                || (complexService != null && record.isInComplex() && complexService.isBusy(record))) {
+            return Result.fail("This building is still being written; try again in a moment.");
+        }
+        NodeRecord formerComplexAnchor = complexAnchorBeforeLoss(record);
+        boolean restoreResidentialSlice = record.isInComplex()
+                && record.getType() == NodeType.RESIDENTIAL;
         if (record.getType().isProduction()) {
             if (explorationService != null) explorationService.cancel(record);
             ejectAllWorkers(record);
             if (anchorStore != null) anchorStore.clearNode(record.getId());
             npcManager.despawnNode(record.getId());
-            schematicService.restoreTerrain(record, world);
         }
         nodeStore.delete(record);
+        releaseComplex(record, formerComplexAnchor, world);
+        if (record.getType().isProduction() || restoreResidentialSlice) {
+            schematicService.restoreTerrain(record, world);
+        }
         if (record.getType() == NodeType.RESIDENTIAL && gameDesignService != null) {
             gameDesignService.onResidentialRemoved(record.getOwnerUuid());
         }
@@ -455,7 +475,7 @@ public final class ClaimService {
         }
         // A Complex rewrites every one of its chunks, not just the anchor's.
         if (complexService != null && node.isInComplex()) {
-            complexService.rotateComplex(node, node.getRotation(), world);
+            complexService.rebuildComplex(node, world);
             return;
         }
         // Strictly sequential: a large restore and a large build both run
@@ -481,11 +501,17 @@ public final class ClaimService {
         if (node.isUpgrading()) {
             return Result.fail("Wait for this node's upgrade to finish before reskinning.");
         }
-        if (schematicService.isBusy(node.getChunk())) {
+        if (complexService != null ? complexService.isBusy(node)
+                : schematicService.isBusy(node.getChunk())) {
             return Result.fail("This building is still going up; try again in a moment.");
         }
         String previous = node.getSkinId();
         String target = skinId == null || skinId.isBlank() ? null : skinId;
+        if (target != null && !skinFits(node, target)) {
+            return Result.fail(node.isInComplex()
+                    ? "Choose a Complex skin authored for this building's shape."
+                    : "That skin is authored for a Complex, not a single node.");
+        }
         if (java.util.Objects.equals(previous, target)) {
             return Result.fail("This node already wears that skin.");
         }
@@ -496,6 +522,19 @@ public final class ClaimService {
         return Result.ok(target == null
                 ? "Building reset to the default appearance."
                 : "Building reskinned to " + target + ".");
+    }
+
+    /** Whether a skin's authored footprint matches the node it would dress. */
+    public boolean skinFits(NodeRecord node, String skinId) {
+        var skin = schematicService.getRegistry().skinDefinition(skinId);
+        if (skin == null) {
+            return false;
+        }
+        if (!node.isInComplex()) {
+            return !skin.isComplexSkin();
+        }
+        var shape = complexService == null ? null : complexService.shapeOf(node);
+        return shape != null && skin.matchesShape(shape.id());
     }
 
     public double rotateCost() {
@@ -525,7 +564,8 @@ public final class ClaimService {
         if (node.isUpgrading()) {
             return Result.fail("Wait for this node's upgrade to finish before rotating.");
         }
-        if (schematicService.isBusy(node.getChunk())) {
+        if (complexService != null ? complexService.isBusy(node)
+                : schematicService.isBusy(node.getChunk())) {
             return Result.fail("This building is still going up; try again in a moment.");
         }
         int target = dev.branzx.idle.schematic.Rotation.normalize(rotation);
@@ -550,15 +590,20 @@ public final class ClaimService {
             return Result.fail("Not enough money (need " + cost + ").");
         }
 
-        int previous = node.getRotation();
-        node.setRotation(target);
-        if (cost > 0 && !nodeStore.updateProductionWithCost(node, data, cost)) {
-            node.setRotation(previous);
+        List<NodeRecord> appearanceNodes = complexService != null && node.isInComplex()
+                ? complexService.members(node) : List.of(node);
+        List<Integer> previous = appearanceNodes.stream().map(NodeRecord::getRotation).toList();
+        for (NodeRecord member : appearanceNodes) {
+            member.setRotation(target);
+        }
+        if (!nodeStore.updateAppearancesWithCost(appearanceNodes, data, cost)) {
+            for (int i = 0; i < appearanceNodes.size(); i++) {
+                appearanceNodes.get(i).setRotation(previous.get(i));
+            }
             return Result.fail("Rotation could not be committed; no Coins were charged.");
         }
-        nodeStore.updateAppearance(node);
         reapplyBuilding(node, world);
-        audit(owner, "ROTATE", "node#" + node.getId() + " " + previous + " -> " + target
+        audit(owner, "ROTATE", "node#" + node.getId() + " " + previous.getFirst() + " -> " + target
                 + " cost=" + cost);
         return Result.ok("Building rotated (-" + cost + "). Worker positions updated.");
     }
@@ -666,8 +711,7 @@ public final class ClaimService {
             return Result.fail("Not enough money (need " + cost + ").");
         }
 
-        // A Complex skin is authored for a node type, so changing type ends it.
-        releaseComplex(record, world);
+        NodeRecord formerComplexAnchor = complexAnchorBeforeLoss(record);
 
         if (explorationService != null) {
             explorationService.cancel(record);
@@ -688,6 +732,10 @@ public final class ClaimService {
             record.setExplorationExp(oldExp);
             return Result.fail("Conversion could not be committed; no Coins were charged.");
         }
+        // A Complex skin is authored for the old node type. Dismantle it only
+        // after the paid conversion has committed, so a DB failure leaves the
+        // previous Complex intact.
+        releaseComplex(record, formerComplexAnchor, world);
         // Restore-then-build, not a bare re-paste: the new type's building may
         // be smaller than the old one, and pasting over it would leave the
         // previous walls standing around the new hut.
