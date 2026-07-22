@@ -15,18 +15,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Two JDKs on purpose: the build targets a Java 25 toolchain, but Gradle
+      # 8.14 cannot run on 25, so Gradle itself runs on 21 and is pointed at
+      # the 25 installation through the variable setup-java exports.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: |
+            25
+            21
       - uses: gradle/actions/setup-gradle@v4
       # gradle.properties pins a local Windows JDK path; the command line wins.
-      - run: ./gradlew -Dorg.gradle.java.home="$JAVA_HOME" build
+      - run: >-
+          ./gradlew -Dorg.gradle.java.home="$JAVA_HOME_21_X64"
+          -Porg.gradle.java.installations.fromEnv=JAVA_HOME_25_X64
+          build
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: build-test-report
           path: build/reports/tests/test
+          if-no-files-found: ignore
 
   mysql:
     name: MySQL integration
@@ -56,12 +65,20 @@ jobs:
       IDLE_MYSQL_ALLOW_PUBLIC_KEY_RETRIEVAL: 'true'
     steps:
       - uses: actions/checkout@v4
+      # Two JDKs on purpose: the build targets a Java 25 toolchain, but Gradle
+      # 8.14 cannot run on 25, so Gradle itself runs on 21 and is pointed at
+      # the 25 installation through the variable setup-java exports.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: |
+            25
+            21
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew -Dorg.gradle.java.home="$JAVA_HOME" test --tests '*MySqlIntegrationTest*'
+      - run: >-
+          ./gradlew -Dorg.gradle.java.home="$JAVA_HOME_21_X64"
+          -Porg.gradle.java.installations.fromEnv=JAVA_HOME_25_X64
+          test --tests '*MySqlIntegrationTest*'
       # The suite disables itself when IDLE_TEST_MYSQL is unset, so a green
       # step proves nothing on its own. Fail unless it really executed.
       - name: Assert the MySQL suite ran
@@ -81,3 +98,4 @@ jobs:
         with:
           name: mysql-test-report
           path: build/reports/tests/test
+          if-no-files-found: ignore
