@@ -62,8 +62,14 @@ public final class Database {
             int port = cfg.getInt("port", 3306);
             String database = cfg.getString("database", "idle");
             boolean useSSL = cfg.getBoolean("useSSL", false);
+            // MySQL 8 authenticates with caching_sha2_password, which needs the
+            // server's public key when the connection is not encrypted. Off by
+            // default: fetching that key over plaintext trusts the first reply,
+            // so it is an explicit choice for trusted private networks.
+            boolean allowPublicKeyRetrieval = cfg.getBoolean("allow-public-key-retrieval", false);
             hikariConfig.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database
-                    + "?useSSL=" + useSSL + "&autoReconnect=true&characterEncoding=utf8");
+                    + "?useSSL=" + useSSL + "&autoReconnect=true&characterEncoding=utf8"
+                    + "&allowPublicKeyRetrieval=" + allowPublicKeyRetrieval);
             hikariConfig.setUsername(cfg.getString("username", "root"));
             hikariConfig.setPassword(cfg.getString("password", ""));
             hikariConfig.setMaximumPoolSize(cfg.getInt("pool-size", 10));

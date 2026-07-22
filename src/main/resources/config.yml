@@ -38,6 +38,11 @@ mysql:
   username: root
   password: "password"
   useSSL: false
+  # Required by MySQL 8 when useSSL is false and the account uses the default
+  # caching_sha2_password plugin, otherwise the driver reports
+  # "Public Key Retrieval is not allowed". Only enable it on a network you
+  # trust, or turn useSSL on instead.
+  allow-public-key-retrieval: false
   pool-size: 10
 
 # How often (in seconds) rewards are paid out to online players.

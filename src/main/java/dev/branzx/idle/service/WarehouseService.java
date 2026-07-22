@@ -264,6 +264,9 @@ public final class WarehouseService {
     public int collectNode(NodeRecord node, Map<String, Integer> movedOut) {
         UUID owner = node.getOwnerUuid();
         Map<String, Integer> warehouse = mutableContents(owner);
+        // Kept independently of movedOut so the rollback path never depends on
+        // a caller passing (or reusing) a report map.
+        Map<String, Integer> moves = new LinkedHashMap<>();
         int moved = 0;
         synchronized (node) {
             // Each pool spends its own budget, so a full Silo can never keep a
@@ -279,6 +282,7 @@ public final class WarehouseService {
                     int amount = Math.min(space, entry.getValue());
                     if (amount <= 0) continue;
                     warehouse.merge(key, amount, Integer::sum);
+                    moves.merge(key, amount, Integer::sum);
                     if (movedOut != null) movedOut.merge(key, amount, Integer::sum);
                     moved += amount;
                     if (bulk) siloSpace -= amount;
@@ -294,8 +298,11 @@ public final class WarehouseService {
         String nodeJson = node.serializeStorage();
         String bulkJson = node.serializeBulkStorage();
         int capacity = getCapacity(owner);
+        String stateBefore = node.getState();
         database.submitWrite(() -> {
-            try (Connection connection = database.getConnection()) {
+            Connection connection = null;
+            try {
+                connection = database.getConnection();
                 connection.setAutoCommit(false);
                 try (PreparedStatement upsert = connection.prepareStatement(
                         "REPLACE INTO idle_warehouse (owner_uuid, capacity, content_json) VALUES (?, ?, ?)")) {
@@ -316,9 +323,63 @@ public final class WarehouseService {
                 connection.commit();
             } catch (SQLException e) {
                 plugin.getLogger().severe("Atomic node collection failed: " + e.getMessage());
+                rollback(connection);
+                // Both rows rolled back, so the caches have to follow. Without
+                // this the buffer stays empty while the durable row still holds
+                // the items, and the next Warehouse write — which serialises the
+                // whole map — would persist them a second time.
+                revertCollection(node, owner, moves, stateBefore);
+            } finally {
+                close(connection);
             }
         });
         return moved;
+    }
+
+    private void rollback(Connection connection) {
+        if (connection == null) return;
+        try {
+            connection.rollback();
+        } catch (SQLException ignored) {
+            // The pooled connection is closing; nothing was committed.
+        }
+    }
+
+    private void close(Connection connection) {
+        if (connection == null) return;
+        try {
+            connection.setAutoCommit(true);
+        } catch (SQLException ignored) {
+            // The pooled connection is closing immediately.
+        }
+        try {
+            connection.close();
+        } catch (SQLException ignored) {
+            // Already returned to the pool.
+        }
+    }
+
+    /**
+     * Undoes a rejected collection by moving each amount back into the buffer
+     * it came from. The amounts are re-added rather than the maps replaced,
+     * because production keeps ticking on the main thread while this runs on
+     * the database writer.
+     */
+    private void revertCollection(NodeRecord node, UUID owner,
+                                  Map<String, Integer> moves, String stateBefore) {
+        Map<String, Integer> warehouse = mutableContents(owner);
+        synchronized (node) {
+            for (Map.Entry<String, Integer> entry : moves.entrySet()) {
+                String key = entry.getKey();
+                int amount = entry.getValue();
+                Map<String, Integer> buffer =
+                        isBulkCommon(key) ? node.getBulkStorage() : node.getStorage();
+                buffer.merge(key, amount, Integer::sum);
+                warehouse.computeIfPresent(key,
+                        (ignored, have) -> have - amount <= 0 ? null : have - amount);
+            }
+            node.setState(stateBefore);
+        }
     }
 
     /** Removes up to {@code amount}; returns the number actually removed. */
