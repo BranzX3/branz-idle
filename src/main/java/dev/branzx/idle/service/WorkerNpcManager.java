@@ -172,6 +172,13 @@ public final class WorkerNpcManager implements Listener {
         if (!node.getType().isProduction()) {
             return;
         }
+        // Nodes outlive a world being dropped from the config. Refusing here —
+        // the one chokepoint every caller goes through — is what keeps those
+        // leftovers from showing NPCs in a world that is no longer in play.
+        if (!plugin.getWorldGate().isEnabled(world)) {
+            despawnNode(node.getId());
+            return;
+        }
         despawnNode(node.getId());
         SchematicDefinition definition = schematicService.getRegistry()
                 .definitionFor(node);

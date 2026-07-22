@@ -82,12 +82,17 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
         // Bare /idle opens the GUI hub for players.
         if (args.length == 0) {
             if (sender instanceof Player player) {
-                guiManager.openMainHub(player);
+                if (plugin.getWorldGate().check(player)) {
+                    guiManager.openMainHub(player);
+                }
                 return true;
             }
             return balance(sender);
         }
         String sub = args[0].toLowerCase(Locale.ROOT);
+        if (!allowedHere(sender, sub)) {
+            return true;
+        }
         return switch (sub) {
             case "help" -> help(sender, args);
             case "balance" -> balance(sender);
@@ -128,6 +133,26 @@ public final class IdleCommand implements CommandExecutor, TabCompleter {
             case "admin" -> admin(sender, args);
             default -> usage(sender);
         };
+    }
+
+    /**
+     * Subcommands that read nothing from the player's surroundings and pay out
+     * nothing. These stay reachable everywhere so a player standing in a lobby
+     * can still look up their balance or read the help text.
+     */
+    private static final java.util.Set<String> WORLD_AGNOSTIC = java.util.Set.of(
+            "help", "balance", "top", "credits", "admin");
+
+    /**
+     * Everything else is gameplay, and gameplay only happens in the configured
+     * worlds. Console is never in a world, so it is left alone — its reach is
+     * already bounded by permissions.
+     */
+    private boolean allowedHere(CommandSender sender, String sub) {
+        if (WORLD_AGNOSTIC.contains(sub) || !(sender instanceof Player player)) {
+            return true;
+        }
+        return plugin.getWorldGate().check(player);
     }
 
     private boolean usage(CommandSender sender) {

@@ -34,6 +34,11 @@ public final class PayoutTask extends BukkitRunnable {
         String currencyName = plugin.getConfig().getString("currency-name", "Coins");
 
         for (Player player : plugin.getServer().getOnlinePlayers()) {
+            // Idle income is a reward for being in the game world, so a player
+            // parked in a lobby or a minigame world earns nothing.
+            if (!plugin.getWorldGate().isEnabled(player.getWorld())) {
+                continue;
+            }
             PlayerData data = dataStore.getOnline(player.getUniqueId());
             if (data == null) {
                 continue;

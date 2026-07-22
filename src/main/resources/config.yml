@@ -55,6 +55,15 @@ progression:
     weekly-chapter-coins: 2000
     catchup-commission-exp: 200
 
+# Worlds this plugin operates in. Outside them there are no commands, no
+# menus, no worker NPCs and no idle payouts. Claim protection is the one
+# exception: land already claimed stays protected even if its world is later
+# removed here, so dropping a world cannot open old claims up to griefing.
+# Empty list = every Overworld (NORMAL environment) world.
+#   worlds:
+#     - idle_world
+worlds: []
+
 # Multiplier applied to rewards for players standing in an AFK-designated
 # region/world. Set to 1.0 to disable bonus.
 afk-bonus-multiplier: 1.0
@@ -63,8 +72,9 @@ afk-bonus-multiplier: 1.0
 top-min-minutes: 1
 
 claims:
-  # Worlds where claiming is allowed. Empty list = any Overworld
-  # (NORMAL environment) world.
+  # Deprecated: use the root-level `worlds` list above, which gates the whole
+  # plugin instead of only claiming. Still read when `worlds` is empty, so old
+  # configs keep working.
   worlds: []
   # Money cost of a player's FIRST claim of each category.
   residential-cost: 500.0

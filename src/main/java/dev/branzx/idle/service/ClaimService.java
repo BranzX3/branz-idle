@@ -90,11 +90,7 @@ public final class ClaimService {
     }
 
     public boolean isClaimableWorld(World world) {
-        List<String> allowed = plugin.getConfig().getStringList("claims.worlds");
-        if (allowed.isEmpty()) {
-            return world.getEnvironment() == World.Environment.NORMAL;
-        }
-        return allowed.contains(world.getName());
+        return plugin.getWorldGate().isEnabled(world);
     }
 
     /**

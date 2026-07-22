@@ -75,6 +75,12 @@ public abstract class Menu implements InventoryHolder {
     protected abstract void build();
 
     public void open() {
+        if (!openableHere()) {
+            viewer.sendMessage(net.kyori.adventure.text.Component.text(
+                    "Idle is not active in this world.",
+                    net.kyori.adventure.text.format.NamedTextColor.RED));
+            return;
+        }
         inventory = Bukkit.createInventory(this, rows() * 9, title());
         redraw();
         if (renderer != null && renderer.open(this)) {
@@ -83,11 +89,29 @@ public abstract class Menu implements InventoryHolder {
         viewer.openInventory(inventory);
     }
 
+    /**
+     * Every screen funnels through {@link #open()}, so gating here covers chat
+     * actions and menu-to-menu navigation as well as commands. Admins are
+     * exempt: moderating from a lobby is a legitimate thing to do, and their
+     * screens are already permission-gated.
+     */
+    private boolean openableHere() {
+        if (viewer.hasPermission("idle.admin")) {
+            return true;
+        }
+        return org.bukkit.plugin.java.JavaPlugin
+                .getPlugin(dev.branzx.idle.IdlePlugin.class)
+                .getWorldGate().isEnabled(viewer.getWorld());
+    }
+
     public static void setRenderer(MenuRenderer menuRenderer) {
         renderer = menuRenderer;
     }
 
     public void redraw() {
+        if (inventory == null) {
+            return; // open() was refused; there is nothing to draw into
+        }
         inventory.clear();
         handlers.clear();
         build();

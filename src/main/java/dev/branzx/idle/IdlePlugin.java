@@ -39,6 +39,7 @@ public final class IdlePlugin extends JavaPlugin {
     private Database database;
     private PlayerDataStore dataStore;
     private NodeStore nodeStore;
+    private dev.branzx.idle.service.WorldGate worldGate;
     private ClaimService claimService;
     private TrustService trustService;
     private SchematicService schematicService;
@@ -71,6 +72,9 @@ public final class IdlePlugin extends JavaPlugin {
         migrateLegacyBalanceConfig();
         addMissingConfigDefaults();
         Lang.init(this);
+        // Built before every other service: they all ask it whether a world is
+        // in play.
+        this.worldGate = new dev.branzx.idle.service.WorldGate(this);
 
         // ---- persistence layer ----
         this.database = new Database(this);
@@ -247,12 +251,23 @@ public final class IdlePlugin extends JavaPlugin {
      * Only genuinely missing keys are added, so admin tuning is preserved.
      */
     private void addMissingConfigDefaults() {
-        if (getConfig().isSet("language")) {
-            return;
+        boolean changed = false;
+        if (!getConfig().isSet("language")) {
+            getConfig().set("language", Lang.FALLBACK);
+            getLogger().info("Added 'language' to config.yml (see lang/ for translations).");
+            changed = true;
         }
-        getConfig().set("language", Lang.FALLBACK);
-        saveConfig();
-        getLogger().info("Added 'language' to config.yml (see lang/ for translations).");
+        if (!getConfig().isSet("worlds")) {
+            // Seeded from the old claim-only list so an existing restriction
+            // widens to the whole plugin instead of silently resetting.
+            getConfig().set("worlds", getConfig().getStringList("claims.worlds"));
+            getLogger().info("Added 'worlds' to config.yml (gates the whole plugin, "
+                    + "replacing 'claims.worlds').");
+            changed = true;
+        }
+        if (changed) {
+            saveConfig();
+        }
     }
 
     @Override
@@ -289,6 +304,10 @@ public final class IdlePlugin extends JavaPlugin {
         if (database != null) {
             database.shutdown();
         }
+    }
+
+    public dev.branzx.idle.service.WorldGate getWorldGate() {
+        return worldGate;
     }
 
     public PlayerDataStore getDataStore() {
