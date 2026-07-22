@@ -17,6 +17,17 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Integer, non-transferable Credit wallet with immutable ledger and bounded
  * Hybrid Pay. This class intentionally has no Credit-to-Coin conversion API.
+ *
+ * <p><b>The database row is authoritative, never this cache.</b> Credits are
+ * bought with real money and may be granted from outside this server — a
+ * payment webhook, an admin on a sibling backend — at any moment, including
+ * while the owner is online here. So every mutation is a relative UPDATE
+ * ({@code credits = credits + ?}) guarded by its own precondition, and the
+ * cached copy is dropped immediately afterwards to be re-read on demand.
+ *
+ * <p>Writing a whole row back from a cached snapshot would silently erase any
+ * grant this server had not seen. That is paid currency disappearing, so it is
+ * worth the extra query to never do it.
  */
 public final class CreditService {
 
@@ -29,11 +40,11 @@ public final class CreditService {
     }
 
     private record Wallet(long credits, String season, long seasonOffset, long seasonCoinsEarned) {
-        Wallet credits(long value) { return new Wallet(value, season, seasonOffset, seasonCoinsEarned); }
-        Wallet offset(long value) { return new Wallet(credits, season, value, seasonCoinsEarned); }
-        Wallet earned(long value) { return new Wallet(credits, season, seasonOffset, value); }
-        Wallet reset(String value) { return new Wallet(credits, value, 0, 0); }
     }
+
+    private static final String SELECT_WALLET =
+            "SELECT credits, season_id, season_coin_offset, season_coins_earned "
+                    + "FROM idle_credit_wallet WHERE owner_uuid = ?";
 
     private final IdlePlugin plugin;
     private final Database database;
@@ -51,20 +62,12 @@ public final class CreditService {
         this.gameDesign = gameDesign;
     }
 
-    public void loadAllSync() {
-        try (Connection connection = database.getConnection();
-             PreparedStatement select = connection.prepareStatement(
-                     "SELECT owner_uuid, credits, season_id, season_coin_offset, season_coins_earned "
-                             + "FROM idle_credit_wallet");
-             ResultSet rs = select.executeQuery()) {
-            while (rs.next()) {
-                wallets.put(UUID.fromString(rs.getString("owner_uuid")),
-                        new Wallet(rs.getLong("credits"), rs.getString("season_id"),
-                                rs.getLong("season_coin_offset"), rs.getLong("season_coins_earned")));
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().severe("Failed to load Credit wallets: " + e.getMessage());
-        }
+    /**
+     * Forgets a cached wallet. Called on join and quit so a player arriving
+     * from another backend never reads a snapshot this server took earlier.
+     */
+    public void invalidate(UUID owner) {
+        wallets.remove(owner);
     }
 
     public long balance(UUID owner) {
@@ -75,25 +78,46 @@ public final class CreditService {
         return current(owner).seasonOffset();
     }
 
+    /**
+     * Runs on the payout tick for every online player, so it stays off the
+     * main thread entirely: the write is queued, and because it is relative it
+     * needs no prior read to be correct.
+     */
     public void recordCoinsEarned(UUID owner, long amount) {
         if (amount <= 0) return;
-        Wallet wallet = current(owner);
-        wallet = wallet.earned(wallet.seasonCoinsEarned() + amount);
-        wallets.put(owner, wallet);
-        persist(owner, wallet);
+        String season = gameDesign.seasonId();
+        database.submitWrite(() -> {
+            try (Connection connection = database.getConnection()) {
+                ensureRow(connection, owner, season);
+                rollSeasonIfStale(connection, owner, season);
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE idle_credit_wallet "
+                                + "SET season_coins_earned = season_coins_earned + ? "
+                                + "WHERE owner_uuid = ?")) {
+                    update.setLong(1, amount);
+                    update.setString(2, owner.toString());
+                    update.executeUpdate();
+                }
+                invalidate(owner);
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to record season earnings for "
+                        + owner + ": " + e.getMessage());
+            }
+        });
     }
 
     /**
-     * Idempotent payment-provider/admin adjustment. Replaying the same
-     * transaction id cannot mint Credits twice.
+     * Idempotent payment-provider/admin adjustment — the entry point a Discord
+     * top-up bot should use. Replaying the same transaction id cannot mint
+     * Credits twice: {@code transaction_id} is the ledger's primary key, so the
+     * duplicate INSERT aborts the whole transaction and nothing is granted.
      */
-    public synchronized boolean adjust(UUID owner, long amount, String type,
-                                       String transactionId, String detail) {
+    public boolean adjust(UUID owner, long amount, String type,
+                          String transactionId, String detail) {
         if (transactionId == null || transactionId.isBlank() || amount == 0) return false;
-        Wallet before = current(owner);
-        if (amount < 0 && before.credits() + amount < 0) return false;
-        Wallet after = before.credits(before.credits() + amount);
+        String season = gameDesign.seasonId();
         boolean committed = database.executeTransaction("Credit adjustment " + transactionId, connection -> {
+            ensureRow(connection, owner, season);
             try (PreparedStatement insert = connection.prepareStatement(
                     "INSERT INTO idle_credit_ledger "
                             + "(transaction_id, owner_uuid, entry_type, amount, detail_json) VALUES (?, ?, ?, ?, ?)")) {
@@ -104,16 +128,24 @@ public final class CreditService {
                 insert.setString(5, detail);
                 insert.executeUpdate();
             }
-            try (PreparedStatement upsert = connection.prepareStatement(
-                    "REPLACE INTO idle_credit_wallet "
-                            + "(owner_uuid, credits, season_id, season_coin_offset, season_coins_earned) "
-                            + "VALUES (?, ?, ?, ?, ?)")) {
-                bindWallet(upsert, owner, after);
-                upsert.executeUpdate();
+            // The balance floor lives in the WHERE clause so a deduction can
+            // never overdraw, however stale this server's view was.
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idle_credit_wallet SET credits = credits + ? "
+                            + "WHERE owner_uuid = ? AND credits + ? >= 0")) {
+                update.setLong(1, amount);
+                update.setString(2, owner.toString());
+                update.setLong(3, amount);
+                if (update.executeUpdate() != 1) {
+                    throw new SQLException("Insufficient Credits or missing wallet row");
+                }
             }
         });
+        // Invalidated either way: a rejection usually means the real balance
+        // has moved on without us, so the cached copy is the last thing to
+        // keep trusting.
+        invalidate(owner);
         if (!committed) return false;
-        wallets.put(owner, after);
         audit.log(owner, "CREDIT_" + type, "{\"transaction\":\"" + safe(transactionId)
                 + "\",\"amount\":" + amount + "}");
         return true;
@@ -124,8 +156,8 @@ public final class CreditService {
      * payable in Coins; seasonal offset is additionally bounded by 30,000
      * Coins and 25% of Coins earned.
      */
-    public synchronized Checkout hybridPay(UUID owner, long coinPrice, long requestedCredits,
-                                           String purchaseId, String idempotencyKey) {
+    public Checkout hybridPay(UUID owner, long coinPrice, long requestedCredits,
+                              String purchaseId, String idempotencyKey) {
         if (coinPrice <= 0) return Checkout.fail("Invalid checkout price.");
         PlayerData player = dataStore.getOnline(owner);
         if (player == null) return Checkout.fail("Player data is not loaded.");
@@ -148,8 +180,6 @@ public final class CreditService {
         }
 
         String tx = "HYBRID:" + idempotencyKey;
-        Wallet after = new Wallet(wallet.credits() - credits, wallet.season(),
-                wallet.seasonOffset() + offset, wallet.seasonCoinsEarned());
         double balanceAfter = player.getBalance() - coins;
         String detail = "{\"purchase\":\"" + safe(purchaseId) + "\",\"coinOffset\":" + offset
                 + ",\"coins\":" + coins + "}";
@@ -166,12 +196,20 @@ public final class CreditService {
                 insert.setString(4, detail);
                 insert.executeUpdate();
             }
-            try (PreparedStatement upsert = connection.prepareStatement(
-                    "REPLACE INTO idle_credit_wallet "
-                            + "(owner_uuid, credits, season_id, season_coin_offset, season_coins_earned) "
-                            + "VALUES (?, ?, ?, ?, ?)")) {
-                bindWallet(upsert, owner, after);
-                upsert.executeUpdate();
+            // Re-checking the Credit balance here is what makes the quote
+            // above safe to compute from a cached wallet: if a grant or spend
+            // landed elsewhere in between, this fails instead of overdrawing.
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idle_credit_wallet SET credits = credits - ?, "
+                            + "season_coin_offset = season_coin_offset + ? "
+                            + "WHERE owner_uuid = ? AND credits >= ?")) {
+                update.setLong(1, credits);
+                update.setLong(2, offset);
+                update.setString(3, owner.toString());
+                update.setLong(4, credits);
+                if (update.executeUpdate() != 1) {
+                    throw new SQLException("Credit balance changed during checkout");
+                }
             }
             try (PreparedStatement update = connection.prepareStatement(
                     "UPDATE idle_players SET balance = ? WHERE uuid = ?")) {
@@ -186,7 +224,7 @@ public final class CreditService {
             return Checkout.fail("Checkout was already processed or the Credit balance changed.");
         }
         player.addBalance(-coins);
-        wallets.put(owner, after);
+        invalidate(owner);
         audit.log(owner, "HYBRID_PAY", "{\"purchase\":\"" + safe(purchaseId)
                 + "\",\"coins\":" + coins + ",\"credits\":" + credits + "}");
         return new Checkout(true, "Paid " + coins + " Coins + " + credits + " Credits.", coins, credits);
@@ -214,38 +252,98 @@ public final class CreditService {
         return entries;
     }
 
+    // ---- wallet reads ----
+
+    /**
+     * Cached read-through. The cache exists to keep menu redraws off the
+     * database; it is dropped by {@link #invalidate} after every write and on
+     * every login, so it can go stale but can never be written back.
+     */
     private Wallet current(UUID owner) {
-        Wallet wallet = wallets.computeIfAbsent(owner,
-                ignored -> new Wallet(0, gameDesign.seasonId(), 0, 0));
-        if (!wallet.season().equals(gameDesign.seasonId())) {
-            wallet = wallet.reset(gameDesign.seasonId());
-            wallets.put(owner, wallet);
-            persist(owner, wallet);
+        Wallet cached = wallets.get(owner);
+        if (cached != null && cached.season().equals(gameDesign.seasonId())) {
+            return cached;
         }
+        Wallet wallet = loadSync(owner);
+        if (!wallet.season().equals(gameDesign.seasonId())) {
+            wallet = rollSeason(owner);
+        }
+        wallets.put(owner, wallet);
         return wallet;
     }
 
-    private void persist(UUID owner, Wallet wallet) {
-        database.submitWrite(() -> {
-            try (Connection connection = database.getConnection();
-                 PreparedStatement upsert = connection.prepareStatement(
-                         "REPLACE INTO idle_credit_wallet "
-                                 + "(owner_uuid, credits, season_id, season_coin_offset, season_coins_earned) "
-                                 + "VALUES (?, ?, ?, ?, ?)")) {
-                bindWallet(upsert, owner, wallet);
-                upsert.executeUpdate();
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to persist Credit wallet: " + e.getMessage());
+    /** Reads the wallet, creating an empty row the first time a player is seen. */
+    private Wallet loadSync(UUID owner) {
+        String season = gameDesign.seasonId();
+        try (Connection connection = database.getConnection()) {
+            Wallet wallet = read(connection, owner);
+            if (wallet != null) {
+                return wallet;
             }
-        });
+            ensureRow(connection, owner, season);
+            // Another server may have inserted first, so read back rather than
+            // assuming the zeroes we just tried to write.
+            Wallet created = read(connection, owner);
+            return created != null ? created : new Wallet(0, season, 0, 0);
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to load Credit wallet for " + owner + ": " + e.getMessage());
+            // A zero wallet fails closed: purchases are refused, nothing is
+            // granted, and no write is derived from this value.
+            return new Wallet(0, season, 0, 0);
+        }
     }
 
-    private void bindWallet(PreparedStatement statement, UUID owner, Wallet wallet) throws SQLException {
-        statement.setString(1, owner.toString());
-        statement.setLong(2, wallet.credits());
-        statement.setString(3, wallet.season());
-        statement.setLong(4, wallet.seasonOffset());
-        statement.setLong(5, wallet.seasonCoinsEarned());
+    private Wallet read(Connection connection, UUID owner) throws SQLException {
+        try (PreparedStatement select = connection.prepareStatement(SELECT_WALLET)) {
+            select.setString(1, owner.toString());
+            try (ResultSet rs = select.executeQuery()) {
+                if (!rs.next()) {
+                    return null;
+                }
+                return new Wallet(rs.getLong("credits"), rs.getString("season_id"),
+                        rs.getLong("season_coin_offset"), rs.getLong("season_coins_earned"));
+            }
+        }
+    }
+
+    /**
+     * Creates the wallet row if this player has never had one. Safe to race
+     * with another backend doing the same thing.
+     */
+    private void ensureRow(Connection connection, UUID owner, String season) throws SQLException {
+        try (PreparedStatement insert = connection.prepareStatement(
+                (database.isSqlite() ? "INSERT OR IGNORE" : "INSERT IGNORE")
+                        + " INTO idle_credit_wallet (owner_uuid, credits, season_id, "
+                        + "season_coin_offset, season_coins_earned) VALUES (?, 0, ?, 0, 0)")) {
+            insert.setString(1, owner.toString());
+            insert.setString(2, season);
+            insert.executeUpdate();
+        }
+    }
+
+    /**
+     * Clears seasonal offset accounting when the season has rolled over.
+     * Credits themselves survive a season — they were paid for. The season
+     * check is in the WHERE clause, so two backends rolling the same wallet
+     * cannot double-clear a season's earnings.
+     */
+    private void rollSeasonIfStale(Connection connection, UUID owner, String season)
+            throws SQLException {
+        try (PreparedStatement update = connection.prepareStatement(
+                "UPDATE idle_credit_wallet SET season_id = ?, season_coin_offset = 0, "
+                        + "season_coins_earned = 0 WHERE owner_uuid = ? AND season_id <> ?")) {
+            update.setString(1, season);
+            update.setString(2, owner.toString());
+            update.setString(3, season);
+            update.executeUpdate();
+        }
+    }
+
+    private Wallet rollSeason(UUID owner) {
+        String season = gameDesign.seasonId();
+        database.executeTransaction("Credit season roll " + owner,
+                connection -> rollSeasonIfStale(connection, owner, season));
+        return loadSync(owner);
     }
 
     private String safe(String value) {

@@ -3,7 +3,7 @@ version: '${version}'
 main: dev.branzx.idle.IdlePlugin
 api-version: '26.2'
 depend: [Citizens]
-softdepend: [floodgate]
+softdepend: [floodgate, Vault]
 author: BranzX3
 description: Idle/AFK currency & EXP farming plugin
 

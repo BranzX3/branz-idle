@@ -27,6 +27,10 @@ repositories {
         name = "opencollab"
         url = uri("https://repo.opencollab.dev/main/")
     }
+    maven {
+        name = "jitpack"
+        url = uri("https://jitpack.io")
+    }
 }
 
 dependencies {
@@ -35,6 +39,11 @@ dependencies {
         exclude(group = "*", module = "*")
     }
     compileOnly("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")
+    // VaultAPI drags in an ancient Bukkit that would shadow paper-api on the
+    // compile classpath, so it is taken interface-only.
+    compileOnly("com.github.MilkBowl:VaultAPI:1.7") {
+        exclude(group = "org.bukkit", module = "bukkit")
+    }
 
     implementation("com.zaxxer:HikariCP:6.2.1")
     implementation("com.mysql:mysql-connector-j:9.1.0")

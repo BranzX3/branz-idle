@@ -23,14 +23,17 @@ public final class PlayerConnectionListener implements Listener {
     private final PlayerDataStore dataStore;
     private final StreakService streakService;
     private final dev.branzx.idle.service.GameDesignService gameDesignService;
+    private final dev.branzx.idle.service.CreditService creditService;
 
     public PlayerConnectionListener(IdlePlugin plugin, PlayerDataStore dataStore,
                                     StreakService streakService,
-                                    dev.branzx.idle.service.GameDesignService gameDesignService) {
+                                    dev.branzx.idle.service.GameDesignService gameDesignService,
+                                    dev.branzx.idle.service.CreditService creditService) {
         this.plugin = plugin;
         this.dataStore = dataStore;
         this.streakService = streakService;
         this.gameDesignService = gameDesignService;
+        this.creditService = creditService;
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -40,6 +43,12 @@ public final class PlayerConnectionListener implements Listener {
             @Override
             public void run() {
                 dataStore.loadOrCreateSync(player.getUniqueId(), player.getName());
+                // Credits are bought with real money and may have moved while
+                // this player was on another backend, so any snapshot this
+                // server still holds is stale.
+                if (creditService != null) {
+                    creditService.invalidate(player.getUniqueId());
+                }
                 if (!player.isOnline()) {
                     // A fast disconnect can race the asynchronous load. Do
                     // not leave a ghost "online" cache entry behind.
@@ -152,6 +161,9 @@ public final class PlayerConnectionListener implements Listener {
             @Override
             public void run() {
                 dataStore.unload(uuid);
+                if (creditService != null) {
+                    creditService.invalidate(uuid);
+                }
             }
         }.runTaskAsynchronously(plugin);
     }

@@ -144,9 +144,11 @@ public final class IdlePlugin extends JavaPlugin {
         perkService.loadAllSync();
         StreakService streakService = new StreakService(this, database, dataStore);
         streakService.loadAllSync();
+        // Deliberately not preloaded: Credit wallets are read through from the
+        // database on demand, so a grant made elsewhere is picked up without a
+        // restart.
         CreditService creditService =
                 new CreditService(this, database, dataStore, auditService, gameDesignService);
-        creditService.loadAllSync();
         this.tradeService =
                 new TradeService(this, database, auditService, workerService, gameDesignService);
 
@@ -184,7 +186,8 @@ public final class IdlePlugin extends JavaPlugin {
         pluginManager.registerEvents(
                 new dev.branzx.idle.listener.WorkerSafetyListener(workerService, gameDesignService), this);
         pluginManager.registerEvents(
-                new PlayerConnectionListener(this, dataStore, streakService, gameDesignService), this);
+                new PlayerConnectionListener(this, dataStore, streakService, gameDesignService,
+                        creditService), this);
         pluginManager.registerEvents(new ProtectionListener(nodeStore, trustService), this);
         pluginManager.registerEvents(previewService, this);
         pluginManager.registerEvents(npcManager, this);
@@ -196,6 +199,8 @@ public final class IdlePlugin extends JavaPlugin {
 
         // Citizens is a hard dependency, so its API is ready by now.
         npcManager.init();
+
+        registerVaultEconomy();
 
         // ---- scheduled work ----
         long intervalTicks = getConfig().getLong("payout-interval-seconds", 60) * 20L;
@@ -250,6 +255,47 @@ public final class IdlePlugin extends JavaPlugin {
      * falls back to its default and the admin never learns the option exists.
      * Only genuinely missing keys are added, so admin tuning is preserved.
      */
+    /**
+     * Publishes Idle Coins as the server's Vault economy so other plugins can
+     * read and move them without a middleman.
+     *
+     * <p>Coins are charged inside the same SQL transaction as the gameplay
+     * write they pay for, which is why this plugin owns the currency instead of
+     * mirroring another one — see {@code IdleEconomy}. Registering at HIGHEST
+     * makes it the provider even when a chat or essentials plugin ships its own
+     * stub economy.
+     *
+     * <p>Vault is a soft dependency, so its classes may simply be absent. The
+     * catch is on Throwable to cover NoClassDefFoundError from a Vault jar that
+     * is present but incompatible — a broken hook must not stop the plugin
+     * booting.
+     */
+    private void registerVaultEconomy() {
+        if (!getConfig().getBoolean("vault.provide", true)) {
+            getLogger().info("Vault economy provider disabled by config (vault.provide).");
+            return;
+        }
+        if (getServer().getPluginManager().getPlugin("Vault") == null) {
+            getLogger().info("Vault not installed; Coins stay internal to Idle.");
+            return;
+        }
+        try {
+            getServer().getServicesManager().register(
+                    net.milkbowl.vault.economy.Economy.class,
+                    new dev.branzx.idle.economy.IdleEconomy(this, dataStore),
+                    this,
+                    org.bukkit.plugin.ServicePriority.Highest);
+            getLogger().info("Registered Idle Coins as the Vault economy provider.");
+            if (database.isSqlite()) {
+                getLogger().warning("Vault economy is served from SQLite. On a Velocity "
+                        + "network every backend needs the same MySQL database, or each "
+                        + "server will hand out its own separate balances.");
+            }
+        } catch (Throwable t) {
+            getLogger().warning("Could not register the Vault economy provider: " + t);
+        }
+    }
+
     private void addMissingConfigDefaults() {
         boolean changed = false;
         if (!getConfig().isSet("language")) {

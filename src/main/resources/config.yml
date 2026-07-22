@@ -18,6 +18,19 @@ menu-item:
 storage:
   type: sqlite
 
+vault:
+  # Publish Idle Coins as the server's Vault economy, so shops, jobs and other
+  # plugins spend the same currency the player earns here. Idle owns the
+  # balance: its costs are charged inside the same database transaction as the
+  # claim or hire they pay for, which an external economy plugin could not
+  # take part in.
+  #
+  # On a Velocity network every backend must point at ONE shared MySQL
+  # database (storage.type: mysql), or each server hands out its own balances.
+  #
+  # Set to false to keep Coins private to this plugin.
+  provide: true
+
 mysql:
   host: localhost
   port: 3306

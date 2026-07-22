@@ -131,6 +131,117 @@ public final class PlayerDataStore {
         return online.values();
     }
 
+    // ---- cross-server safe money access ----
+    //
+    // A player is logged into exactly one backend server at a time, so the
+    // in-memory PlayerData is authoritative while they are online here. Every
+    // other case — a player online on a sibling server, or offline entirely —
+    // must go straight to the shared database, and must do so with a relative
+    // UPDATE. Reading a balance, computing a new one and writing it back would
+    // lose whichever server wrote last.
+
+    /**
+     * Balance for any player, online here or not. Returns 0 for an account
+     * that does not exist yet, which is what Vault callers expect.
+     */
+    public double balanceOf(UUID uuid) {
+        PlayerData cached = online.get(uuid);
+        if (cached != null) {
+            return cached.getBalance();
+        }
+        try (Connection connection = database.getConnection();
+             PreparedStatement select = connection.prepareStatement(
+                     "SELECT balance FROM idle_players WHERE uuid = ?")) {
+            select.setString(1, uuid.toString());
+            try (ResultSet rs = select.executeQuery()) {
+                return rs.next() ? rs.getDouble("balance") : 0;
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to read balance for " + uuid + ": " + e.getMessage());
+            return 0;
+        }
+    }
+
+    public boolean accountExists(UUID uuid) {
+        if (online.containsKey(uuid)) {
+            return true;
+        }
+        try (Connection connection = database.getConnection();
+             PreparedStatement select = connection.prepareStatement(
+                     "SELECT 1 FROM idle_players WHERE uuid = ?")) {
+            select.setString(1, uuid.toString());
+            try (ResultSet rs = select.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to check account for " + uuid + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    /** Creates the row for a player who has never been seen. */
+    public boolean createAccount(UUID uuid, String name) {
+        if (accountExists(uuid)) {
+            return false;
+        }
+        return database.executeTransaction("create account " + uuid, connection -> {
+            try (PreparedStatement insert = connection.prepareStatement(
+                    "INSERT INTO idle_players (uuid, name, balance, total_online_minutes) "
+                            + "VALUES (?, ?, 0, 0)")) {
+                insert.setString(1, uuid.toString());
+                insert.setString(2, name == null ? uuid.toString() : name);
+                insert.executeUpdate();
+            }
+        });
+    }
+
+    /** Adds to any player's balance. Never fails on the amount. */
+    public boolean deposit(UUID uuid, double amount) {
+        PlayerData cached = online.get(uuid);
+        if (cached != null) {
+            cached.addBalance(amount);
+            return true;
+        }
+        return database.executeTransaction("deposit " + uuid, connection -> {
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idle_players SET balance = balance + ? WHERE uuid = ?")) {
+                update.setDouble(1, amount);
+                update.setString(2, uuid.toString());
+                if (update.executeUpdate() != 1) {
+                    throw new SQLException("Player row is missing");
+                }
+            }
+        });
+    }
+
+    /**
+     * Removes from any player's balance, refusing to overdraw. For an offline
+     * player the sufficiency check is part of the UPDATE, so two servers
+     * spending the same Coins cannot both succeed.
+     */
+    public boolean withdraw(UUID uuid, double amount) {
+        PlayerData cached = online.get(uuid);
+        if (cached != null) {
+            if (cached.getBalance() < amount) {
+                return false;
+            }
+            cached.addBalance(-amount);
+            return true;
+        }
+        return database.executeTransaction("withdraw " + uuid, connection -> {
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE idle_players SET balance = balance - ? "
+                            + "WHERE uuid = ? AND balance >= ?")) {
+                update.setDouble(1, amount);
+                update.setString(2, uuid.toString());
+                update.setDouble(3, amount);
+                if (update.executeUpdate() != 1) {
+                    throw new SQLException("Insufficient funds or missing player row");
+                }
+            }
+        });
+    }
+
     public List<PlayerData> loadTopSync(int limit, int minMinutes) {
         List<PlayerData> result = new ArrayList<>();
         try (Connection connection = database.getConnection();
