@@ -100,6 +100,8 @@ class MySqlIntegrationTest {
         config.set("mysql.username", env("IDLE_MYSQL_USERNAME", "root"));
         config.set("mysql.password", env("IDLE_MYSQL_PASSWORD", ""));
         config.set("mysql.useSSL", false);
+        config.set("mysql.allow-public-key-retrieval",
+                Boolean.parseBoolean(env("IDLE_MYSQL_ALLOW_PUBLIC_KEY_RETRIEVAL", "false")));
         config.set("mysql.pool-size", 2);
         config.set("warehouse.base-capacity", 2000);
         IdlePlugin plugin = mock(IdlePlugin.class);

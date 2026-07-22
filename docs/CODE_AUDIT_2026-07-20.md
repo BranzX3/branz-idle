@@ -98,4 +98,8 @@ These are product/content work, not regressions fixed by this refactor:
    fire-and-forget writes and needed a fix, not just a test — see below.
 5. ~~Replace late service setters with a composition root and constructor
    dependencies.~~ Done (second pass); two documented cycles remain.
-6. Add MySQL integration tests in CI.
+6. ~~Add MySQL integration tests in CI.~~ Done: `.github/workflows/ci.yml`
+   builds on every push/PR and runs the opt-in MySQL suite against a MySQL
+   8.4 service container, failing the job unless the suite actually executed
+   (it disables itself without `IDLE_TEST_MYSQL`). The workflow has not run
+   yet — it is validated on the first push to GitHub.

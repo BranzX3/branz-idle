@@ -23,8 +23,10 @@
   claimable; the retry after recovery persists the loot exactly once.
 - MySQL integration coverage is opt-in through
   `IDLE_TEST_MYSQL=true`. The suite verifies schema creation, restart
-  persistence, and rollback across Warehouse/game-state rows. It still needs
-  to be executed against the release MySQL instance.
+  persistence, and rollback across Warehouse/game-state rows. CI now runs it
+  on every push and pull request against a MySQL 8.4 service container and
+  fails the job if the suite skipped itself. It still needs to be executed
+  against the release MySQL instance and configuration.
 
 ## Five simulated focused-player cohorts
 

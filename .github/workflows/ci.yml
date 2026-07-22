@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+      # gradle.properties pins a local Windows JDK path; the command line wins.
+      - run: ./gradlew -Dorg.gradle.java.home="$JAVA_HOME" build
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-test-report
+          path: build/reports/tests/test
+
+  mysql:
+    name: MySQL integration
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: idle
+          MYSQL_DATABASE: idle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pidle"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      IDLE_TEST_MYSQL: 'true'
+      IDLE_MYSQL_HOST: 127.0.0.1
+      IDLE_MYSQL_PORT: '3306'
+      IDLE_MYSQL_DATABASE: idle_test
+      IDLE_MYSQL_USERNAME: root
+      IDLE_MYSQL_PASSWORD: idle
+      # The service container is on the runner's own network and speaks
+      # caching_sha2_password over an unencrypted socket.
+      IDLE_MYSQL_ALLOW_PUBLIC_KEY_RETRIEVAL: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew -Dorg.gradle.java.home="$JAVA_HOME" test --tests '*MySqlIntegrationTest*'
+      # The suite disables itself when IDLE_TEST_MYSQL is unset, so a green
+      # step proves nothing on its own. Fail unless it really executed.
+      - name: Assert the MySQL suite ran
+        run: |
+          report=build/test-results/test/TEST-dev.branzx.idle.storage.MySqlIntegrationTest.xml
+          if [ ! -f "$report" ]; then
+            echo "No MySQL test report: the suite never ran." >&2
+            exit 1
+          fi
+          if ! grep -q 'skipped="0"' "$report"; then
+            echo "The MySQL suite was skipped; check IDLE_TEST_MYSQL and the service container." >&2
+            cat "$report" >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: mysql-test-report
+          path: build/reports/tests/test
