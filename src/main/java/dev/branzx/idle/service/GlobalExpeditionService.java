@@ -346,8 +346,8 @@ public final class GlobalExpeditionService {
                     ledger.executeUpdate();
                 }
                 try (PreparedStatement update = connection.prepareStatement(
-                        "UPDATE idle_players SET balance = balance + ? WHERE uuid = ?")) {
-                    update.setDouble(1, payout.getValue());
+                        "UPDATE wallet_accounts SET coins = coins + ? WHERE uuid = ?")) {
+                    update.setLong(1, Math.round(payout.getValue()));
                     update.setString(2, payout.getKey().toString());
                     if (update.executeUpdate() != 1) {
                         throw new SQLException("Missing player row for " + payout.getKey());

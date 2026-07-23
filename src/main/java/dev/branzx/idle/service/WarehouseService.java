@@ -441,8 +441,8 @@ public final class WarehouseService {
                 upsert.executeUpdate();
             }
             try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE idle_players SET balance = ? WHERE uuid = ?")) {
-                update.setDouble(1, balanceAfter);
+                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
+                update.setLong(1, Math.round(balanceAfter));
                 update.setString(2, player.getUuid().toString());
                 if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
             }

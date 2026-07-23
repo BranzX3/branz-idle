@@ -61,7 +61,7 @@ class PaidSettlementIntegrationTest {
 
             try (var connection = database.getConnection();
                  PreparedStatement select = connection.prepareStatement(
-                         "SELECT balance FROM idle_players WHERE uuid = ?")) {
+                         "SELECT coins FROM wallet_accounts WHERE uuid = ?")) {
                 select.setString(1, owner.toString());
                 try (var rs = select.executeQuery()) {
                     assertTrue(rs.next());
@@ -112,7 +112,7 @@ class PaidSettlementIntegrationTest {
             }
             try (var connection = database.getConnection();
                  PreparedStatement select = connection.prepareStatement(
-                         "SELECT balance FROM idle_players WHERE uuid = ?")) {
+                         "SELECT coins FROM wallet_accounts WHERE uuid = ?")) {
                 select.setString(1, owner.toString());
                 try (var rs = select.executeQuery()) {
                     assertTrue(rs.next());
@@ -178,7 +178,7 @@ class PaidSettlementIntegrationTest {
             }
             try (var connection = database.getConnection();
                  PreparedStatement select = connection.prepareStatement(
-                         "SELECT balance FROM idle_players WHERE uuid = ?")) {
+                         "SELECT coins FROM wallet_accounts WHERE uuid = ?")) {
                 select.setString(1, owner.toString());
                 try (var rs = select.executeQuery()) {
                     assertTrue(rs.next());

@@ -234,8 +234,8 @@ public final class NodeStore {
                 }
             }
             try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE idle_players SET balance = ? WHERE uuid = ?")) {
-                update.setDouble(1, balanceAfter);
+                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
+                update.setLong(1, Math.round(balanceAfter));
                 update.setString(2, player.getUuid().toString());
                 if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
             }
@@ -278,8 +278,8 @@ public final class NodeStore {
                 if (update.executeUpdate() != 1) throw new SQLException("Node row is missing");
             }
             try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE idle_players SET balance = ? WHERE uuid = ?")) {
-                update.setDouble(1, balanceAfter);
+                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
+                update.setLong(1, Math.round(balanceAfter));
                 update.setString(2, player.getUuid().toString());
                 if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
             }
@@ -313,8 +313,8 @@ public final class NodeStore {
                 insert.executeUpdate();
             }
             try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE idle_players SET balance = ? WHERE uuid = ?")) {
-                update.setDouble(1, balanceAfter);
+                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
+                update.setLong(1, Math.round(balanceAfter));
                 update.setString(2, owner.toString());
                 if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
             }
@@ -344,8 +344,8 @@ public final class NodeStore {
                 delete.executeUpdate();
             }
             try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE idle_players SET balance = ? WHERE uuid = ?")) {
-                update.setDouble(1, balanceAfter);
+                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
+                update.setLong(1, Math.round(balanceAfter));
                 update.setString(2, player.getUuid().toString());
                 if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
             }

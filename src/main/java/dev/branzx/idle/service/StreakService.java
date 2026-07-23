@@ -90,8 +90,8 @@ public final class StreakService {
                         upsert.executeUpdate();
                     }
                     try (PreparedStatement update = connection.prepareStatement(
-                            "UPDATE idle_players SET balance = balance + ? WHERE uuid = ?")) {
-                        update.setDouble(1, bonus);
+                            "UPDATE wallet_accounts SET coins = coins + ? WHERE uuid = ?")) {
+                        update.setLong(1, Math.round(bonus));
                         update.setString(2, owner.toString());
                         if (update.executeUpdate() != 1) {
                             throw new SQLException("Player row is missing");

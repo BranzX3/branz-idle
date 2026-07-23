@@ -165,6 +165,17 @@ public final class Database {
                 total_online_minutes BIGINT NOT NULL DEFAULT 0
             )
             """,
+            // Coin now lives in the central BranzWallet table. Idle also
+            // declares it so a coin charge always has a row to update even if
+            // this backend booted before the wallet plugin; the DDL is
+            // identical and idempotent. BranzWallet owns it; Idle shares it.
+            """
+            CREATE TABLE IF NOT EXISTS wallet_accounts (
+                uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                name VARCHAR(16) NOT NULL,
+                coins BIGINT NOT NULL DEFAULT 0
+            )
+            """,
             """
             CREATE TABLE IF NOT EXISTS idle_nodes (
                 id BIGINT NOT NULL PRIMARY KEY,
@@ -441,6 +452,13 @@ public final class Database {
                 name TEXT NOT NULL,
                 balance REAL NOT NULL DEFAULT 0,
                 total_online_minutes INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS wallet_accounts (
+                uuid TEXT NOT NULL PRIMARY KEY,
+                name TEXT NOT NULL,
+                coins INTEGER NOT NULL DEFAULT 0
             )
             """,
             """
@@ -744,6 +762,33 @@ public final class Database {
         // Complex membership: the anchoring production node's id, 0 = alone.
         addColumnIfMissing("idle_nodes", "complex_anchor",
                 sqlite ? "INTEGER NOT NULL DEFAULT 0" : "BIGINT NOT NULL DEFAULT 0");
+        backfillWalletCoins();
+    }
+
+    /**
+     * One-time move of each player's Coin balance from the legacy
+     * {@code idle_players.balance} column into the shared
+     * {@code wallet_accounts.coins}, rounded to a whole Coin. INSERT ... IGNORE
+     * only fills rows the wallet does not already have, so it never clobbers a
+     * balance the wallet plugin (or another backend) has already written, and
+     * it is safe to run on every boot. The legacy column is left in place as a
+     * fallback and is no longer read.
+     */
+    private void backfillWalletCoins() {
+        String sql = sqlite
+                ? "INSERT OR IGNORE INTO wallet_accounts (uuid, name, coins) "
+                        + "SELECT uuid, name, CAST(ROUND(balance) AS INTEGER) FROM idle_players"
+                : "INSERT IGNORE INTO wallet_accounts (uuid, name, coins) "
+                        + "SELECT uuid, name, ROUND(balance) FROM idle_players";
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            int moved = statement.executeUpdate(sql);
+            if (moved > 0) {
+                plugin.getLogger().info("Backfilled " + moved + " Coin balance(s) into wallet_accounts.");
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Failed to backfill wallet_accounts coins: " + e.getMessage());
+        }
     }
 
     private void addColumnIfMissing(String table, String column, String definition) {

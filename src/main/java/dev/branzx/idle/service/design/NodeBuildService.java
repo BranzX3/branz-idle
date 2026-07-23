@@ -101,8 +101,8 @@ public final class NodeBuildService {
                         GameStateStore.write(connection, row);
                     }
                     try (PreparedStatement update = connection.prepareStatement(
-                            "UPDATE idle_players SET balance = ? WHERE uuid = ?")) {
-                        update.setDouble(1, balanceAfter);
+                            "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
+                        update.setLong(1, Math.round(balanceAfter));
                         update.setString(2, owner.toString());
                         if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
                     }

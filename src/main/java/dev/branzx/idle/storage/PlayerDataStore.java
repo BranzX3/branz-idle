@@ -13,6 +13,17 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Player identity and Coin access. Coin now lives in the shared
+ * {@code wallet_accounts.coins} owned by BranzWallet, while identity and
+ * playtime stay in {@code idle_players}. The two tables live in the same
+ * database, so a coin write can still commit in the same transaction as the
+ * gameplay row it pays for.
+ *
+ * <p>Coin is stored as a whole-number {@code long} but kept as a {@code double}
+ * in {@link PlayerData} so the rest of the plugin is untouched; the rounding
+ * happens only here, at the SQL boundary.
+ */
 public final class PlayerDataStore {
 
     private final IdlePlugin plugin;
@@ -25,26 +36,31 @@ public final class PlayerDataStore {
     }
 
     public PlayerData loadOrCreateSync(UUID uuid, String name) {
-        try (Connection connection = database.getConnection();
-             PreparedStatement select = connection.prepareStatement(
-                     "SELECT balance, total_online_minutes FROM idle_players WHERE uuid = ?")) {
-            select.setString(1, uuid.toString());
-            try (ResultSet rs = select.executeQuery()) {
-                if (rs.next()) {
-                    PlayerData data = new PlayerData(uuid, name, rs.getDouble("balance"), rs.getLong("total_online_minutes"));
-                    online.put(uuid, data);
-                    return data;
+        try (Connection connection = database.getConnection()) {
+            ensureWalletRow(connection, uuid, name);
+
+            Long minutes = null;
+            try (PreparedStatement select = connection.prepareStatement(
+                    "SELECT total_online_minutes FROM idle_players WHERE uuid = ?")) {
+                select.setString(1, uuid.toString());
+                try (ResultSet rs = select.executeQuery()) {
+                    if (rs.next()) {
+                        minutes = rs.getLong("total_online_minutes");
+                    }
                 }
             }
-
-            try (PreparedStatement insert = connection.prepareStatement(
-                    "INSERT INTO idle_players (uuid, name, balance, total_online_minutes) VALUES (?, ?, 0, 0)")) {
-                insert.setString(1, uuid.toString());
-                insert.setString(2, name);
-                insert.executeUpdate();
+            if (minutes == null) {
+                try (PreparedStatement insert = connection.prepareStatement(
+                        "INSERT INTO idle_players (uuid, name, balance, total_online_minutes) VALUES (?, ?, 0, 0)")) {
+                    insert.setString(1, uuid.toString());
+                    insert.setString(2, name);
+                    insert.executeUpdate();
+                }
+                minutes = 0L;
             }
 
-            PlayerData data = new PlayerData(uuid, name, 0, 0);
+            long coins = readCoins(connection, uuid);
+            PlayerData data = new PlayerData(uuid, name, coins, minutes);
             online.put(uuid, data);
             return data;
         } catch (SQLException e) {
@@ -62,15 +78,8 @@ public final class PlayerDataStore {
         double balance = data.getBalance();
         long minutes = data.getTotalOnlineMinutes();
         boolean committed = database.executeTransaction("save player " + uuid, connection -> {
-            try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE idle_players SET name = ?, balance = ?, total_online_minutes = ? "
-                            + "WHERE uuid = ?")) {
-                update.setString(1, name);
-                update.setDouble(2, balance);
-                update.setLong(3, minutes);
-                update.setString(4, uuid.toString());
-                update.executeUpdate();
-            }
+            writeIdentity(connection, uuid, name, minutes);
+            writeCoins(connection, uuid, name, balance);
         });
         if (committed) data.markPersisted(revision);
     }
@@ -96,14 +105,9 @@ public final class PlayerDataStore {
 
     private void saveSnapshot(UUID uuid, String name, double balance, long minutes,
                               PlayerData source, long revision) {
-        try (Connection connection = database.getConnection();
-             PreparedStatement update = connection.prepareStatement(
-                     "UPDATE idle_players SET name = ?, balance = ?, total_online_minutes = ? WHERE uuid = ?")) {
-            update.setString(1, name);
-            update.setDouble(2, balance);
-            update.setLong(3, minutes);
-            update.setString(4, uuid.toString());
-            update.executeUpdate();
+        try (Connection connection = database.getConnection()) {
+            writeIdentity(connection, uuid, name, minutes);
+            writeCoins(connection, uuid, name, balance);
             source.markPersisted(revision);
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to save player data for " + uuid + ": " + e.getMessage());
@@ -149,13 +153,8 @@ public final class PlayerDataStore {
         if (cached != null) {
             return cached.getBalance();
         }
-        try (Connection connection = database.getConnection();
-             PreparedStatement select = connection.prepareStatement(
-                     "SELECT balance FROM idle_players WHERE uuid = ?")) {
-            select.setString(1, uuid.toString());
-            try (ResultSet rs = select.executeQuery()) {
-                return rs.next() ? rs.getDouble("balance") : 0;
-            }
+        try (Connection connection = database.getConnection()) {
+            return readCoins(connection, uuid);
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to read balance for " + uuid + ": " + e.getMessage());
             return 0;
@@ -179,7 +178,7 @@ public final class PlayerDataStore {
         }
     }
 
-    /** Creates the row for a player who has never been seen. */
+    /** Creates the rows for a player who has never been seen. */
     public boolean createAccount(UUID uuid, String name) {
         if (accountExists(uuid)) {
             return false;
@@ -192,6 +191,7 @@ public final class PlayerDataStore {
                 insert.setString(2, name == null ? uuid.toString() : name);
                 insert.executeUpdate();
             }
+            ensureWalletRow(connection, uuid, name == null ? uuid.toString() : name);
         });
     }
 
@@ -204,11 +204,11 @@ public final class PlayerDataStore {
         }
         return database.executeTransaction("deposit " + uuid, connection -> {
             try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE idle_players SET balance = balance + ? WHERE uuid = ?")) {
-                update.setDouble(1, amount);
+                    "UPDATE wallet_accounts SET coins = coins + ? WHERE uuid = ?")) {
+                update.setLong(1, Math.round(amount));
                 update.setString(2, uuid.toString());
                 if (update.executeUpdate() != 1) {
-                    throw new SQLException("Player row is missing");
+                    throw new SQLException("Wallet row is missing");
                 }
             }
         });
@@ -228,15 +228,16 @@ public final class PlayerDataStore {
             cached.addBalance(-amount);
             return true;
         }
+        long units = Math.round(amount);
         return database.executeTransaction("withdraw " + uuid, connection -> {
             try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE idle_players SET balance = balance - ? "
-                            + "WHERE uuid = ? AND balance >= ?")) {
-                update.setDouble(1, amount);
+                    "UPDATE wallet_accounts SET coins = coins - ? "
+                            + "WHERE uuid = ? AND coins >= ?")) {
+                update.setLong(1, units);
                 update.setString(2, uuid.toString());
-                update.setDouble(3, amount);
+                update.setLong(3, units);
                 if (update.executeUpdate() != 1) {
-                    throw new SQLException("Insufficient funds or missing player row");
+                    throw new SQLException("Insufficient funds or missing wallet row");
                 }
             }
         });
@@ -246,8 +247,9 @@ public final class PlayerDataStore {
         List<PlayerData> result = new ArrayList<>();
         try (Connection connection = database.getConnection();
              PreparedStatement select = connection.prepareStatement(
-                     "SELECT uuid, name, balance, total_online_minutes FROM idle_players "
-                             + "WHERE total_online_minutes >= ? ORDER BY balance DESC LIMIT ?")) {
+                     "SELECT p.uuid, p.name, COALESCE(w.coins, 0) AS coins, p.total_online_minutes "
+                             + "FROM idle_players p LEFT JOIN wallet_accounts w ON p.uuid = w.uuid "
+                             + "WHERE p.total_online_minutes >= ? ORDER BY coins DESC LIMIT ?")) {
             select.setInt(1, minMinutes);
             select.setInt(2, limit);
             try (ResultSet rs = select.executeQuery()) {
@@ -255,7 +257,7 @@ public final class PlayerDataStore {
                     result.add(new PlayerData(
                             UUID.fromString(rs.getString("uuid")),
                             rs.getString("name"),
-                            rs.getDouble("balance"),
+                            rs.getLong("coins"),
                             rs.getLong("total_online_minutes")));
                 }
             }
@@ -263,5 +265,56 @@ public final class PlayerDataStore {
             plugin.getLogger().severe("Failed to load top players: " + e.getMessage());
         }
         return result;
+    }
+
+    // ---- shared helpers ----
+
+    /** Reads the whole-Coin balance from the shared wallet table (0 if none). */
+    private long readCoins(Connection connection, UUID uuid) throws SQLException {
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT coins FROM wallet_accounts WHERE uuid = ?")) {
+            select.setString(1, uuid.toString());
+            try (ResultSet rs = select.executeQuery()) {
+                return rs.next() ? rs.getLong("coins") : 0;
+            }
+        }
+    }
+
+    /** Creates the wallet row the first time a player is seen. Safe to race. */
+    private void ensureWalletRow(Connection connection, UUID uuid, String name) throws SQLException {
+        try (PreparedStatement insert = connection.prepareStatement(
+                (database.isSqlite() ? "INSERT OR IGNORE" : "INSERT IGNORE")
+                        + " INTO wallet_accounts (uuid, name, coins) VALUES (?, ?, 0)")) {
+            insert.setString(1, uuid.toString());
+            insert.setString(2, name == null ? uuid.toString() : name);
+            insert.executeUpdate();
+        }
+    }
+
+    private void writeIdentity(Connection connection, UUID uuid, String name, long minutes)
+            throws SQLException {
+        try (PreparedStatement update = connection.prepareStatement(
+                "UPDATE idle_players SET name = ?, total_online_minutes = ? WHERE uuid = ?")) {
+            update.setString(1, name);
+            update.setLong(2, minutes);
+            update.setString(3, uuid.toString());
+            update.executeUpdate();
+        }
+    }
+
+    /**
+     * Writes the whole-Coin balance snapshot. The wallet row is upserted so a
+     * snapshot for an account created on another backend still lands.
+     */
+    private void writeCoins(Connection connection, UUID uuid, String name, double balance)
+            throws SQLException {
+        ensureWalletRow(connection, uuid, name);
+        try (PreparedStatement update = connection.prepareStatement(
+                "UPDATE wallet_accounts SET name = ?, coins = ? WHERE uuid = ?")) {
+            update.setString(1, name);
+            update.setLong(2, Math.round(balance));
+            update.setString(3, uuid.toString());
+            update.executeUpdate();
+        }
     }
 }

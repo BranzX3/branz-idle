@@ -55,7 +55,7 @@ class EconomyBalanceIntegrationTest {
     private double storedBalance(UUID uuid) throws Exception {
         try (var connection = database.getConnection();
              PreparedStatement select = connection.prepareStatement(
-                     "SELECT balance FROM idle_players WHERE uuid = ?")) {
+                     "SELECT coins FROM wallet_accounts WHERE uuid = ?")) {
             select.setString(1, uuid.toString());
             try (var rs = select.executeQuery()) {
                 return rs.next() ? rs.getDouble(1) : -1;
@@ -86,8 +86,9 @@ class EconomyBalanceIntegrationTest {
     void offlineWithdrawWillNotOverdraw() throws Exception {
         seedOfflinePlayerWith(100);
 
-        assertFalse(players.withdraw(owner, 100.01));
-        // The refusal is part of the UPDATE, so nothing was taken on the way.
+        // Coins are whole numbers now, so an overdraw is one Coin past the
+        // balance; the refusal is part of the UPDATE, so nothing is taken.
+        assertFalse(players.withdraw(owner, 101));
         assertEquals(100.0, storedBalance(owner));
     }
 
