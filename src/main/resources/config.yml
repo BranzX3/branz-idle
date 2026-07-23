@@ -5,6 +5,15 @@
 # from your file falls back to the bundled English value.
 language: en
 
+# Retention nudges. The streak reminder DMs players (via the Discord front-end)
+# whose login streak is alive but who have not logged in yet today. Only players
+# with a linked Discord are reached; it fires at most once per player per day.
+retention:
+  streak-reminder:
+    enabled: true
+    hour: 20          # hour of day (0-23, Asia/Bangkok) to send reminders
+    min-streak: 2     # don't nag brand-new (day-1) streaks
+
 # Permanent hotbar access to the platform-appropriate Idle UI.
 menu-item:
   enabled: true

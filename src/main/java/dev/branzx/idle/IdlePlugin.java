@@ -207,6 +207,10 @@ public final class IdlePlugin extends JavaPlugin {
         this.payoutTask = new PayoutTask(this, dataStore, boosterService, creditService);
         this.payoutTask.runTaskTimer(this, intervalTicks, intervalTicks);
 
+        // Retention: daily "your streak is about to break" DMs via the shared
+        // community event (delivered by the Discord front-end to linked players).
+        new dev.branzx.idle.service.RetentionService(this, database).start();
+
         long productionTicks = getConfig().getLong("production.tick-seconds", 60) * 20L;
         this.productionEngine = new ProductionEngine(this, nodeStore, workerStore, workerService,
                 explorationService, boosterService, perkService, warehouseService, dropTableService,
