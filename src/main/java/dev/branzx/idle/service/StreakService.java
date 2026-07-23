@@ -4,8 +4,10 @@ import dev.branzx.idle.IdlePlugin;
 import dev.branzx.idle.storage.Database;
 import dev.branzx.idle.storage.PlayerData;
 import dev.branzx.idle.storage.PlayerDataStore;
+import dev.branzx.wallet.event.CommunityNotification;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.sql.Connection;
@@ -105,6 +107,17 @@ public final class StreakService {
         }
         streaks.put(owner, updated);
         data.addBalance(bonus);
+
+        // Weekly streak milestone → community feed (via the shared wallet event,
+        // so Idle never depends on the Discord plugin directly).
+        if (days > 0 && days % 7 == 0) {
+            Bukkit.getPluginManager().callEvent(new CommunityNotification(
+                    CommunityNotification.Kind.STREAK, owner, player.getName(),
+                    "🔥 " + days + "-day streak!",
+                    player.getName() + " ล็อกอินต่อเนื่อง " + days + " วันแล้ว!",
+                    true, false));
+        }
+
         String currency = plugin.getConfig().getString("currency-name", "Coins");
         player.sendMessage(Component.text()
                 .append(Component.text("[Streak] ", NamedTextColor.GOLD))
