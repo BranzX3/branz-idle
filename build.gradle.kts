@@ -44,6 +44,12 @@ dependencies {
     compileOnly("com.github.MilkBowl:VaultAPI:1.7") {
         exclude(group = "org.bukkit", module = "bukkit")
     }
+    // Central currency plugin — Idle forwards Credit to its WalletApi at runtime
+    // (soft dependency), so only the API types are needed at compile time. Tests
+    // that load Credit-touching classes need it on their runtime classpath too,
+    // since compileOnly does not flow into the test configurations.
+    compileOnly(files("../branz-wallet/build/libs/BranzWallet-1.0.0.jar"))
+    testImplementation(files("../branz-wallet/build/libs/BranzWallet-1.0.0.jar"))
 
     implementation("com.zaxxer:HikariCP:6.2.1")
     implementation("com.mysql:mysql-connector-j:9.1.0")

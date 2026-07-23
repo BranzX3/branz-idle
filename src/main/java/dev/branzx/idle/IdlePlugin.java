@@ -144,11 +144,11 @@ public final class IdlePlugin extends JavaPlugin {
         perkService.loadAllSync();
         StreakService streakService = new StreakService(this, database, dataStore);
         streakService.loadAllSync();
-        // Deliberately not preloaded: Credit wallets are read through from the
-        // database on demand, so a grant made elsewhere is picked up without a
-        // restart.
-        CreditService creditService =
-                new CreditService(this, database, dataStore, auditService, gameDesignService);
+        // Credit now lives in the central BranzWallet plugin; this adapter
+        // forwards to its shared, read-through wallet so a grant made elsewhere
+        // (a Discord top-up, an admin on another backend) is picked up here
+        // without a restart.
+        CreditService creditService = new CreditService(this, resolveWalletApi());
         this.tradeService =
                 new TradeService(this, database, auditService, workerService, gameDesignService);
 
@@ -270,6 +270,29 @@ public final class IdlePlugin extends JavaPlugin {
      * is present but incompatible — a broken hook must not stop the plugin
      * booting.
      */
+    /**
+     * Resolves the central wallet service. BranzWallet is a soft dependency, so
+     * it may be absent — the adapter degrades safely and callers already guard a
+     * null Credit service. Throwable covers a present-but-incompatible wallet jar
+     * so a broken hook cannot stop the plugin booting.
+     */
+    private dev.branzx.wallet.api.WalletApi resolveWalletApi() {
+        try {
+            var registration = getServer().getServicesManager()
+                    .getRegistration(dev.branzx.wallet.api.WalletApi.class);
+            if (registration == null) {
+                getLogger().warning("BranzWallet not found; Credit features are disabled "
+                        + "until it is installed.");
+                return null;
+            }
+            getLogger().info("Using BranzWallet for Credit.");
+            return registration.getProvider();
+        } catch (Throwable t) {
+            getLogger().warning("Could not resolve the BranzWallet service: " + t);
+            return null;
+        }
+    }
+
     private void registerVaultEconomy() {
         if (!getConfig().getBoolean("vault.provide", true)) {
             getLogger().info("Vault economy provider disabled by config (vault.provide).");
