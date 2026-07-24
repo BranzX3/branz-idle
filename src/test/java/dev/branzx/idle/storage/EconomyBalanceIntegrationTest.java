@@ -65,8 +65,10 @@ class EconomyBalanceIntegrationTest {
 
     /** Logs the player in, gives them Coins, then logs them out again. */
     private void seedOfflinePlayerWith(double balance) {
-        PlayerData data = players.loadOrCreateSync(owner, "Tester");
-        data.addBalance(balance);
+        players.loadOrCreateSync(owner, "Tester");
+        // Coins must be granted through a persisting relative write — they are
+        // never carried in memory and flushed as a snapshot.
+        players.deposit(owner, balance);
         players.unload(owner);
     }
 
@@ -95,7 +97,7 @@ class EconomyBalanceIntegrationTest {
     @Test
     void onlinePlayerIsServedFromTheCacheAndStillPersists() throws Exception {
         PlayerData data = players.loadOrCreateSync(owner, "Tester");
-        data.addBalance(500);
+        players.deposit(owner, 500);
 
         assertTrue(players.withdraw(owner, 200));
         assertEquals(300.0, data.getBalance());

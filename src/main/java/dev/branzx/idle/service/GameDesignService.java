@@ -633,7 +633,7 @@ public final class GameDesignService {
     }
 
     private void addCoins(UUID owner, double amount) {
-        PlayerData data = dataStore.getOnline(owner);
-        if (data != null) data.addBalance(amount);
+        // Relative + persisted, so it also reaches a player who is offline here.
+        dataStore.addCoins(owner, Math.round(amount));
     }
 }

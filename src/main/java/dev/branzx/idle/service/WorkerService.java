@@ -247,14 +247,7 @@ public final class WorkerService {
                 upsert.setInt(2, bonus);
                 upsert.executeUpdate();
             }
-            try (var update = connection.prepareStatement(
-                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
-                update.setLong(1, Math.round(balanceAfter));
-                update.setString(2, owner.toString());
-                if (update.executeUpdate() != 1) {
-                    throw new java.sql.SQLException("Player row is missing");
-                }
-            }
+            dev.branzx.idle.storage.CoinSql.debit(connection, owner, Math.round(cost));
         });
         if (!committed) return "Expansion could not be settled; no Coins were charged.";
         data.addBalance(-cost);

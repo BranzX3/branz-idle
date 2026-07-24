@@ -433,7 +433,7 @@ public final class AdminCommands {
                 sender.sendMessage(Component.text("Target data not loaded.", NamedTextColor.RED));
                 return true;
             }
-            data.addBalance(amount);
+            dataStore.addCoins(target.getUniqueId(), Math.round(amount));
             String auditId = UUID.randomUUID().toString();
             String reason = String.join(" ", java.util.Arrays.copyOfRange(args, 5, args.length));
             auditService.logAdmin(actor, auditId, reason, "ADMIN_GIVE",

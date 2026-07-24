@@ -53,8 +53,7 @@ class SettlementFaultInjectionIntegrationTest {
         try {
             PlayerDataStore players = new PlayerDataStore(plugin, database);
             PlayerData player = players.loadOrCreateSync(owner, "ClaimFault");
-            player.addBalance(1_000);
-            players.saveSync(player);
+            players.deposit(owner, 1_000);
 
             try (var connection = database.getConnection();
                  Statement statement = connection.createStatement()) {

@@ -47,9 +47,13 @@ public final class PayoutTask extends BukkitRunnable {
             double boost = boosterService == null ? 1.0
                     : boosterService.multiplier(player.getUniqueId(), BoosterService.MONEY);
             double payout = money * multiplier * boost;
-            data.addBalance(payout);
+            // Persist the payout as a relative write straight away. Coins are
+            // shared with other backends, so they can never be carried only in
+            // memory and flushed as a whole-balance snapshot later.
+            long earned = Math.round(payout);
+            dataStore.addCoins(player.getUniqueId(), earned);
             if (creditService != null) {
-                creditService.recordCoinsEarned(player.getUniqueId(), (long) Math.floor(payout));
+                creditService.recordCoinsEarned(player.getUniqueId(), earned);
             }
             data.incrementOnlineMinutes(Math.max(1, intervalSeconds / 60));
             player.giveExp(exp);

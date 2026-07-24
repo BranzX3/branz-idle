@@ -155,12 +155,7 @@ public final class WorkerStore {
                 bind(insert, snapshot);
                 insert.executeUpdate();
             }
-            try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
-                update.setLong(1, Math.round(balanceAfter));
-                update.setString(2, player.getUuid().toString());
-                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
-            }
+            CoinSql.debit(connection, player.getUuid(), Math.round(cost));
         });
         if (!committed) return false;
         index(record);

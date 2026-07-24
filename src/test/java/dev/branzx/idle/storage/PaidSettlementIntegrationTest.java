@@ -43,8 +43,7 @@ class PaidSettlementIntegrationTest {
             UUID owner = UUID.randomUUID();
             PlayerDataStore players = new PlayerDataStore(plugin, database);
             PlayerData player = players.loadOrCreateSync(owner, "Tester");
-            player.addBalance(1_000);
-            players.saveSync(player);
+            players.deposit(owner, 1_000);
 
             NodeStore nodes = new NodeStore(plugin, database);
             NodeRecord node = nodes.insert(owner, new ChunkKey("world", 4, 8),
@@ -88,8 +87,7 @@ class PaidSettlementIntegrationTest {
             UUID owner = UUID.randomUUID();
             PlayerDataStore players = new PlayerDataStore(plugin, database);
             PlayerData player = players.loadOrCreateSync(owner, "Tester");
-            player.addBalance(1_000);
-            players.saveSync(player);
+            players.deposit(owner, 1_000);
 
             NodeStore nodes = new NodeStore(plugin, database);
             NodeRecord node = nodes.insert(owner, new ChunkKey("world", 1, 1),
@@ -139,8 +137,7 @@ class PaidSettlementIntegrationTest {
             UUID owner = UUID.randomUUID();
             PlayerDataStore players = new PlayerDataStore(plugin, database);
             PlayerData player = players.loadOrCreateSync(owner, "Builder");
-            player.addBalance(10_000);
-            players.saveSync(player);
+            players.deposit(owner, 10_000);
 
             NodeStore nodes = new NodeStore(plugin, database);
             NodeRecord anchor = nodes.insert(owner, new ChunkKey("world", 4, 4),

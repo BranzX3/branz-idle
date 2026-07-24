@@ -100,12 +100,7 @@ public final class NodeBuildService {
                     for (GameStateStore.Row row : rows) {
                         GameStateStore.write(connection, row);
                     }
-                    try (PreparedStatement update = connection.prepareStatement(
-                            "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
-                        update.setLong(1, Math.round(balanceAfter));
-                        update.setString(2, owner.toString());
-                        if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
-                    }
+                    dev.branzx.idle.storage.CoinSql.debit(connection, owner, Math.round(cost));
                 });
                 if (!committed) {
                     return Result.fail("Respec could not be settled; no Coins were charged.");

@@ -115,12 +115,7 @@ public final class BoosterService {
                 upsert.setTimestamp(4, new Timestamp(booster.expiresAt()));
                 upsert.executeUpdate();
             }
-            try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
-                update.setLong(1, Math.round(balanceAfter));
-                update.setString(2, owner.toString());
-                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
-            }
+            dev.branzx.idle.storage.CoinSql.debit(connection, owner, Math.round(cost));
         });
         if (!committed) return "Purchase could not be settled; no Coins were charged.";
         data.addBalance(-cost);

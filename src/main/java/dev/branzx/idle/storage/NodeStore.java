@@ -233,12 +233,7 @@ public final class NodeStore {
                     if (count == 0) throw new SQLException("Node row is missing");
                 }
             }
-            try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
-                update.setLong(1, Math.round(balanceAfter));
-                update.setString(2, player.getUuid().toString());
-                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
-            }
+            CoinSql.debit(connection, player.getUuid(), Math.round(cost));
         });
         if (committed) player.addBalance(-cost);
         return committed;
@@ -277,12 +272,7 @@ public final class NodeStore {
                 update.setLong(11, record.getId());
                 if (update.executeUpdate() != 1) throw new SQLException("Node row is missing");
             }
-            try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
-                update.setLong(1, Math.round(balanceAfter));
-                update.setString(2, player.getUuid().toString());
-                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
-            }
+            CoinSql.debit(connection, player.getUuid(), Math.round(cost));
         });
         if (committed) player.addBalance(-cost);
         return committed;
@@ -312,12 +302,7 @@ public final class NodeStore {
                 insert.setInt(7, originY);
                 insert.executeUpdate();
             }
-            try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
-                update.setLong(1, Math.round(balanceAfter));
-                update.setString(2, owner.toString());
-                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
-            }
+            CoinSql.debit(connection, owner, Math.round(cost));
         });
         if (!committed) return null;
         index(record);
@@ -343,12 +328,7 @@ public final class NodeStore {
                 delete.setLong(1, record.getId());
                 delete.executeUpdate();
             }
-            try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
-                update.setLong(1, Math.round(balanceAfter));
-                update.setString(2, player.getUuid().toString());
-                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
-            }
+            CoinSql.credit(connection, player.getUuid(), Math.round(refund));
         });
         if (!committed) return false;
         unindex(record);

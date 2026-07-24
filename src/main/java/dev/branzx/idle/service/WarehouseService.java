@@ -440,12 +440,7 @@ public final class WarehouseService {
                 upsert.setString(3, content);
                 upsert.executeUpdate();
             }
-            try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE wallet_accounts SET coins = ? WHERE uuid = ?")) {
-                update.setLong(1, Math.round(balanceAfter));
-                update.setString(2, player.getUuid().toString());
-                if (update.executeUpdate() != 1) throw new SQLException("Player row is missing");
-            }
+            dev.branzx.idle.storage.CoinSql.debit(connection, player.getUuid(), Math.round(cost));
         });
         if (!committed) return false;
         capacities.put(owner, capacity);
