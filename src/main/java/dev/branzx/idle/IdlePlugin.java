@@ -59,6 +59,7 @@ public final class IdlePlugin extends JavaPlugin {
     private PayoutTask payoutTask;
     private TradeService tradeService;
     private GlobalExpeditionService globalExpeditionService;
+    private boolean remote;
 
     /**
      * Composition root. Services are constructed in dependency order and
@@ -72,6 +73,9 @@ public final class IdlePlugin extends JavaPlugin {
         migrateLegacyBalanceConfig();
         addMissingConfigDefaults();
         Lang.init(this);
+        // "full" hosts the simulation; "remote" only serves the warehouse and
+        // status screens for a base hosted on another server.
+        this.remote = "remote".equalsIgnoreCase(getConfig().getString("mode", "full"));
         // Built before every other service: they all ask it whether a world is
         // in play.
         this.worldGate = new dev.branzx.idle.service.WorldGate(this);
@@ -180,24 +184,33 @@ public final class IdlePlugin extends JavaPlugin {
         getCommand("idle").setTabCompleter(idleCommand);
 
         var pluginManager = getServer().getPluginManager();
-        pluginManager.registerEvents(tradeService, this);
-        pluginManager.registerEvents(new dev.branzx.idle.listener.WorkerPlacementListener(
-                this, nodeStore, workerStore, workerService, anchorStore, npcManager, schematicService), this);
-        pluginManager.registerEvents(
-                new dev.branzx.idle.listener.WorkerSafetyListener(workerService, gameDesignService), this);
         pluginManager.registerEvents(
                 new PlayerConnectionListener(this, dataStore, streakService, gameDesignService,
                         creditService), this);
-        pluginManager.registerEvents(new ProtectionListener(nodeStore, trustService), this);
-        pluginManager.registerEvents(previewService, this);
-        pluginManager.registerEvents(npcManager, this);
         pluginManager.registerEvents(guiManager, this);
         pluginManager.registerEvents(guiManager.chatPrompt(), this);
         MenuItemService menuItemService = new MenuItemService(this, guiManager);
         pluginManager.registerEvents(menuItemService, this);
         menuItemService.start();
 
-        // Citizens is a hard dependency, so its API is ready by now.
+        if (remote) {
+            // Remote mode: this server is a window onto the base, not the base.
+            // Everything that ticks the simulation, spawns NPCs or writes the
+            // world stays on the full server, so the host keeps its tick budget
+            // and two servers can never both drive the same nodes.
+            getLogger().info("Idle running in REMOTE mode — warehouse and status only.");
+            return;
+        }
+
+        pluginManager.registerEvents(tradeService, this);
+        pluginManager.registerEvents(new dev.branzx.idle.listener.WorkerPlacementListener(
+                this, nodeStore, workerStore, workerService, anchorStore, npcManager, schematicService), this);
+        pluginManager.registerEvents(
+                new dev.branzx.idle.listener.WorkerSafetyListener(workerService, gameDesignService), this);
+        pluginManager.registerEvents(new ProtectionListener(nodeStore, trustService), this);
+        pluginManager.registerEvents(previewService, this);
+        pluginManager.registerEvents(npcManager, this);
+
         npcManager.init();
 
         registerVaultEconomy();
@@ -225,6 +238,16 @@ public final class IdlePlugin extends JavaPlugin {
                 new dev.branzx.idle.service.UpgradeSiteService(this, nodeStore, schematicService,
                         claimService);
         this.upgradeSiteService.start();
+    }
+
+    /**
+     * True when this server is only a window onto a base hosted elsewhere — it
+     * serves the warehouse and status screens but never ticks production, spawns
+     * workers or writes the world. Exactly one server on a network runs the full
+     * simulation; every other one runs remote.
+     */
+    public boolean isRemote() {
+        return remote;
     }
 
     /**

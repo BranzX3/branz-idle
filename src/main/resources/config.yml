@@ -5,6 +5,16 @@
 # from your file falls back to the bundled English value.
 language: en
 
+# How this server runs Idle.
+#   full   - hosts the simulation: production ticks, worker NPCs, claiming and
+#            building. Exactly ONE server on a network may be full.
+#   remote - a window onto a base hosted elsewhere: the menu item, the shared
+#            warehouse and status screens work, but nothing ticks, no NPC is
+#            spawned and the world is never written. Use this on the MMO server
+#            so players can draw on the materials their base produced.
+# A remote server still needs the Citizens plugin present (it never spawns any).
+mode: full
+
 # Retention nudges. The streak reminder DMs players (via the Discord front-end)
 # whose login streak is alive but who have not logged in yet today. Only players
 # with a linked Discord are reached; it fires at most once per player per day.

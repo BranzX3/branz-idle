@@ -222,6 +222,16 @@ public final class GuiManager implements Listener {
     // ---- openers ----
 
     public void openMainHub(Player player) {
+        // On a remote server the base itself lives elsewhere, so the button
+        // opens the one thing that is genuinely shared — the warehouse — rather
+        // than a hub full of actions that cannot be performed from here.
+        if (plugin.isRemote()) {
+            player.sendMessage(net.kyori.adventure.text.Component.text(
+                    "คุณอยู่นอกฐาน — เปิดได้เฉพาะคลัง กลับไปเซิร์ฟฐานเพื่อจัดการ node",
+                    net.kyori.adventure.text.format.NamedTextColor.YELLOW));
+            openWarehouse(player, player.getUniqueId());
+            return;
+        }
         new MainHubMenu(player, this).open();
     }
 

@@ -63,6 +63,12 @@ public final class StreakService {
 
     /** Call on join (after player data loads). Pays the daily bonus once per day. */
     public void handleLogin(Player player) {
+        // The daily bonus is granted by the server that hosts the simulation.
+        // A remote server's streak cache is a boot-time snapshot, so letting it
+        // decide would risk paying the same day twice.
+        if (plugin.isRemote()) {
+            return;
+        }
         UUID owner = player.getUniqueId();
         String today = LocalDate.now(GAME_ZONE).toString();
         Streak current = streaks.get(owner);
