@@ -69,19 +69,175 @@ public final class WarehouseService {
         return scale.allBulkCommons().contains(material.toUpperCase(java.util.Locale.ROOT));
     }
 
+    /**
+     * Capacity is Idle's own game design and stays in {@code idle_warehouse};
+     * the stored materials live in the shared {@code wallet_warehouse}, one row
+     * each, so another backend can draw on them. A legacy serialised inventory
+     * is migrated into rows the first time it is seen.
+     */
     public void loadAllSync() {
-        try (Connection connection = database.getConnection();
-             PreparedStatement select = connection.prepareStatement(
-                     "SELECT owner_uuid, capacity, content_json FROM idle_warehouse");
-             ResultSet rs = select.executeQuery()) {
-            while (rs.next()) {
-                UUID owner = UUID.fromString(rs.getString("owner_uuid"));
-                capacities.put(owner, rs.getInt("capacity"));
-                contents.put(owner, deserialize(rs.getString("content_json")));
+        try (Connection connection = database.getConnection()) {
+            Map<UUID, String> legacy = new LinkedHashMap<>();
+            try (PreparedStatement select = connection.prepareStatement(
+                    "SELECT owner_uuid, capacity, content_json FROM idle_warehouse");
+                 ResultSet rs = select.executeQuery()) {
+                while (rs.next()) {
+                    UUID owner = UUID.fromString(rs.getString("owner_uuid"));
+                    capacities.put(owner, rs.getInt("capacity"));
+                    String blob = rs.getString("content_json");
+                    if (blob != null && !blob.isBlank()) {
+                        legacy.put(owner, blob);
+                    }
+                }
+            }
+            migrateLegacyContents(connection, legacy);
+
+            try (PreparedStatement select = connection.prepareStatement(
+                    "SELECT owner_uuid, item_key, amount FROM wallet_warehouse WHERE amount > 0 "
+                            + "ORDER BY owner_uuid, item_key");
+                 ResultSet rs = select.executeQuery()) {
+                while (rs.next()) {
+                    UUID owner = UUID.fromString(rs.getString("owner_uuid"));
+                    contents.computeIfAbsent(owner, k -> new LinkedHashMap<>())
+                            .put(rs.getString("item_key"), rs.getInt("amount"));
+                }
             }
         } catch (SQLException e) {
             plugin.getLogger().severe("Failed to load warehouses: " + e.getMessage());
         }
+    }
+
+    /**
+     * One-time move of a serialised inventory into per-material rows. Owners
+     * that already have rows are left alone — their blob is simply stale — so
+     * this is safe to run on every boot.
+     */
+    private void migrateLegacyContents(Connection connection, Map<UUID, String> legacy)
+            throws SQLException {
+        int moved = 0;
+        for (Map.Entry<UUID, String> entry : legacy.entrySet()) {
+            UUID owner = entry.getKey();
+            boolean alreadyMigrated;
+            try (PreparedStatement check = connection.prepareStatement(
+                    "SELECT 1 FROM wallet_warehouse WHERE owner_uuid = ?")) {
+                check.setString(1, owner.toString());
+                try (ResultSet rs = check.executeQuery()) {
+                    alreadyMigrated = rs.next();
+                }
+            }
+            if (!alreadyMigrated) {
+                applyDeltas(connection, owner, deserialize(entry.getValue()));
+                moved++;
+            }
+            try (PreparedStatement clear = connection.prepareStatement(
+                    "UPDATE idle_warehouse SET content_json = '' WHERE owner_uuid = ?")) {
+                clear.setString(1, owner.toString());
+                clear.executeUpdate();
+            }
+        }
+        if (moved > 0) {
+            plugin.getLogger().info("Migrated " + moved + " warehouse(s) into wallet_warehouse.");
+        }
+    }
+
+    /**
+     * Applies signed per-material deltas as relative writes on the caller's
+     * connection. Never writes a whole inventory: the row is shared with other
+     * backends, so only the change this server made may be sent. A debit
+     * carries its floor in the WHERE clause and throws rather than going
+     * negative, rolling the caller's transaction back with it.
+     */
+    public void applyDeltas(Connection connection, UUID owner, Map<String, Integer> deltas)
+            throws SQLException {
+        if (deltas == null || deltas.isEmpty()) {
+            return;
+        }
+        String upsertSql = database.isSqlite()
+                ? "INSERT INTO wallet_warehouse (owner_uuid, item_key, amount) VALUES (?, ?, ?) "
+                        + "ON CONFLICT(owner_uuid, item_key) DO UPDATE SET amount = amount + ?"
+                : "INSERT INTO wallet_warehouse (owner_uuid, item_key, amount) VALUES (?, ?, ?) "
+                        + "ON DUPLICATE KEY UPDATE amount = amount + ?";
+        for (Map.Entry<String, Integer> entry : deltas.entrySet()) {
+            int delta = entry.getValue() == null ? 0 : entry.getValue();
+            String key = entry.getKey().toUpperCase(java.util.Locale.ROOT);
+            if (delta > 0) {
+                try (PreparedStatement upsert = connection.prepareStatement(upsertSql)) {
+                    upsert.setString(1, owner.toString());
+                    upsert.setString(2, key);
+                    upsert.setInt(3, delta);
+                    upsert.setInt(4, delta);
+                    upsert.executeUpdate();
+                }
+            } else if (delta < 0) {
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE wallet_warehouse SET amount = amount - ? "
+                                + "WHERE owner_uuid = ? AND item_key = ? AND amount >= ?")) {
+                    update.setInt(1, -delta);
+                    update.setString(2, owner.toString());
+                    update.setString(3, key);
+                    update.setInt(4, -delta);
+                    if (update.executeUpdate() != 1) {
+                        throw new SQLException("Not enough " + key + " stored for " + owner);
+                    }
+                }
+            }
+        }
+    }
+
+    /** Queues a relative warehouse change behind preceding writes. */
+    private void persistDeltas(UUID owner, Map<String, Integer> deltas) {
+        if (deltas.isEmpty()) {
+            return;
+        }
+        database.submitWrite(() -> {
+            try (Connection connection = database.getConnection()) {
+                applyDeltas(connection, owner, deltas);
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Failed to persist warehouse for " + owner
+                        + ": " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Difference between two runtime snapshots — what this server changed —
+     * so a persist can be expressed as deltas instead of a whole inventory.
+     */
+    private static Map<String, Integer> diff(Snapshot before, Snapshot after) {
+        Map<String, Integer> from = parse(before.serializedContents());
+        Map<String, Integer> to = parse(after.serializedContents());
+        Map<String, Integer> deltas = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : to.entrySet()) {
+            int delta = entry.getValue() - from.getOrDefault(entry.getKey(), 0);
+            if (delta != 0) {
+                deltas.put(entry.getKey(), delta);
+            }
+        }
+        for (Map.Entry<String, Integer> entry : from.entrySet()) {
+            if (!to.containsKey(entry.getKey())) {
+                deltas.put(entry.getKey(), -entry.getValue());
+            }
+        }
+        return deltas;
+    }
+
+    private static Map<String, Integer> parse(String serialized) {
+        Map<String, Integer> map = new LinkedHashMap<>();
+        if (serialized == null || serialized.isBlank()) {
+            return map;
+        }
+        for (String part : serialized.split(";")) {
+            int colon = part.lastIndexOf(':');
+            if (colon <= 0) {
+                continue;
+            }
+            try {
+                map.put(part.substring(0, colon), Integer.parseInt(part.substring(colon + 1)));
+            } catch (NumberFormatException ignored) {
+                // A malformed pair is skipped rather than losing the rest.
+            }
+        }
+        return map;
     }
 
     /** Vault (discovery) capacity: the stored, purchasable number. */
@@ -179,8 +335,9 @@ public final class WarehouseService {
     public int deposit(UUID owner, String material, int amount) {
         int stored = Math.min(amount, freeSpaceFor(owner, material));
         if (stored > 0) {
-            mutableContents(owner).merge(material.toUpperCase(java.util.Locale.ROOT), stored, Integer::sum);
-            persist(owner);
+            String key = material.toUpperCase(java.util.Locale.ROOT);
+            mutableContents(owner).merge(key, stored, Integer::sum);
+            persistDeltas(owner, Map.of(key, stored));
         }
         return stored;
     }
@@ -190,12 +347,13 @@ public final class WarehouseService {
      * Returns false without changing anything when the bundle does not fit.
      */
     public boolean depositAll(UUID owner, Map<String, Integer> items) {
+        Snapshot before = snapshot(owner);
         Snapshot snapshot = prepareDepositAll(owner, items);
         if (snapshot == null) {
             return false;
         }
         if (!items.isEmpty()) {
-            persist(snapshot);
+            persistDeltas(owner, diff(before, snapshot));
         }
         return true;
     }
@@ -294,23 +452,17 @@ public final class WarehouseService {
             if (moved > 0) node.setState("ACTIVE");
         }
         if (moved <= 0) return 0;
-        String warehouseJson = serialize(warehouse);
         String nodeJson = node.serializeStorage();
         String bulkJson = node.serializeBulkStorage();
-        int capacity = getCapacity(owner);
         String stateBefore = node.getState();
         database.submitWrite(() -> {
             Connection connection = null;
             try {
                 connection = database.getConnection();
                 connection.setAutoCommit(false);
-                try (PreparedStatement upsert = connection.prepareStatement(
-                        "REPLACE INTO idle_warehouse (owner_uuid, capacity, content_json) VALUES (?, ?, ?)")) {
-                    upsert.setString(1, owner.toString());
-                    upsert.setInt(2, capacity);
-                    upsert.setString(3, warehouseJson);
-                    upsert.executeUpdate();
-                }
+                // Only what this collection moved — the shared row may have
+                // changed underneath us on another backend.
+                applyDeltas(connection, owner, moves);
                 try (PreparedStatement update = connection.prepareStatement(
                         "UPDATE idle_nodes SET storage_json = ?, bulk_storage_json = ?, "
                                 + "state = ? WHERE id = ?")) {
@@ -386,7 +538,7 @@ public final class WarehouseService {
     public int withdraw(UUID owner, String material, int amount) {
         int removed = prepareWithdraw(owner, material, amount);
         if (removed > 0) {
-            persist(owner);
+            persistDeltas(owner, Map.of(material.toUpperCase(java.util.Locale.ROOT), -removed));
         }
         return removed;
     }
@@ -411,15 +563,14 @@ public final class WarehouseService {
         return removed;
     }
 
-    /** Persists a warehouse snapshot on the caller's transaction connection. */
-    public static void write(Connection connection, Snapshot snapshot) throws SQLException {
-        try (PreparedStatement upsert = connection.prepareStatement(
-                "REPLACE INTO idle_warehouse (owner_uuid, capacity, content_json) VALUES (?, ?, ?)")) {
-            upsert.setString(1, snapshot.owner().toString());
-            upsert.setInt(2, snapshot.capacity());
-            upsert.setString(3, snapshot.serializedContents());
-            upsert.executeUpdate();
-        }
+    /**
+     * Persists a warehouse change on the caller's transaction connection, as
+     * the difference between the snapshot taken before the change and the one
+     * after it. Sending the difference rather than the whole inventory is what
+     * lets another backend move the same warehouse concurrently.
+     */
+    public void write(Connection connection, Snapshot before, Snapshot after) throws SQLException {
+        applyDeltas(connection, after.owner(), diff(before, after));
     }
 
     public boolean expandCapacity(UUID owner, PlayerData player) {
@@ -429,15 +580,13 @@ public final class WarehouseService {
             return false;
         }
         int capacity = getCapacity(owner) + step;
-        String content = serialize(mutableContents(owner));
-        double balanceAfter = player.getBalance() - cost;
         boolean committed = database.executeTransaction("expand warehouse " + owner, connection -> {
+            // Capacity only: the materials themselves live in wallet_warehouse.
             try (PreparedStatement upsert = connection.prepareStatement(
                     "REPLACE INTO idle_warehouse "
-                            + "(owner_uuid, capacity, content_json) VALUES (?, ?, ?)")) {
+                            + "(owner_uuid, capacity, content_json) VALUES (?, ?, '')")) {
                 upsert.setString(1, owner.toString());
                 upsert.setInt(2, capacity);
-                upsert.setString(3, content);
                 upsert.executeUpdate();
             }
             dev.branzx.idle.storage.CoinSql.debit(connection, player.getUuid(), Math.round(cost));
@@ -446,21 +595,6 @@ public final class WarehouseService {
         capacities.put(owner, capacity);
         player.addBalance(-cost);
         return true;
-    }
-
-    private void persist(UUID owner) {
-        persist(snapshot(owner));
-    }
-
-    private void persist(Snapshot snapshot) {
-        database.submitWrite(() -> {
-            try (Connection connection = database.getConnection()) {
-                write(connection, snapshot);
-            } catch (SQLException e) {
-                plugin.getLogger().severe("Failed to persist warehouse for " + snapshot.owner()
-                        + ": " + e.getMessage());
-            }
-        });
     }
 
     private String serialize(Map<String, Integer> map) {

@@ -574,7 +574,7 @@ public final class ExplorationService {
         // settlement rolls the deposit back out of the cache and leaves the
         // event claimable.
         boolean committed = database.executeTransaction("exploration loot claim", connection -> {
-            WarehouseService.write(connection, warehouseSnapshot);
+            warehouse.write(connection, before, warehouseSnapshot);
             try (PreparedStatement delete = connection.prepareStatement(
                     "DELETE FROM idle_exploration_events WHERE id = ?")) {
                 delete.setLong(1, event.id);

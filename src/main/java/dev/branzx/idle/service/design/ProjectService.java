@@ -252,7 +252,7 @@ public final class ProjectService {
                                         WarehouseService.Snapshot snapshot,
                                         List<GameStateStore.Row> rows) {
         boolean committed = database.executeTransaction(operation, connection -> {
-            WarehouseService.write(connection, snapshot);
+            warehouse.write(connection, before, snapshot);
             for (GameStateStore.Row row : rows) {
                 GameStateStore.write(connection, row);
             }

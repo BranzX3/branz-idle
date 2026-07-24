@@ -67,19 +67,23 @@ class MySqlIntegrationTest {
         Database database = new Database(plugin);
         database.init();
         try {
+            WarehouseService warehouse = new WarehouseService(plugin, database);
+            // The warehouse is persisted as the difference between two runtime
+            // snapshots, so the probe writes "nothing -> 64 oak logs".
+            WarehouseService.Snapshot before =
+                    new WarehouseService.Snapshot(owner, 2_000, "");
             WarehouseService.Snapshot snapshot =
                     new WarehouseService.Snapshot(owner, 2_000, "OAK_LOG:64");
             GameStateStore.Row row =
                     new GameStateStore.Row(owner, "PROJECT", "rollback_probe", "progress", "64");
 
             boolean committed = database.executeTransaction("mysql rollback probe", connection -> {
-                WarehouseService.write(connection, snapshot);
+                warehouse.write(connection, before, snapshot);
                 GameStateStore.write(connection, row);
                 throw new SQLException("injected rollback");
             });
             assertFalse(committed);
 
-            WarehouseService warehouse = new WarehouseService(plugin, database);
             warehouse.loadAllSync();
             GameStateStore state = new GameStateStore(plugin, database);
             state.loadAllSync();

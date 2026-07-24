@@ -176,6 +176,18 @@ public final class Database {
                 coins BIGINT NOT NULL DEFAULT 0
             )
             """,
+            // The shared material warehouse, also owned by BranzWallet. One row
+            // per material so a deposit here and a withdrawal on another backend
+            // commute. Declared here too so a coin/material write always has a
+            // target even if this server booted first.
+            """
+            CREATE TABLE IF NOT EXISTS wallet_warehouse (
+                owner_uuid VARCHAR(36) NOT NULL,
+                item_key VARCHAR(64) NOT NULL,
+                amount INT NOT NULL DEFAULT 0,
+                PRIMARY KEY (owner_uuid, item_key)
+            )
+            """,
             """
             CREATE TABLE IF NOT EXISTS idle_nodes (
                 id BIGINT NOT NULL PRIMARY KEY,
@@ -459,6 +471,14 @@ public final class Database {
                 uuid TEXT NOT NULL PRIMARY KEY,
                 name TEXT NOT NULL,
                 coins INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS wallet_warehouse (
+                owner_uuid TEXT NOT NULL,
+                item_key TEXT NOT NULL,
+                amount INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (owner_uuid, item_key)
             )
             """,
             """

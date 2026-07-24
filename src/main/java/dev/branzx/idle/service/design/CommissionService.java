@@ -347,7 +347,7 @@ public final class CommissionService {
             }
         }
         boolean committed = database.executeTransaction("delivery commission " + owner, connection -> {
-            WarehouseService.write(connection, snapshot);
+            warehouse.write(connection, before, snapshot);
             for (GameStateStore.Row row : rows) GameStateStore.write(connection, row);
         });
         if (!committed) {
